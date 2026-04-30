@@ -1,0 +1,1012 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bookflow — Button System Spec</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=Geist:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --forest-900: #0E2A21;
+    --forest-800: #1B4332;
+    --forest-700: #234D38;
+    --forest-600: #2D5A3F;
+    --forest-200: #B7CCB9;
+    --forest-100: #DAE6DC;
+    --forest-50: #EFF4F0;
+    --ink-900: #1A1A1A;
+    --ink-700: #3D3A36;
+    --ink-500: #6B6862;
+    --ink-400: #8A8780;
+    --ink-300: #B5B2AB;
+    --ink-200: #D8D5CC;
+    --ink-100: #ECE9E0;
+    --cream-50: #FAF7F2;
+    --cream-100: #F5F1E8;
+    --cream-200: #ECE5D5;
+    --amber-500: #D4A574;
+    --error: #B5453A;
+    --font-display: 'Fraunces', Georgia, serif;
+    --font-ui: 'Geist', -apple-system, sans-serif;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: var(--font-ui);
+    background: var(--cream-50);
+    color: var(--ink-900);
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+    padding: 56px 24px;
+  }
+  .page { max-width: 1200px; margin: 0 auto; }
+  
+  /* === Doc header === */
+  .doc-header {
+    text-align: center;
+    margin-bottom: 64px;
+    padding-bottom: 48px;
+    border-bottom: 1px solid var(--ink-200);
+  }
+  .doc-eyebrow {
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--forest-800);
+    margin-bottom: 20px;
+  }
+  .doc-title {
+    font-family: var(--font-display);
+    font-weight: 600;
+    font-size: 56px;
+    line-height: 1;
+    letter-spacing: -0.025em;
+    color: var(--ink-900);
+    margin-bottom: 20px;
+    font-variation-settings: "opsz" 144;
+  }
+  .doc-subtitle {
+    font-family: var(--font-display);
+    font-weight: 400;
+    font-style: italic;
+    font-size: 20px;
+    color: var(--ink-500);
+    max-width: 640px;
+    margin: 0 auto;
+    font-variation-settings: "opsz" 30;
+  }
+  
+  /* === Section structure === */
+  .section { margin-bottom: 96px; }
+  .section-label {
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--forest-800);
+    margin-bottom: 12px;
+  }
+  .section-title {
+    font-family: var(--font-display);
+    font-size: 32px;
+    font-weight: 500;
+    color: var(--ink-900);
+    margin-bottom: 14px;
+    font-variation-settings: "opsz" 72;
+    letter-spacing: -0.01em;
+  }
+  .section-description {
+    font-size: 14px;
+    color: var(--ink-500);
+    max-width: 720px;
+    margin-bottom: 32px;
+    line-height: 1.6;
+  }
+  
+  /* === Audit findings table === */
+  .audit-card {
+    background: var(--cream-100);
+    border-radius: 12px;
+    padding: 32px;
+    margin-bottom: 24px;
+  }
+  .audit-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+  }
+  .audit-table th {
+    text-align: left;
+    padding: 12px 16px;
+    font-size: 10px;
+    font-weight: 500;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--forest-800);
+    border-bottom: 1px solid var(--ink-200);
+  }
+  .audit-table td {
+    padding: 14px 16px;
+    border-bottom: 0.5px solid var(--ink-200);
+    vertical-align: top;
+    color: var(--ink-700);
+  }
+  .audit-table td:first-child {
+    font-family: monospace;
+    font-size: 12px;
+    color: var(--ink-900);
+  }
+  .audit-table tr:last-child td { border-bottom: none; }
+  .status-canonical { color: var(--forest-800); font-weight: 500; }
+  .status-needs-fix { color: var(--error); }
+  .status-ok-variant { color: #8B6F2A; }
+  
+  /* === Spec card === */
+  .spec-card {
+    background: var(--cream-100);
+    border-radius: 16px;
+    padding: 40px;
+    margin-bottom: 24px;
+  }
+  .spec-card h3 {
+    font-family: var(--font-display);
+    font-size: 22px;
+    font-weight: 500;
+    color: var(--ink-900);
+    margin-bottom: 8px;
+    font-variation-settings: "opsz" 30;
+  }
+  .spec-card .lede {
+    font-size: 13px;
+    color: var(--ink-500);
+    margin-bottom: 28px;
+    max-width: 640px;
+    line-height: 1.6;
+  }
+  
+  /* === Variant grid === */
+  .variant-grid {
+    display: grid;
+    grid-template-columns: 200px 1fr;
+    gap: 32px;
+    align-items: center;
+    padding: 24px 0;
+    border-bottom: 0.5px solid var(--ink-200);
+  }
+  .variant-grid:last-child { border-bottom: none; }
+  
+  .variant-meta {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .variant-name {
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--ink-900);
+  }
+  .variant-tokens {
+    font-family: monospace;
+    font-size: 11px;
+    color: var(--ink-500);
+    line-height: 1.6;
+  }
+  
+  .variant-demo {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+  
+  /* === The actual button system === */
+  .bf-btn {
+    font-family: var(--font-ui);
+    font-weight: 500;
+    cursor: pointer;
+    border: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    transition: background 120ms ease, color 120ms ease, border-color 120ms ease, transform 120ms ease;
+    text-decoration: none;
+    user-select: none;
+  }
+  
+  /* Sizes */
+  .bf-btn--standard {
+    height: 44px;
+    padding: 0 20px;
+    font-size: 14px;
+    border-radius: 8px;
+    min-width: 80px;
+  }
+  .bf-btn--compact {
+    height: 32px;
+    padding: 0 14px;
+    font-size: 12px;
+    border-radius: 6px;
+    min-width: 64px;
+  }
+  .bf-btn--large {
+    height: 52px;
+    padding: 0 28px;
+    font-size: 16px;
+    border-radius: 10px;
+    min-width: 120px;
+  }
+  
+  /* Primary variant — forest fill */
+  .bf-btn--primary {
+    background: var(--forest-800);
+    color: var(--cream-50);
+  }
+  .bf-btn--primary:hover {
+    background: var(--forest-700);
+  }
+  .bf-btn--primary:active,
+  .bf-btn--primary.is-pressed {
+    background: var(--forest-900);
+    transform: scale(0.98);
+  }
+  .bf-btn--primary:disabled,
+  .bf-btn--primary.is-disabled {
+    background: var(--ink-300);
+    color: var(--cream-100);
+    cursor: not-allowed;
+    transform: none;
+  }
+  
+  /* Secondary variant — outlined */
+  .bf-btn--secondary {
+    background: transparent;
+    color: var(--ink-900);
+    border: 1px solid var(--ink-300);
+  }
+  .bf-btn--secondary:hover {
+    background: var(--cream-100);
+    border-color: var(--ink-500);
+  }
+  .bf-btn--secondary:active,
+  .bf-btn--secondary.is-pressed {
+    background: var(--cream-200);
+    border-color: var(--ink-500);
+    transform: scale(0.98);
+  }
+  .bf-btn--secondary:disabled,
+  .bf-btn--secondary.is-disabled {
+    color: var(--ink-400);
+    border-color: var(--ink-200);
+    cursor: not-allowed;
+    transform: none;
+  }
+  
+  /* Tertiary variant — text only */
+  .bf-btn--tertiary {
+    background: transparent;
+    color: var(--forest-800);
+    padding: 0 12px;
+  }
+  .bf-btn--tertiary:hover {
+    background: var(--forest-50);
+  }
+  .bf-btn--tertiary:active,
+  .bf-btn--tertiary.is-pressed {
+    background: var(--forest-100);
+    transform: scale(0.98);
+  }
+  .bf-btn--tertiary:disabled,
+  .bf-btn--tertiary.is-disabled {
+    color: var(--ink-400);
+    cursor: not-allowed;
+    transform: none;
+  }
+  
+  /* Destructive variant — for delete account, sign out, etc. */
+  .bf-btn--destructive {
+    background: transparent;
+    color: var(--error);
+  }
+  .bf-btn--destructive:hover {
+    background: rgba(181, 69, 58, 0.08);
+  }
+  .bf-btn--destructive:active {
+    background: rgba(181, 69, 58, 0.14);
+    transform: scale(0.98);
+  }
+  
+  /* Loading state — applies to any variant */
+  .bf-btn.is-loading {
+    cursor: wait;
+    pointer-events: none;
+    position: relative;
+  }
+  .bf-btn.is-loading .bf-btn__label {
+    opacity: 0;
+  }
+  .bf-btn.is-loading::after {
+    content: "";
+    position: absolute;
+    width: 16px;
+    height: 16px;
+    border: 1.5px solid currentColor;
+    border-top-color: transparent;
+    border-radius: 50%;
+    animation: bf-spin 700ms linear infinite;
+  }
+  @keyframes bf-spin { to { transform: rotate(360deg); } }
+  
+  /* Block / full-width modifier */
+  .bf-btn--block {
+    display: flex;
+    width: 100%;
+  }
+  
+  /* Icon button — circular */
+  .bf-icon-btn {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    border: none;
+    background: var(--cream-100);
+    color: var(--ink-700);
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 120ms ease, color 120ms ease, transform 120ms ease;
+  }
+  .bf-icon-btn:hover {
+    background: var(--ink-100);
+  }
+  .bf-icon-btn:active {
+    background: var(--ink-200);
+    transform: scale(0.95);
+  }
+  .bf-icon-btn--primary {
+    background: var(--forest-800);
+    color: var(--cream-50);
+  }
+  .bf-icon-btn--primary:hover {
+    background: var(--forest-700);
+  }
+  .bf-icon-btn--primary:active {
+    background: var(--forest-900);
+    transform: scale(0.95);
+  }
+  .bf-icon-btn--small {
+    width: 32px;
+    height: 32px;
+  }
+  .bf-icon-btn:disabled {
+    background: var(--ink-100);
+    color: var(--ink-400);
+    cursor: not-allowed;
+    transform: none;
+  }
+  
+  /* === States row === */
+  .states-row {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 16px;
+    margin-bottom: 16px;
+  }
+  .state-cell {
+    text-align: center;
+  }
+  .state-label {
+    font-size: 10px;
+    font-weight: 500;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--ink-500);
+    margin-bottom: 12px;
+  }
+  .state-button-wrap {
+    background: var(--cream-50);
+    border: 0.5px solid var(--ink-200);
+    border-radius: 12px;
+    padding: 24px 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 96px;
+  }
+  
+  /* Token table */
+  .token-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+    margin-top: 16px;
+  }
+  .token-table th {
+    text-align: left;
+    padding: 8px 12px;
+    font-size: 10px;
+    font-weight: 500;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--ink-500);
+    border-bottom: 0.5px solid var(--ink-200);
+  }
+  .token-table td {
+    padding: 8px 12px;
+    border-bottom: 0.5px solid var(--ink-100);
+    color: var(--ink-700);
+  }
+  .token-table td:first-child {
+    font-family: monospace;
+    color: var(--ink-900);
+    width: 30%;
+  }
+  .token-table td:nth-child(2) {
+    font-family: monospace;
+    color: var(--forest-800);
+    width: 35%;
+  }
+  
+  .footer {
+    text-align: center;
+    padding-top: 64px;
+    margin-top: 80px;
+    border-top: 1px solid var(--ink-200);
+    font-size: 12px;
+    color: var(--ink-500);
+  }
+</style>
+</head>
+<body>
+
+<div class="page">
+
+<header class="doc-header">
+  <div class="doc-eyebrow">Brand identity · Volume 04</div>
+  <h1 class="doc-title">The button system.</h1>
+  <p class="doc-subtitle">A single source of truth for every button in Bookflow — sizes, variants, and all five interactive states.</p>
+</header>
+
+<!-- ============================================ -->
+<!-- AUDIT FINDINGS -->
+<!-- ============================================ -->
+<section class="section">
+  <div class="section-label">Audit findings</div>
+  <h2 class="section-title">What we found across existing designs.</h2>
+  <p class="section-description">Six discrete button styles existed across the wireframes, hi-fi designs, and splash screens. Some were canonical, some were ad-hoc inline styles, and we were missing every interactive state. This audit names what's working and what needs to be unified.</p>
+  
+  <div class="audit-card">
+    <table class="audit-table">
+      <thead>
+        <tr>
+          <th>Where it appeared</th>
+          <th>Variant</th>
+          <th>Spec</th>
+          <th>Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Design showcase ref cards</td>
+          <td>Primary filled</td>
+          <td>14px / 12·20px / 44px / r8</td>
+          <td><span class="status-canonical">Canonical → standard size</span></td>
+        </tr>
+        <tr>
+          <td>Library Continue card</td>
+          <td>Primary filled</td>
+          <td>12px / 32px tall / r8</td>
+          <td><span class="status-ok-variant">Legitimate compact variant — needs formalizing</span></td>
+        </tr>
+        <tr>
+          <td>Library Continue card</td>
+          <td>Icon button "A"</td>
+          <td>32×32 / 1px border / r8</td>
+          <td><span class="status-ok-variant">Icon button variant — needs formalizing</span></td>
+        </tr>
+        <tr>
+          <td>First-launch CTA "Get started"</td>
+          <td>Primary filled</td>
+          <td>14px / 14·24px / no min-height</td>
+          <td><span class="status-needs-fix">Inconsistent padding & no min-height</span></td>
+        </tr>
+        <tr>
+          <td>Returning user "Continue reading"</td>
+          <td>Primary filled</td>
+          <td>14px / 14·20px / 44px</td>
+          <td><span class="status-canonical">Already aligned (post-fix)</span></td>
+        </tr>
+        <tr>
+          <td>Returning user "Go to library"</td>
+          <td>Tertiary text</td>
+          <td>13px / 12px / no fixed height</td>
+          <td><span class="status-needs-fix">Font size off — should be 14px</span></td>
+        </tr>
+        <tr>
+          <td>Wireframes throughout</td>
+          <td>Various inline divs</td>
+          <td>Highly variable</td>
+          <td><span class="status-needs-fix">Replace with canonical classes</span></td>
+        </tr>
+        <tr>
+          <td>All variants, all designs</td>
+          <td>—</td>
+          <td>Missing hover, pressed, disabled, loading</td>
+          <td><span class="status-needs-fix">No interactive states defined anywhere</span></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ============================================ -->
+<!-- THE CANONICAL SYSTEM -->
+<!-- ============================================ -->
+<section class="section">
+  <div class="section-label">The canonical system</div>
+  <h2 class="section-title">Three sizes, four variants.</h2>
+  <p class="section-description">Every button in Bookflow is a combination of one size and one variant. No exceptions. If a context seems to need a fifth variant, it doesn't — find the closest match and use it.</p>
+  
+  <div class="spec-card">
+    <h3>Sizes</h3>
+    <p class="lede">Standard is the default, used in 90% of contexts. Compact is for inline placements within cards (Library hero, list items). Large is reserved for hero CTAs (landing page, paywall primary).</p>
+    
+    <div class="variant-grid">
+      <div class="variant-meta">
+        <div class="variant-name">Compact</div>
+        <div class="variant-tokens">
+          height: 32px<br>
+          padding: 0 14px<br>
+          font: 12px / 500<br>
+          radius: 6px
+        </div>
+      </div>
+      <div class="variant-demo">
+        <button class="bf-btn bf-btn--primary bf-btn--compact"><span class="bf-btn__label">Listen</span></button>
+        <button class="bf-btn bf-btn--secondary bf-btn--compact"><span class="bf-btn__label">Cancel</span></button>
+        <button class="bf-btn bf-btn--tertiary bf-btn--compact"><span class="bf-btn__label">Skip</span></button>
+      </div>
+    </div>
+    
+    <div class="variant-grid">
+      <div class="variant-meta">
+        <div class="variant-name">Standard</div>
+        <div class="variant-tokens">
+          height: 44px<br>
+          padding: 0 20px<br>
+          font: 14px / 500<br>
+          radius: 8px
+        </div>
+      </div>
+      <div class="variant-demo">
+        <button class="bf-btn bf-btn--primary bf-btn--standard"><span class="bf-btn__label">Continue reading</span></button>
+        <button class="bf-btn bf-btn--secondary bf-btn--standard"><span class="bf-btn__label">Maybe later</span></button>
+        <button class="bf-btn bf-btn--tertiary bf-btn--standard"><span class="bf-btn__label">Go to library</span></button>
+      </div>
+    </div>
+    
+    <div class="variant-grid">
+      <div class="variant-meta">
+        <div class="variant-name">Large</div>
+        <div class="variant-tokens">
+          height: 52px<br>
+          padding: 0 28px<br>
+          font: 16px / 500<br>
+          radius: 10px
+        </div>
+      </div>
+      <div class="variant-demo">
+        <button class="bf-btn bf-btn--primary bf-btn--large"><span class="bf-btn__label">Get started</span></button>
+        <button class="bf-btn bf-btn--secondary bf-btn--large"><span class="bf-btn__label">Browse free books</span></button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================ -->
+<!-- VARIANTS -->
+<!-- ============================================ -->
+<section class="section">
+  <div class="section-label">Variants</div>
+  <h2 class="section-title">Four hierarchies of action.</h2>
+  <p class="section-description">Primary draws the eye to the desired action. Secondary offers an alternative without competing. Tertiary is for low-emphasis paths. Destructive is reserved for irreversible actions only.</p>
+  
+  <div class="spec-card">
+    <h3>Primary · forest filled</h3>
+    <p class="lede">Used for the main action on any screen. Maximum one primary button per surface. Filled forest-800 with cream-50 text.</p>
+    <div class="variant-demo">
+      <button class="bf-btn bf-btn--primary bf-btn--standard"><span class="bf-btn__label">Generate summary</span></button>
+      <button class="bf-btn bf-btn--primary bf-btn--standard"><span class="bf-btn__label">Listen now</span></button>
+      <button class="bf-btn bf-btn--primary bf-btn--standard"><span class="bf-btn__label">Add to library</span></button>
+    </div>
+  </div>
+  
+  <div class="spec-card">
+    <h3>Secondary · outlined</h3>
+    <p class="lede">Alternative actions that still warrant visual presence. Used in pairs with primary, never on its own.</p>
+    <div class="variant-demo">
+      <button class="bf-btn bf-btn--secondary bf-btn--standard"><span class="bf-btn__label">Maybe later</span></button>
+      <button class="bf-btn bf-btn--secondary bf-btn--standard"><span class="bf-btn__label">Restore purchases</span></button>
+      <button class="bf-btn bf-btn--secondary bf-btn--standard"><span class="bf-btn__label">Manage library</span></button>
+    </div>
+  </div>
+  
+  <div class="spec-card">
+    <h3>Tertiary · text only</h3>
+    <p class="lede">Low-emphasis actions. No background, no border. Forest text gives a subtle visual marker without competing with primary actions.</p>
+    <div class="variant-demo">
+      <button class="bf-btn bf-btn--tertiary bf-btn--standard"><span class="bf-btn__label">Skip for now</span></button>
+      <button class="bf-btn bf-btn--tertiary bf-btn--standard"><span class="bf-btn__label">Go to library</span></button>
+      <button class="bf-btn bf-btn--tertiary bf-btn--standard"><span class="bf-btn__label">Sign out</span></button>
+    </div>
+  </div>
+  
+  <div class="spec-card">
+    <h3>Destructive · for irreversible actions</h3>
+    <p class="lede">Reserved for permanent deletions or account-level destructive actions. Red text on transparent background. Always paired with a confirmation dialog before the action fires.</p>
+    <div class="variant-demo">
+      <button class="bf-btn bf-btn--destructive bf-btn--standard"><span class="bf-btn__label">Delete account</span></button>
+      <button class="bf-btn bf-btn--destructive bf-btn--standard"><span class="bf-btn__label">Remove book</span></button>
+      <button class="bf-btn bf-btn--destructive bf-btn--standard"><span class="bf-btn__label">Clear conversation</span></button>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================ -->
+<!-- ALL FIVE STATES -->
+<!-- ============================================ -->
+<section class="section">
+  <div class="section-label">Interactive states</div>
+  <h2 class="section-title">Every button, in every state.</h2>
+  <p class="section-description">Five states each variant must support: enabled (default), hovered, pressed, disabled, and loading. The loading state replaces the label with a spinner — the only place a spinner is allowed in the system, since the user explicitly initiated the action and is waiting for it.</p>
+  
+  <div class="spec-card">
+    <h3>Primary · all states</h3>
+    <div class="states-row">
+      <div class="state-cell">
+        <div class="state-label">Enabled</div>
+        <div class="state-button-wrap">
+          <button class="bf-btn bf-btn--primary bf-btn--standard"><span class="bf-btn__label">Save</span></button>
+        </div>
+      </div>
+      <div class="state-cell">
+        <div class="state-label">Hovered</div>
+        <div class="state-button-wrap">
+          <button class="bf-btn bf-btn--primary bf-btn--standard" style="background: var(--forest-700);"><span class="bf-btn__label">Save</span></button>
+        </div>
+      </div>
+      <div class="state-cell">
+        <div class="state-label">Pressed</div>
+        <div class="state-button-wrap">
+          <button class="bf-btn bf-btn--primary bf-btn--standard is-pressed"><span class="bf-btn__label">Save</span></button>
+        </div>
+      </div>
+      <div class="state-cell">
+        <div class="state-label">Disabled</div>
+        <div class="state-button-wrap">
+          <button class="bf-btn bf-btn--primary bf-btn--standard is-disabled" disabled><span class="bf-btn__label">Save</span></button>
+        </div>
+      </div>
+      <div class="state-cell">
+        <div class="state-label">Loading</div>
+        <div class="state-button-wrap">
+          <button class="bf-btn bf-btn--primary bf-btn--standard is-loading"><span class="bf-btn__label">Save</span></button>
+        </div>
+      </div>
+    </div>
+    
+    <table class="token-table">
+      <thead>
+        <tr>
+          <th>State</th>
+          <th>Background</th>
+          <th>Color / behavior</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td>Enabled</td><td>--forest-800</td><td>--cream-50 text</td></tr>
+        <tr><td>Hovered</td><td>--forest-700</td><td>120ms ease transition</td></tr>
+        <tr><td>Pressed</td><td>--forest-900</td><td>scale(0.98) for 120ms</td></tr>
+        <tr><td>Disabled</td><td>--ink-300</td><td>--cream-100 text · cursor not-allowed · no transform</td></tr>
+        <tr><td>Loading</td><td>--forest-800</td><td>label opacity 0 · spinner (1.5px stroke, 16×16, 700ms rotate) · pointer-events none</td></tr>
+      </tbody>
+    </table>
+  </div>
+  
+  <div class="spec-card">
+    <h3>Secondary · all states</h3>
+    <div class="states-row">
+      <div class="state-cell">
+        <div class="state-label">Enabled</div>
+        <div class="state-button-wrap">
+          <button class="bf-btn bf-btn--secondary bf-btn--standard"><span class="bf-btn__label">Cancel</span></button>
+        </div>
+      </div>
+      <div class="state-cell">
+        <div class="state-label">Hovered</div>
+        <div class="state-button-wrap">
+          <button class="bf-btn bf-btn--secondary bf-btn--standard" style="background: var(--cream-100); border-color: var(--ink-500);"><span class="bf-btn__label">Cancel</span></button>
+        </div>
+      </div>
+      <div class="state-cell">
+        <div class="state-label">Pressed</div>
+        <div class="state-button-wrap">
+          <button class="bf-btn bf-btn--secondary bf-btn--standard is-pressed"><span class="bf-btn__label">Cancel</span></button>
+        </div>
+      </div>
+      <div class="state-cell">
+        <div class="state-label">Disabled</div>
+        <div class="state-button-wrap">
+          <button class="bf-btn bf-btn--secondary bf-btn--standard is-disabled" disabled><span class="bf-btn__label">Cancel</span></button>
+        </div>
+      </div>
+      <div class="state-cell">
+        <div class="state-label">Loading</div>
+        <div class="state-button-wrap">
+          <button class="bf-btn bf-btn--secondary bf-btn--standard is-loading"><span class="bf-btn__label">Cancel</span></button>
+        </div>
+      </div>
+    </div>
+    
+    <table class="token-table">
+      <thead>
+        <tr>
+          <th>State</th>
+          <th>Background</th>
+          <th>Border / color</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td>Enabled</td><td>transparent</td><td>1px --ink-300 · --ink-900 text</td></tr>
+        <tr><td>Hovered</td><td>--cream-100</td><td>1px --ink-500</td></tr>
+        <tr><td>Pressed</td><td>--cream-200</td><td>1px --ink-500 · scale(0.98)</td></tr>
+        <tr><td>Disabled</td><td>transparent</td><td>1px --ink-200 · --ink-400 text</td></tr>
+        <tr><td>Loading</td><td>transparent</td><td>label opacity 0 · spinner inherits text color</td></tr>
+      </tbody>
+    </table>
+  </div>
+  
+  <div class="spec-card">
+    <h3>Tertiary · all states</h3>
+    <div class="states-row">
+      <div class="state-cell">
+        <div class="state-label">Enabled</div>
+        <div class="state-button-wrap">
+          <button class="bf-btn bf-btn--tertiary bf-btn--standard"><span class="bf-btn__label">Skip</span></button>
+        </div>
+      </div>
+      <div class="state-cell">
+        <div class="state-label">Hovered</div>
+        <div class="state-button-wrap">
+          <button class="bf-btn bf-btn--tertiary bf-btn--standard" style="background: var(--forest-50);"><span class="bf-btn__label">Skip</span></button>
+        </div>
+      </div>
+      <div class="state-cell">
+        <div class="state-label">Pressed</div>
+        <div class="state-button-wrap">
+          <button class="bf-btn bf-btn--tertiary bf-btn--standard is-pressed"><span class="bf-btn__label">Skip</span></button>
+        </div>
+      </div>
+      <div class="state-cell">
+        <div class="state-label">Disabled</div>
+        <div class="state-button-wrap">
+          <button class="bf-btn bf-btn--tertiary bf-btn--standard is-disabled" disabled><span class="bf-btn__label">Skip</span></button>
+        </div>
+      </div>
+      <div class="state-cell">
+        <div class="state-label">Loading</div>
+        <div class="state-button-wrap">
+          <button class="bf-btn bf-btn--tertiary bf-btn--standard is-loading"><span class="bf-btn__label">Skip</span></button>
+        </div>
+      </div>
+    </div>
+    
+    <table class="token-table">
+      <thead>
+        <tr>
+          <th>State</th>
+          <th>Background</th>
+          <th>Color</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td>Enabled</td><td>transparent</td><td>--forest-800 text</td></tr>
+        <tr><td>Hovered</td><td>--forest-50</td><td>--forest-800 text</td></tr>
+        <tr><td>Pressed</td><td>--forest-100</td><td>--forest-800 text · scale(0.98)</td></tr>
+        <tr><td>Disabled</td><td>transparent</td><td>--ink-400 text</td></tr>
+        <tr><td>Loading</td><td>transparent</td><td>label opacity 0 · spinner --forest-800</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ============================================ -->
+<!-- ICON BUTTONS -->
+<!-- ============================================ -->
+<section class="section">
+  <div class="section-label">Icon buttons</div>
+  <h2 class="section-title">Circular, single-purpose.</h2>
+  <p class="section-description">Used in headers, action bars, and compact list rows. Two sizes (40px standard, 32px small), two variants (default and primary). Icon size is always 18px regardless of button size — keeps tap target large while keeping iconography readable.</p>
+  
+  <div class="spec-card">
+    <h3>Icon button · 40px standard</h3>
+    <div class="states-row">
+      <div class="state-cell">
+        <div class="state-label">Default</div>
+        <div class="state-button-wrap">
+          <button class="bf-icon-btn">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+          </button>
+        </div>
+      </div>
+      <div class="state-cell">
+        <div class="state-label">Hovered</div>
+        <div class="state-button-wrap">
+          <button class="bf-icon-btn" style="background: var(--ink-100);">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+          </button>
+        </div>
+      </div>
+      <div class="state-cell">
+        <div class="state-label">Pressed</div>
+        <div class="state-button-wrap">
+          <button class="bf-icon-btn" style="background: var(--ink-200); transform: scale(0.95);">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+          </button>
+        </div>
+      </div>
+      <div class="state-cell">
+        <div class="state-label">Primary</div>
+        <div class="state-button-wrap">
+          <button class="bf-icon-btn bf-icon-btn--primary">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="5,3 19,12 5,21"/></svg>
+          </button>
+        </div>
+      </div>
+      <div class="state-cell">
+        <div class="state-label">Disabled</div>
+        <div class="state-button-wrap">
+          <button class="bf-icon-btn" disabled>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================ -->
+<!-- LAYOUT PATTERNS -->
+<!-- ============================================ -->
+<section class="section">
+  <div class="section-label">Layout patterns</div>
+  <h2 class="section-title">When buttons stack, when they sit side by side.</h2>
+  <p class="section-description">Three patterns cover 95% of cases. The decision tree: if both actions have similar weight and short labels, use the side-by-side pair. If one action is clearly primary, stack vertically with primary on top. Full-width block buttons are reserved for narrow contexts and final-step CTAs.</p>
+  
+  <div class="spec-card">
+    <h3>Pattern A · Side-by-side pair</h3>
+    <p class="lede">Two short, equal-weight actions. Used in confirmation dialogs, modal footers. Gap: 8px. Both buttons grow equally.</p>
+    <div style="background: var(--cream-50); padding: 24px; border-radius: 12px; border: 0.5px solid var(--ink-200); max-width: 320px;">
+      <div style="display: flex; gap: 8px;">
+        <button class="bf-btn bf-btn--secondary bf-btn--standard" style="flex: 1;"><span class="bf-btn__label">Cancel</span></button>
+        <button class="bf-btn bf-btn--primary bf-btn--standard" style="flex: 1;"><span class="bf-btn__label">Confirm</span></button>
+      </div>
+    </div>
+  </div>
+  
+  <div class="spec-card">
+    <h3>Pattern B · Stacked with tertiary</h3>
+    <p class="lede">Primary is the main path; secondary action is genuinely secondary. Gap: 6px. Primary is full-width, tertiary sits below at natural width.</p>
+    <div style="background: var(--cream-50); padding: 24px; border-radius: 12px; border: 0.5px solid var(--ink-200); max-width: 320px;">
+      <div style="display: flex; flex-direction: column; gap: 6px;">
+        <button class="bf-btn bf-btn--primary bf-btn--standard bf-btn--block"><span class="bf-btn__label">Continue reading</span></button>
+        <button class="bf-btn bf-btn--tertiary bf-btn--standard"><span class="bf-btn__label">Go to library</span></button>
+      </div>
+    </div>
+  </div>
+  
+  <div class="spec-card">
+    <h3>Pattern C · Full-width block</h3>
+    <p class="lede">Single primary action at the bottom of a screen or modal. Used in onboarding, paywalls, single-step CTAs.</p>
+    <div style="background: var(--cream-50); padding: 24px; border-radius: 12px; border: 0.5px solid var(--ink-200); max-width: 320px;">
+      <button class="bf-btn bf-btn--primary bf-btn--large bf-btn--block"><span class="bf-btn__label">Get started</span></button>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================ -->
+<!-- IMPLEMENTATION TOKENS -->
+<!-- ============================================ -->
+<section class="section">
+  <div class="section-label">Implementation</div>
+  <h2 class="section-title">Tokens engineering can ship.</h2>
+  <p class="section-description">All values exposed as CSS custom properties. The same tokens map directly to native iOS/Android theming systems. Engineering should never hard-code button values; everything routes through these tokens.</p>
+  
+  <div class="spec-card">
+    <h3>Master token table</h3>
+    <table class="token-table">
+      <thead>
+        <tr>
+          <th>Token</th>
+          <th>Value</th>
+          <th>Used by</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td>--bf-btn-radius-compact</td><td>6px</td><td>Compact size only</td></tr>
+        <tr><td>--bf-btn-radius-standard</td><td>8px</td><td>Standard size · all icon btns</td></tr>
+        <tr><td>--bf-btn-radius-large</td><td>10px</td><td>Large size only</td></tr>
+        <tr><td>--bf-btn-height-compact</td><td>32px</td><td>Compact</td></tr>
+        <tr><td>--bf-btn-height-standard</td><td>44px</td><td>Standard (matches WCAG min target)</td></tr>
+        <tr><td>--bf-btn-height-large</td><td>52px</td><td>Large</td></tr>
+        <tr><td>--bf-btn-padding-x-compact</td><td>14px</td><td>Compact</td></tr>
+        <tr><td>--bf-btn-padding-x-standard</td><td>20px</td><td>Standard</td></tr>
+        <tr><td>--bf-btn-padding-x-large</td><td>28px</td><td>Large</td></tr>
+        <tr><td>--bf-btn-font-compact</td><td>12px / 500</td><td>Compact</td></tr>
+        <tr><td>--bf-btn-font-standard</td><td>14px / 500</td><td>Standard</td></tr>
+        <tr><td>--bf-btn-font-large</td><td>16px / 500</td><td>Large</td></tr>
+        <tr><td>--bf-btn-gap-icon</td><td>8px</td><td>Gap between icon and label</td></tr>
+        <tr><td>--bf-btn-transition</td><td>120ms ease</td><td>All state changes</td></tr>
+        <tr><td>--bf-btn-press-scale</td><td>0.98</td><td>Active/pressed state</td></tr>
+        <tr><td>--bf-btn-spinner-size</td><td>16px / 1.5px stroke</td><td>Loading state</td></tr>
+        <tr><td>--bf-btn-spinner-duration</td><td>700ms linear infinite</td><td>Loading state</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ============================================ -->
+<!-- USAGE RULES -->
+<!-- ============================================ -->
+<section class="section">
+  <div class="section-label">Usage rules</div>
+  <h2 class="section-title">What to never do.</h2>
+  <p class="section-description">Six rules that hold the system together. Breaking any of them creates the kind of inconsistency this audit was designed to fix.</p>
+  
+  <div class="spec-card">
+    <ol style="list-style: none; padding-left: 0; counter-reset: rule;">
+      <li style="padding: 16px 0; border-bottom: 0.5px solid var(--ink-200); counter-increment: rule; padding-left: 32px; position: relative;">
+        <span style="position: absolute; left: 0; top: 16px; font-family: var(--font-display); font-size: 18px; font-weight: 500; color: var(--forest-800); font-variation-settings: 'opsz' 24;">01</span>
+        <div style="font-size: 13px; font-weight: 500; color: var(--ink-900); margin-bottom: 4px;">Never more than one primary button per surface.</div>
+        <div style="font-size: 12px; color: var(--ink-500); line-height: 1.5;">Two primaries = no primary. The visual hierarchy collapses and the user has to think.</div>
+      </li>
+      <li style="padding: 16px 0; border-bottom: 0.5px solid var(--ink-200); counter-increment: rule; padding-left: 32px; position: relative;">
+        <span style="position: absolute; left: 0; top: 16px; font-family: var(--font-display); font-size: 18px; font-weight: 500; color: var(--forest-800); font-variation-settings: 'opsz' 24;">02</span>
+        <div style="font-size: 13px; font-weight: 500; color: var(--ink-900); margin-bottom: 4px;">Never use inline styles to make a one-off button.</div>
+        <div style="font-size: 12px; color: var(--ink-500); line-height: 1.5;">If the system doesn't have what you need, the system needs updating — not the screen.</div>
+      </li>
+      <li style="padding: 16px 0; border-bottom: 0.5px solid var(--ink-200); counter-increment: rule; padding-left: 32px; position: relative;">
+        <span style="position: absolute; left: 0; top: 16px; font-family: var(--font-display); font-size: 18px; font-weight: 500; color: var(--forest-800); font-variation-settings: 'opsz' 24;">03</span>
+        <div style="font-size: 13px; font-weight: 500; color: var(--ink-900); margin-bottom: 4px;">Disabled buttons should still be visible, never hidden.</div>
+        <div style="font-size: 12px; color: var(--ink-500); line-height: 1.5;">Visible but disabled tells users "this exists, but you can't do it yet." Hidden teaches them nothing.</div>
+      </li>
+      <li style="padding: 16px 0; border-bottom: 0.5px solid var(--ink-200); counter-increment: rule; padding-left: 32px; position: relative;">
+        <span style="position: absolute; left: 0; top: 16px; font-family: var(--font-display); font-size: 18px; font-weight: 500; color: var(--forest-800); font-variation-settings: 'opsz' 24;">04</span>
+        <div style="font-size: 13px; font-weight: 500; color: var(--ink-900); margin-bottom: 4px;">Loading state always uses the spinner — never replace label text with "Loading…"</div>
+        <div style="font-size: 12px; color: var(--ink-500); line-height: 1.5;">The spinner is universal and instant. Text changes feel laggy and translate poorly.</div>
+      </li>
+      <li style="padding: 16px 0; border-bottom: 0.5px solid var(--ink-200); counter-increment: rule; padding-left: 32px; position: relative;">
+        <span style="position: absolute; left: 0; top: 16px; font-family: var(--font-display); font-size: 18px; font-weight: 500; color: var(--forest-800); font-variation-settings: 'opsz' 24;">05</span>
+        <div style="font-size: 13px; font-weight: 500; color: var(--ink-900); margin-bottom: 4px;">Button labels are sentence case, verb-led, never truncated.</div>
+        <div style="font-size: 12px; color: var(--ink-500); line-height: 1.5;">"Add to library" not "Add To Library." If a label doesn't fit, the layout is wrong, not the label.</div>
+      </li>
+      <li style="padding: 16px 0; counter-increment: rule; padding-left: 32px; position: relative;">
+        <span style="position: absolute; left: 0; top: 16px; font-family: var(--font-display); font-size: 18px; font-weight: 500; color: var(--forest-800); font-variation-settings: 'opsz' 24;">06</span>
+        <div style="font-size: 13px; font-weight: 500; color: var(--ink-900); margin-bottom: 4px;">Destructive actions always require confirmation.</div>
+        <div style="font-size: 12px; color: var(--ink-500); line-height: 1.5;">A destructive button never fires its action immediately — it opens a dialog where the user reconfirms.</div>
+      </li>
+    </ol>
+  </div>
+</section>
+
+<footer class="footer">
+  Bookflow button system v1.0 · Three sizes · Four variants · Five states · Six rules
+</footer>
+
+</div>
+
+</body>
+</html>

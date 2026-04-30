@@ -1,0 +1,1299 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bookflow — Bottom Sheet System</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=Geist:wght@400;500&family=Literata:opsz,wght@7..72,400&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --forest-900: #0E2A21;
+    --forest-800: #1B4332;
+    --forest-700: #234D38;
+    --forest-200: #B7CCB9;
+    --forest-100: #DAE6DC;
+    --forest-50: #EFF4F0;
+    --ink-900: #1A1A1A;
+    --ink-700: #3D3A36;
+    --ink-500: #6B6862;
+    --ink-400: #8A8780;
+    --ink-300: #B5B2AB;
+    --ink-200: #D8D5CC;
+    --ink-100: #ECE9E0;
+    --cream-50: #FAF7F2;
+    --cream-100: #F5F1E8;
+    --cream-200: #ECE5D5;
+    --amber-500: #D4A574;
+    --amber-200: #EFD9B5;
+    --error: #B5453A;
+    --success: #2D7A4F;
+    --font-display: 'Fraunces', Georgia, serif;
+    --font-ui: 'Geist', -apple-system, sans-serif;
+    --font-reading: 'Literata', Georgia, serif;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: var(--font-ui);
+    background: var(--cream-50);
+    color: var(--ink-900);
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+    padding: 56px 24px;
+  }
+  .page { max-width: 1200px; margin: 0 auto; }
+  
+  /* === Doc header === */
+  .doc-header {
+    text-align: center;
+    margin-bottom: 64px;
+    padding-bottom: 48px;
+    border-bottom: 1px solid var(--ink-200);
+  }
+  .doc-eyebrow {
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--forest-800);
+    margin-bottom: 20px;
+  }
+  .doc-title {
+    font-family: var(--font-display);
+    font-weight: 600;
+    font-size: 56px;
+    line-height: 1;
+    letter-spacing: -0.025em;
+    color: var(--ink-900);
+    margin-bottom: 20px;
+    font-variation-settings: "opsz" 144;
+  }
+  .doc-subtitle {
+    font-family: var(--font-display);
+    font-weight: 400;
+    font-style: italic;
+    font-size: 20px;
+    color: var(--ink-500);
+    max-width: 640px;
+    margin: 0 auto;
+    font-variation-settings: "opsz" 30;
+  }
+  
+  .section { margin-bottom: 96px; }
+  .section-label {
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--forest-800);
+    margin-bottom: 12px;
+  }
+  .section-title {
+    font-family: var(--font-display);
+    font-size: 32px;
+    font-weight: 500;
+    color: var(--ink-900);
+    margin-bottom: 14px;
+    font-variation-settings: "opsz" 72;
+    letter-spacing: -0.01em;
+  }
+  .section-description {
+    font-size: 14px;
+    color: var(--ink-500);
+    max-width: 720px;
+    margin-bottom: 32px;
+    line-height: 1.6;
+  }
+  
+  /* === Spec card === */
+  .spec-card {
+    background: var(--cream-100);
+    border-radius: 16px;
+    padding: 40px;
+    margin-bottom: 24px;
+  }
+  .spec-card h3 {
+    font-family: var(--font-display);
+    font-size: 22px;
+    font-weight: 500;
+    color: var(--ink-900);
+    margin-bottom: 8px;
+    font-variation-settings: "opsz" 30;
+  }
+  .spec-card .lede {
+    font-size: 13px;
+    color: var(--ink-500);
+    margin-bottom: 28px;
+    max-width: 640px;
+    line-height: 1.6;
+  }
+  
+  /* === Phone frames for showing sheets in context === */
+  .phones-row {
+    display: flex;
+    gap: 32px;
+    justify-content: center;
+    flex-wrap: wrap;
+  }
+  .phone-wrap {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 14px;
+  }
+  .phone-label {
+    font-size: 11px;
+    color: var(--ink-500);
+    font-weight: 500;
+  }
+  .phone-tokens {
+    font-family: monospace;
+    font-size: 10px;
+    color: var(--ink-400);
+    text-align: center;
+    max-width: 280px;
+  }
+  .phone {
+    width: 280px;
+    height: 580px;
+    background: var(--cream-50);
+    border-radius: 36px;
+    overflow: hidden;
+    border: 1px solid var(--ink-200);
+    display: flex;
+    flex-direction: column;
+    position: relative;
+  }
+  .status-bar {
+    display: flex;
+    justify-content: space-between;
+    padding: 16px 24px 8px;
+    font-size: 11px;
+    color: var(--ink-700);
+    font-weight: 500;
+  }
+  
+  /* Backdrop dimming the screen behind sheet */
+  .backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(26, 26, 26, 0.4);
+    z-index: 10;
+  }
+  
+  /* Faded background content */
+  .bg-content {
+    flex: 1;
+    padding: 16px;
+    opacity: 0.5;
+  }
+  .bg-fake-card {
+    background: var(--cream-100);
+    border-radius: 12px;
+    padding: 14px;
+    margin-bottom: 12px;
+  }
+  .bg-fake-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 0;
+  }
+  .bg-fake-cover {
+    width: 36px;
+    height: 50px;
+    background: var(--forest-800);
+    border-radius: 4px;
+    flex-shrink: 0;
+  }
+  .bg-fake-text-1 {
+    height: 8px;
+    background: var(--ink-300);
+    border-radius: 2px;
+    margin-bottom: 6px;
+    width: 70%;
+  }
+  .bg-fake-text-2 {
+    height: 6px;
+    background: var(--ink-200);
+    border-radius: 2px;
+    width: 50%;
+  }
+  
+  /* === The bottom sheet itself === */
+  .bf-sheet {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    background: var(--cream-50);
+    border-top-left-radius: 16px;
+    border-top-right-radius: 16px;
+    z-index: 11;
+    display: flex;
+    flex-direction: column;
+    max-height: 85%;
+  }
+  
+  .bf-sheet-handle {
+    width: 32px;
+    height: 4px;
+    background: var(--ink-300);
+    border-radius: 2px;
+    margin: 8px auto 4px;
+    flex-shrink: 0;
+  }
+  
+  .bf-sheet-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 16px 12px;
+    border-bottom: 0.5px solid var(--ink-200);
+    flex-shrink: 0;
+  }
+  .bf-sheet-header.no-border { border-bottom: none; padding-bottom: 0; }
+  
+  .bf-sheet-title {
+    font-family: var(--font-display);
+    font-size: 16px;
+    font-weight: 500;
+    color: var(--ink-900);
+    font-variation-settings: "opsz" 24;
+  }
+  
+  .bf-sheet-close {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: var(--cream-100);
+    color: var(--ink-700);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+  }
+  
+  .bf-sheet-body {
+    padding: 16px;
+    overflow-y: auto;
+    flex: 1;
+  }
+  .bf-sheet-body--no-padding {
+    padding: 0;
+  }
+  
+  .bf-sheet-footer {
+    padding: 12px 16px 18px;
+    border-top: 0.5px solid var(--ink-200);
+    flex-shrink: 0;
+  }
+  
+  /* Picker list items */
+  .picker-item {
+    display: flex;
+    align-items: center;
+    padding: 12px 16px;
+    gap: 12px;
+    cursor: pointer;
+    border-bottom: 0.5px solid var(--ink-200);
+  }
+  .picker-item:last-child { border-bottom: none; }
+  .picker-item-icon {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: var(--cream-100);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    color: var(--ink-700);
+  }
+  .picker-item-content { flex: 1; min-width: 0; }
+  .picker-item-title {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--ink-900);
+    margin-bottom: 2px;
+  }
+  .picker-item-meta {
+    font-size: 11px;
+    color: var(--ink-500);
+  }
+  .picker-item-check {
+    color: var(--forest-800);
+    font-size: 14px;
+  }
+  .picker-item-locked {
+    color: var(--ink-400);
+    font-size: 11px;
+    padding: 3px 8px;
+    background: var(--cream-100);
+    border-radius: 12px;
+    font-weight: 500;
+  }
+  
+  /* Quick action menu */
+  .action-item {
+    display: flex;
+    align-items: center;
+    padding: 14px 0;
+    gap: 14px;
+    cursor: pointer;
+    border-bottom: 0.5px solid var(--ink-200);
+  }
+  .action-item:last-child { border-bottom: none; }
+  .action-item-icon {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background: var(--cream-100);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    color: var(--ink-700);
+  }
+  .action-item-content { flex: 1; }
+  .action-item-title {
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--ink-900);
+    margin-bottom: 2px;
+  }
+  .action-item-desc {
+    font-size: 11px;
+    color: var(--ink-500);
+    line-height: 1.4;
+  }
+  
+  /* Confirmation pattern */
+  .confirm-icon-wrap {
+    width: 56px;
+    height: 56px;
+    border-radius: 14px;
+    background: var(--cream-100);
+    margin: 0 auto 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--forest-800);
+  }
+  .confirm-title {
+    font-family: var(--font-display);
+    font-size: 18px;
+    font-weight: 500;
+    color: var(--ink-900);
+    text-align: center;
+    margin-bottom: 8px;
+    font-variation-settings: "opsz" 24;
+    line-height: 1.3;
+  }
+  .confirm-body {
+    font-size: 13px;
+    color: var(--ink-500);
+    text-align: center;
+    line-height: 1.5;
+    margin-bottom: 18px;
+    max-width: 240px;
+    margin-left: auto;
+    margin-right: auto;
+  }
+  
+  /* Sleep timer detail sheet */
+  .timer-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    margin-bottom: 8px;
+  }
+  .timer-option {
+    background: var(--cream-100);
+    border-radius: 8px;
+    padding: 14px;
+    text-align: center;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--ink-900);
+    cursor: pointer;
+    border: 1px solid transparent;
+  }
+  .timer-option.is-selected {
+    border-color: var(--forest-800);
+    background: var(--forest-50);
+    color: var(--forest-800);
+  }
+  .timer-end-of-chapter {
+    background: var(--cream-100);
+    border-radius: 8px;
+    padding: 12px 14px;
+    margin-bottom: 12px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    cursor: pointer;
+  }
+  .timer-end-label {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--ink-900);
+  }
+  .timer-end-meta {
+    font-size: 11px;
+    color: var(--ink-500);
+  }
+  .timer-off {
+    text-align: center;
+    padding: 12px;
+    color: var(--forest-800);
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+  }
+  
+  /* Buttons (canonical, scoped) */
+  .bf-btn {
+    font-family: var(--font-ui);
+    font-weight: 500;
+    cursor: pointer;
+    border: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    height: 44px;
+    padding: 0 20px;
+    font-size: 14px;
+    border-radius: 8px;
+    transition: background 120ms ease, transform 120ms ease;
+  }
+  .bf-btn--primary { background: var(--forest-800); color: var(--cream-50); }
+  .bf-btn--secondary { background: transparent; color: var(--ink-900); border: 1px solid var(--ink-300); }
+  .bf-btn--tertiary { background: transparent; color: var(--forest-800); }
+  .bf-btn--block { display: flex; width: 100%; }
+  
+  /* === Anatomy diagram === */
+  .anatomy-card {
+    background: var(--cream-100);
+    border-radius: 16px;
+    padding: 40px;
+    margin-bottom: 24px;
+    display: grid;
+    grid-template-columns: 320px 1fr;
+    gap: 48px;
+    align-items: start;
+  }
+  
+  .anatomy-labels {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    padding-top: 32px;
+  }
+  .anatomy-row {
+    padding-left: 20px;
+    border-left: 2px solid var(--forest-800);
+  }
+  .anatomy-name {
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--forest-800);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 4px;
+  }
+  .anatomy-desc {
+    font-size: 13px;
+    color: var(--ink-700);
+    line-height: 1.5;
+  }
+  
+  /* === Token table === */
+  .token-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+    margin-top: 16px;
+  }
+  .token-table th {
+    text-align: left;
+    padding: 8px 12px;
+    font-size: 10px;
+    font-weight: 500;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--ink-500);
+    border-bottom: 0.5px solid var(--ink-200);
+  }
+  .token-table td {
+    padding: 8px 12px;
+    border-bottom: 0.5px solid var(--ink-100);
+    color: var(--ink-700);
+  }
+  .token-table td:first-child {
+    font-family: monospace;
+    color: var(--ink-900);
+    width: 30%;
+  }
+  .token-table td:nth-child(2) {
+    font-family: monospace;
+    color: var(--forest-800);
+    width: 35%;
+  }
+  
+  /* === Motion timeline === */
+  .motion-timeline {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 24px;
+    margin-top: 16px;
+  }
+  .motion-card {
+    background: var(--cream-50);
+    border: 0.5px solid var(--ink-200);
+    border-radius: 12px;
+    padding: 20px;
+  }
+  .motion-card-label {
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--forest-800);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    margin-bottom: 12px;
+  }
+  .motion-stages {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .motion-stage {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-size: 12px;
+  }
+  .motion-stage-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--forest-800);
+    flex-shrink: 0;
+  }
+  .motion-stage-time {
+    font-family: monospace;
+    color: var(--forest-800);
+    width: 60px;
+    flex-shrink: 0;
+  }
+  .motion-stage-desc {
+    color: var(--ink-700);
+  }
+  
+  .footer {
+    text-align: center;
+    padding-top: 64px;
+    margin-top: 80px;
+    border-top: 1px solid var(--ink-200);
+    font-size: 12px;
+    color: var(--ink-500);
+  }
+</style>
+</head>
+<body>
+
+<!-- Lucide icons -->
+<svg width="0" height="0" style="position: absolute;" aria-hidden="true">
+  <defs>
+    <symbol id="icon-x" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></symbol>
+    <symbol id="icon-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></symbol>
+    <symbol id="icon-upload" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/></symbol>
+    <symbol id="icon-book" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2zM22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></symbol>
+    <symbol id="icon-bell" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></symbol>
+    <symbol id="icon-sparkles" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.582a.5.5 0 0 1 0 .962L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"/></symbol>
+    <symbol id="icon-headphones" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 18v-6a9 9 0 0 1 18 0v6"/><path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"/></symbol>
+    <symbol id="icon-lock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></symbol>
+  </defs>
+</svg>
+
+<div class="page">
+
+<header class="doc-header">
+  <div class="doc-eyebrow">Brand identity · Volume 06</div>
+  <h1 class="doc-title">The bottom sheet system.</h1>
+  <p class="doc-subtitle">The primary modal pattern in Bookflow. Five recurring shapes, one consistent anatomy, one motion language.</p>
+</header>
+
+<!-- ============================================ -->
+<!-- WHY BOTTOM SHEETS -->
+<!-- ============================================ -->
+<section class="section">
+  <div class="section-label">Why bottom sheets</div>
+  <h2 class="section-title">The primary modal pattern.</h2>
+  <p class="section-description">Bookflow uses bottom sheets instead of alert dialogs, modal overlays, or full-screen modals for ~95% of contextual actions. Three reasons: they preserve context (you can see the page underneath, dimmed), they're physically reachable on mobile (one-thumb operation), and they reinforce a calmer mental model than a dialog popping center-screen.</p>
+  
+  <div class="spec-card">
+    <h3>Used in 7 of 10 MVP screens</h3>
+    <p class="lede">A short inventory of where bottom sheets appear. Recognising these as one consistent pattern with five variants — rather than seven different things — makes the system maintainable.</p>
+    
+    <table class="token-table">
+      <thead>
+        <tr>
+          <th>Where</th>
+          <th>Pattern</th>
+          <th>Notes</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td>Reader · Aa typography panel</td><td>Form sheet</td><td>Multiple controls, no CTA — closes on backdrop tap</td></tr>
+        <tr><td>Reader · AI tools selector</td><td>Action menu sheet</td><td>4 quick actions; tap dismisses</td></tr>
+        <tr><td>Listen · Voice picker</td><td>Picker sheet</td><td>List with checkmark on active</td></tr>
+        <tr><td>Listen · Sleep timer</td><td>Detail sheet</td><td>Smallest variant, ~240px tall</td></tr>
+        <tr><td>Library · Sort & filter</td><td>Picker sheet</td><td>Two grouped lists</td></tr>
+        <tr><td>Library · "+" Add menu</td><td>Action menu sheet</td><td>Upload PDF / Browse free books</td></tr>
+        <tr><td>Paywall · Whole-book confirm</td><td>Confirmation sheet</td><td>Cost transparency before action</td></tr>
+        <tr><td>Settings · Notification pre-prompt</td><td>Confirmation sheet</td><td>Before iOS native permission dialog</td></tr>
+        <tr><td>Summary · Quality feedback (👎)</td><td>Form sheet</td><td>Reason chips + optional comment</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ============================================ -->
+<!-- ANATOMY -->
+<!-- ============================================ -->
+<section class="section">
+  <div class="section-label">Anatomy</div>
+  <h2 class="section-title">The four parts.</h2>
+  <p class="section-description">Every bottom sheet is built from four optional parts: handle (always), header (sometimes), body (always), footer (sometimes). Knowing which parts to include defines the variant.</p>
+  
+  <div class="anatomy-card">
+    <div class="phone">
+      <div class="status-bar"><span>9:41</span><span>•••</span></div>
+      <div class="bg-content">
+        <div class="bg-fake-card">
+          <div class="bg-fake-row">
+            <div class="bg-fake-cover"></div>
+            <div style="flex: 1;">
+              <div class="bg-fake-text-1"></div>
+              <div class="bg-fake-text-2"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="backdrop"></div>
+      <div class="bf-sheet" style="max-height: 65%;">
+        <div class="bf-sheet-handle"></div>
+        <div class="bf-sheet-header">
+          <div class="bf-sheet-title">Sheet title</div>
+          <div class="bf-sheet-close">
+            <svg width="14" height="14"><use href="#icon-x"/></svg>
+          </div>
+        </div>
+        <div class="bf-sheet-body">
+          <div style="font-size: 13px; color: var(--ink-700); line-height: 1.6;">
+            <p style="margin-bottom: 12px;">Body content goes here. Can be a list, a form, a confirmation message — anything appropriate to the variant.</p>
+            <p>Scrolls vertically if it exceeds available space.</p>
+          </div>
+        </div>
+        <div class="bf-sheet-footer">
+          <button class="bf-btn bf-btn--primary bf-btn--block">Primary action</button>
+        </div>
+      </div>
+    </div>
+    
+    <div class="anatomy-labels">
+      <div class="anatomy-row">
+        <div class="anatomy-name">01 · Backdrop</div>
+        <div class="anatomy-desc">ink-900 at 40% opacity. Tap dismisses the sheet. Fades in with the sheet's slide-up animation.</div>
+      </div>
+      <div class="anatomy-row">
+        <div class="anatomy-name">02 · Drag handle</div>
+        <div class="anatomy-desc">4×32px, ink-300, centered. 8px from top edge. Always present — signals this surface can be dragged. Functional, not decorative.</div>
+      </div>
+      <div class="anatomy-row">
+        <div class="anatomy-name">03 · Header (optional)</div>
+        <div class="anatomy-desc">Sheet title (Fraunces, 16px, opsz 24) + close button (28×28 circle, cream-100). Bottom border separates from body unless explicitly removed.</div>
+      </div>
+      <div class="anatomy-row">
+        <div class="anatomy-name">04 · Body</div>
+        <div class="anatomy-desc">Padding 16px. Scrolls when content exceeds available space. The variant determines what goes here.</div>
+      </div>
+      <div class="anatomy-row">
+        <div class="anatomy-name">05 · Footer (optional)</div>
+        <div class="anatomy-desc">Sticky at bottom. 12·16·18px padding. Top border. Holds primary CTA when present. Padding-bottom is 18px to keep CTA above iOS home indicator.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================ -->
+<!-- THE FIVE VARIANTS -->
+<!-- ============================================ -->
+<section class="section">
+  <div class="section-label">Five variants</div>
+  <h2 class="section-title">One pattern, five shapes.</h2>
+  <p class="section-description">All five share the anatomy above. They differ in which parts are present, what's in the body, and whether they have a footer CTA. Mapping every contextual modal to one of these five keeps the system coherent.</p>
+</section>
+
+<!-- Variant 1: Picker -->
+<section class="section" style="margin-bottom: 56px;">
+  <div class="spec-card">
+    <h3>01 · Picker sheet</h3>
+    <p class="lede">A list of options where the user picks one — typically tapping an item dismisses the sheet immediately. Used for: Voice picker, app language picker, sort selection. Has header with title; no footer (no CTA needed because tap = pick).</p>
+    
+    <div class="phones-row">
+      <div class="phone-wrap">
+        <div class="phone-label">Voice picker</div>
+        <div class="phone">
+          <div class="status-bar"><span>9:41</span><span>•••</span></div>
+          <div class="bg-content"></div>
+          <div class="backdrop"></div>
+          <div class="bf-sheet" style="max-height: 60%;">
+            <div class="bf-sheet-handle"></div>
+            <div class="bf-sheet-header">
+              <div class="bf-sheet-title">Choose a voice</div>
+              <div class="bf-sheet-close"><svg width="14" height="14"><use href="#icon-x"/></svg></div>
+            </div>
+            <div class="bf-sheet-body bf-sheet-body--no-padding">
+              <div class="picker-item">
+                <div class="picker-item-icon"><svg width="16" height="16"><use href="#icon-headphones"/></svg></div>
+                <div class="picker-item-content">
+                  <div class="picker-item-title">Sarah</div>
+                  <div class="picker-item-meta">Warm, neutral · Free</div>
+                </div>
+                <div class="picker-item-check">
+                  <svg width="18" height="18"><use href="#icon-check"/></svg>
+                </div>
+              </div>
+              <div class="picker-item">
+                <div class="picker-item-icon"><svg width="16" height="16"><use href="#icon-lock"/></svg></div>
+                <div class="picker-item-content">
+                  <div class="picker-item-title">Daniel</div>
+                  <div class="picker-item-meta">Deep, calm</div>
+                </div>
+                <div class="picker-item-locked">Pro</div>
+              </div>
+              <div class="picker-item">
+                <div class="picker-item-icon"><svg width="16" height="16"><use href="#icon-lock"/></svg></div>
+                <div class="picker-item-content">
+                  <div class="picker-item-title">Maya</div>
+                  <div class="picker-item-meta">Bright, energetic</div>
+                </div>
+                <div class="picker-item-locked">Pro</div>
+              </div>
+              <div class="picker-item">
+                <div class="picker-item-icon"><svg width="16" height="16"><use href="#icon-lock"/></svg></div>
+                <div class="picker-item-content">
+                  <div class="picker-item-title">James</div>
+                  <div class="picker-item-meta">British accent</div>
+                </div>
+                <div class="picker-item-locked">Pro</div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="phone-tokens">Header + body · no footer · tap dismisses</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Variant 2: Action menu -->
+<section class="section" style="margin-bottom: 56px;">
+  <div class="spec-card">
+    <h3>02 · Action menu sheet</h3>
+    <p class="lede">A short list of distinct actions, each with an icon and brief description. Used for: "+" Add menu in Library, AI tools selector in Reader. Tap an action to perform it and dismiss. No header title needed — the actions are self-explanatory.</p>
+    
+    <div class="phones-row">
+      <div class="phone-wrap">
+        <div class="phone-label">"+" Add to library</div>
+        <div class="phone">
+          <div class="status-bar"><span>9:41</span><span>•••</span></div>
+          <div class="bg-content"></div>
+          <div class="backdrop"></div>
+          <div class="bf-sheet" style="max-height: 50%;">
+            <div class="bf-sheet-handle"></div>
+            <div class="bf-sheet-body">
+              <div class="action-item">
+                <div class="action-item-icon"><svg width="20" height="20"><use href="#icon-upload"/></svg></div>
+                <div class="action-item-content">
+                  <div class="action-item-title">Upload a book</div>
+                  <div class="action-item-desc">PDF or EPUB from your device</div>
+                </div>
+              </div>
+              <div class="action-item">
+                <div class="action-item-icon"><svg width="20" height="20"><use href="#icon-book"/></svg></div>
+                <div class="action-item-content">
+                  <div class="action-item-title">Browse free books</div>
+                  <div class="action-item-desc">200+ classics in our library</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="phone-tokens">No header · body only · no footer</div>
+      </div>
+      
+      <div class="phone-wrap">
+        <div class="phone-label">AI tools (Reader)</div>
+        <div class="phone">
+          <div class="status-bar"><span>9:41</span><span>•••</span></div>
+          <div class="bg-content"></div>
+          <div class="backdrop"></div>
+          <div class="bf-sheet" style="max-height: 65%;">
+            <div class="bf-sheet-handle"></div>
+            <div class="bf-sheet-body">
+              <div class="action-item">
+                <div class="action-item-icon"><svg width="20" height="20"><use href="#icon-sparkles"/></svg></div>
+                <div class="action-item-content">
+                  <div class="action-item-title">Summarize this chapter</div>
+                  <div class="action-item-desc">~2K AI credits</div>
+                </div>
+              </div>
+              <div class="action-item">
+                <div class="action-item-icon"><svg width="20" height="20"><use href="#icon-sparkles"/></svg></div>
+                <div class="action-item-content">
+                  <div class="action-item-title">Generate practice questions</div>
+                  <div class="action-item-desc">~3K AI credits</div>
+                </div>
+              </div>
+              <div class="action-item">
+                <div class="action-item-icon"><svg width="20" height="20"><use href="#icon-sparkles"/></svg></div>
+                <div class="action-item-content">
+                  <div class="action-item-title">Ask about the book</div>
+                  <div class="action-item-desc">Continue your conversation</div>
+                </div>
+              </div>
+              <div class="action-item">
+                <div class="action-item-icon"><svg width="20" height="20"><use href="#icon-sparkles"/></svg></div>
+                <div class="action-item-content">
+                  <div class="action-item-title">Translate this chapter</div>
+                  <div class="action-item-desc">~5K AI credits · Twi</div>
+                </div>
+              </div>
+            </div>
+            <div style="text-align: center; padding: 12px 16px 18px; font-size: 11px; color: var(--ink-400); border-top: 0.5px solid var(--ink-200);">
+              32K of 50K AI credits available this month
+            </div>
+          </div>
+        </div>
+        <div class="phone-tokens">Body + non-CTA footer (info only)</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Variant 3: Confirmation -->
+<section class="section" style="margin-bottom: 56px;">
+  <div class="spec-card">
+    <h3>03 · Confirmation sheet</h3>
+    <p class="lede">A focused decision moment. Icon + headline + body + 1–2 CTAs. Used for: paywall confirms, notification permission pre-prompt, destructive action confirmations. Always has a footer with explicit CTAs — tap-to-dismiss isn't enough for high-stakes decisions.</p>
+    
+    <div class="phones-row">
+      <div class="phone-wrap">
+        <div class="phone-label">Notification pre-prompt</div>
+        <div class="phone">
+          <div class="status-bar"><span>9:41</span><span>•••</span></div>
+          <div class="bg-content"></div>
+          <div class="backdrop"></div>
+          <div class="bf-sheet" style="max-height: 65%;">
+            <div class="bf-sheet-handle"></div>
+            <div class="bf-sheet-body" style="padding-top: 24px;">
+              <div class="confirm-icon-wrap">
+                <svg width="24" height="24"><use href="#icon-bell"/></svg>
+              </div>
+              <div class="confirm-title">Nice — 12 minutes done</div>
+              <div class="confirm-body">Want a daily nudge so you keep your reading streak going?</div>
+              
+              <div style="background: var(--cream-100); border-radius: 10px; padding: 12px 14px; margin-bottom: 14px;">
+                <div style="font-size: 9px; color: var(--ink-400); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px;">Your reminder time</div>
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                  <div style="font-size: 14px; font-weight: 500;">8:00 PM</div>
+                  <div style="font-size: 11px; color: var(--ink-500);">Change ›</div>
+                </div>
+              </div>
+              
+              <div style="font-size: 10px; color: var(--ink-400); text-align: center; line-height: 1.5; padding: 0 8px;">Bookflow will ask iOS for permission next.</div>
+            </div>
+            <div class="bf-sheet-footer" style="border-top: none; padding-top: 0;">
+              <button class="bf-btn bf-btn--primary bf-btn--block" style="margin-bottom: 4px;">Yes, remind me</button>
+              <button class="bf-btn bf-btn--tertiary bf-btn--block">Not now</button>
+            </div>
+          </div>
+        </div>
+        <div class="phone-tokens">Body w/ icon · stacked CTAs (primary + tertiary)</div>
+      </div>
+      
+      <div class="phone-wrap">
+        <div class="phone-label">Whole-book summary cost confirm</div>
+        <div class="phone">
+          <div class="status-bar"><span>9:41</span><span>•••</span></div>
+          <div class="bg-content"></div>
+          <div class="backdrop"></div>
+          <div class="bf-sheet" style="max-height: 70%;">
+            <div class="bf-sheet-handle"></div>
+            <div class="bf-sheet-body" style="padding-top: 20px;">
+              <div style="text-align: center; margin-bottom: 18px;">
+                <div style="font-family: var(--font-display); font-size: 16px; font-weight: 500; color: var(--ink-900); font-variation-settings: 'opsz' 24; line-height: 1.3; margin-bottom: 6px;">This will use about 30% of your monthly credits</div>
+                <div style="font-size: 12px; color: var(--ink-500); line-height: 1.5;">Whole-book summaries are heavy — they synthesize all 14 chapters of <em>Atomic Habits</em>.</div>
+              </div>
+              
+              <div style="background: var(--cream-100); border-radius: 10px; padding: 14px;">
+                <div style="display: flex; justify-content: space-between; font-size: 11px; color: var(--ink-700); margin-bottom: 6px;">
+                  <span>Estimated cost</span>
+                  <span style="font-weight: 500; color: var(--ink-900);">~ 15K credits</span>
+                </div>
+                <div style="display: flex; justify-content: space-between; font-size: 11px; color: var(--ink-700); margin-bottom: 8px;">
+                  <span>Available this month</span>
+                  <span style="font-weight: 500; color: var(--ink-900);">50K credits</span>
+                </div>
+                <div style="height: 4px; background: var(--cream-50); border-radius: 2px; overflow: hidden; margin-bottom: 10px;">
+                  <div style="width: 30%; height: 100%; background: var(--forest-800);"></div>
+                </div>
+                <div style="display: flex; justify-content: space-between; font-size: 11px; color: var(--ink-500);">
+                  <span>After this summary</span>
+                  <span>~ 35K left</span>
+                </div>
+              </div>
+            </div>
+            <div class="bf-sheet-footer" style="border-top: none; padding-top: 0;">
+              <button class="bf-btn bf-btn--primary bf-btn--block" style="margin-bottom: 4px;">Generate summary</button>
+              <button class="bf-btn bf-btn--tertiary bf-btn--block">Cancel</button>
+            </div>
+          </div>
+        </div>
+        <div class="phone-tokens">Body · stacked CTAs (primary + tertiary)</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Variant 4: Form sheet -->
+<section class="section" style="margin-bottom: 56px;">
+  <div class="spec-card">
+    <h3>04 · Form sheet</h3>
+    <p class="lede">User makes selections or input across multiple controls. Used for: typography panel (Reader Aa), feedback reason chips, practice questions config. Footer has a primary CTA when commitment is required; closes on backdrop tap when changes apply live (typography panel).</p>
+    
+    <div class="phones-row">
+      <div class="phone-wrap">
+        <div class="phone-label">Typography panel (Reader Aa)</div>
+        <div class="phone">
+          <div class="status-bar"><span>9:41</span><span>•••</span></div>
+          <div class="bg-content"></div>
+          <div class="backdrop"></div>
+          <div class="bf-sheet" style="max-height: 70%;">
+            <div class="bf-sheet-handle"></div>
+            <div class="bf-sheet-header">
+              <div class="bf-sheet-title">Reading display</div>
+              <div style="font-size: 11px; color: var(--forest-800); font-weight: 500; cursor: pointer;">Reset</div>
+            </div>
+            <div class="bf-sheet-body">
+              <div style="font-size: 9px; color: var(--ink-400); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px;">Comfort presets</div>
+              <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-bottom: 18px;">
+                <div style="background: var(--cream-100); border-radius: 6px; padding: 10px 6px; text-align: center; font-size: 10px; color: var(--ink-700);">Standard</div>
+                <div style="background: var(--forest-50); border: 1px solid var(--forest-800); border-radius: 6px; padding: 10px 6px; text-align: center; font-size: 10px; color: var(--forest-800); font-weight: 500;">Comfortable</div>
+                <div style="background: var(--cream-100); border-radius: 6px; padding: 10px 6px; text-align: center; font-size: 10px; color: var(--ink-700);">Max readability</div>
+              </div>
+              
+              <div style="font-size: 9px; color: var(--ink-400); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px;">Text size</div>
+              <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 18px;">
+                <span style="font-size: 11px; color: var(--ink-500);">A</span>
+                <div style="flex: 1; height: 4px; background: var(--ink-200); border-radius: 2px; position: relative;">
+                  <div style="position: absolute; left: 0; top: 0; bottom: 0; width: 55%; background: var(--forest-800); border-radius: 2px;"></div>
+                  <div style="position: absolute; left: 55%; top: 50%; transform: translate(-50%, -50%); width: 14px; height: 14px; background: var(--cream-50); border: 2px solid var(--forest-800); border-radius: 50%;"></div>
+                </div>
+                <span style="font-size: 16px; color: var(--ink-500);">A</span>
+              </div>
+              
+              <div style="font-size: 9px; color: var(--ink-400); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px;">Theme</div>
+              <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px;">
+                <div style="background: #FAF7F2; border: 1px solid var(--forest-800); border-radius: 6px; padding: 14px 6px; text-align: center; font-size: 10px; color: var(--ink-900); font-weight: 500;">Light</div>
+                <div style="background: #F4E8D0; border-radius: 6px; padding: 14px 6px; text-align: center; font-size: 10px; color: var(--ink-700);">Sepia</div>
+                <div style="background: #1A1F1B; border-radius: 6px; padding: 14px 6px; text-align: center; font-size: 10px; color: var(--cream-50);">Dark</div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="phone-tokens">Header (with reset) · body · no footer (changes apply live)</div>
+      </div>
+      
+      <div class="phone-wrap">
+        <div class="phone-label">Sort & filter</div>
+        <div class="phone">
+          <div class="status-bar"><span>9:41</span><span>•••</span></div>
+          <div class="bg-content"></div>
+          <div class="backdrop"></div>
+          <div class="bf-sheet" style="max-height: 70%;">
+            <div class="bf-sheet-handle"></div>
+            <div class="bf-sheet-header">
+              <div class="bf-sheet-title">Sort & filter</div>
+              <div class="bf-sheet-close"><svg width="14" height="14"><use href="#icon-x"/></svg></div>
+            </div>
+            <div class="bf-sheet-body">
+              <div style="font-size: 9px; color: var(--ink-400); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px;">Sort by</div>
+              <div style="margin-bottom: 18px;">
+                <div style="display: flex; align-items: center; padding: 10px 0; border-bottom: 0.5px solid var(--ink-200); justify-content: space-between;">
+                  <span style="font-size: 13px; color: var(--ink-900);">Recent</span>
+                  <svg width="16" height="16" style="color: var(--forest-800);"><use href="#icon-check"/></svg>
+                </div>
+                <div style="display: flex; align-items: center; padding: 10px 0; border-bottom: 0.5px solid var(--ink-200); justify-content: space-between;">
+                  <span style="font-size: 13px; color: var(--ink-900);">Recently added</span>
+                </div>
+                <div style="display: flex; align-items: center; padding: 10px 0; border-bottom: 0.5px solid var(--ink-200); justify-content: space-between;">
+                  <span style="font-size: 13px; color: var(--ink-900);">Title (A–Z)</span>
+                </div>
+                <div style="display: flex; align-items: center; padding: 10px 0; justify-content: space-between;">
+                  <span style="font-size: 13px; color: var(--ink-900);">Progress</span>
+                </div>
+              </div>
+              
+              <div style="font-size: 9px; color: var(--ink-400); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px;">Filter</div>
+              <div style="display: flex; flex-wrap: wrap; gap: 6px;">
+                <span style="padding: 6px 12px; background: var(--forest-800); color: var(--cream-50); border-radius: 14px; font-size: 11px; font-weight: 500;">All · 4</span>
+                <span style="padding: 6px 12px; background: var(--cream-100); color: var(--ink-700); border-radius: 14px; font-size: 11px;">In progress · 2</span>
+                <span style="padding: 6px 12px; background: var(--cream-100); color: var(--ink-700); border-radius: 14px; font-size: 11px;">Not started · 1</span>
+                <span style="padding: 6px 12px; background: var(--cream-100); color: var(--ink-700); border-radius: 14px; font-size: 11px;">Finished · 1</span>
+              </div>
+            </div>
+            <div class="bf-sheet-footer">
+              <button class="bf-btn bf-btn--primary bf-btn--block">Apply</button>
+            </div>
+          </div>
+        </div>
+        <div class="phone-tokens">Header · body · footer w/ apply CTA</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Variant 5: Detail sheet -->
+<section class="section" style="margin-bottom: 56px;">
+  <div class="spec-card">
+    <h3>05 · Detail sheet</h3>
+    <p class="lede">The smallest variant — used for quick, focused choices that don't warrant a full sheet. Often appears as a partial-height popover. Used for: sleep timer, quick voice change. No header (the trigger establishes the context); just a handle and a tight body.</p>
+    
+    <div class="phones-row">
+      <div class="phone-wrap">
+        <div class="phone-label">Sleep timer</div>
+        <div class="phone">
+          <div class="status-bar"><span>9:41</span><span>•••</span></div>
+          <div class="bg-content"></div>
+          <div class="backdrop"></div>
+          <div class="bf-sheet" style="max-height: 50%;">
+            <div class="bf-sheet-handle"></div>
+            <div class="bf-sheet-body" style="padding-top: 12px;">
+              <div style="font-size: 13px; font-weight: 500; color: var(--ink-900); margin-bottom: 12px; text-align: center;">Sleep timer</div>
+              
+              <div class="timer-grid">
+                <div class="timer-option">5 min</div>
+                <div class="timer-option is-selected">15 min</div>
+                <div class="timer-option">30 min</div>
+                <div class="timer-option">60 min</div>
+              </div>
+              
+              <div class="timer-end-of-chapter">
+                <div>
+                  <div class="timer-end-label">End of chapter</div>
+                  <div class="timer-end-meta">~ 8 minutes remaining</div>
+                </div>
+                <svg width="16" height="16" style="color: var(--ink-400);"><use href="#icon-check"/></svg>
+              </div>
+              
+              <div class="timer-off">Turn off timer</div>
+            </div>
+          </div>
+        </div>
+        <div class="phone-tokens">No header · compact body · no footer</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================ -->
+<!-- MOTION SPECS -->
+<!-- ============================================ -->
+<section class="section">
+  <div class="section-label">Motion</div>
+  <h2 class="section-title">How sheets enter and leave.</h2>
+  <p class="section-description">The motion language is the difference between a sheet that feels considered and one that feels janky. These specs match iOS native bottom sheet behavior closely — users have an existing mental model; matching it costs nothing and pays off in perceived quality.</p>
+  
+  <div class="spec-card">
+    <h3>Entry & exit timing</h3>
+    
+    <div class="motion-timeline">
+      <div class="motion-card">
+        <div class="motion-card-label">Entry · slide up</div>
+        <div class="motion-stages">
+          <div class="motion-stage">
+            <div class="motion-stage-dot"></div>
+            <div class="motion-stage-time">0ms</div>
+            <div class="motion-stage-desc">Sheet at translateY(100%), backdrop opacity 0</div>
+          </div>
+          <div class="motion-stage">
+            <div class="motion-stage-dot"></div>
+            <div class="motion-stage-time">0–320ms</div>
+            <div class="motion-stage-desc">Sheet animates to translateY(0), backdrop fades to opacity 0.4</div>
+          </div>
+          <div class="motion-stage">
+            <div class="motion-stage-dot"></div>
+            <div class="motion-stage-time">320ms</div>
+            <div class="motion-stage-desc">Settled — content interactive</div>
+          </div>
+        </div>
+        <div style="font-family: monospace; font-size: 11px; color: var(--ink-500); margin-top: 16px; padding-top: 12px; border-top: 0.5px solid var(--ink-200);">
+          easing: cubic-bezier(0, 0, 0.2, 1)<br>
+          (decelerate — feels like settling into place)
+        </div>
+      </div>
+      
+      <div class="motion-card">
+        <div class="motion-card-label">Exit · slide down</div>
+        <div class="motion-stages">
+          <div class="motion-stage">
+            <div class="motion-stage-dot"></div>
+            <div class="motion-stage-time">0ms</div>
+            <div class="motion-stage-desc">Sheet at translateY(0), backdrop opacity 0.4</div>
+          </div>
+          <div class="motion-stage">
+            <div class="motion-stage-dot"></div>
+            <div class="motion-stage-time">0–200ms</div>
+            <div class="motion-stage-desc">Sheet animates to translateY(100%), backdrop fades to 0</div>
+          </div>
+          <div class="motion-stage">
+            <div class="motion-stage-dot"></div>
+            <div class="motion-stage-time">200ms</div>
+            <div class="motion-stage-desc">Sheet removed from DOM</div>
+          </div>
+        </div>
+        <div style="font-family: monospace; font-size: 11px; color: var(--ink-500); margin-top: 16px; padding-top: 12px; border-top: 0.5px solid var(--ink-200);">
+          easing: cubic-bezier(0.4, 0, 1, 1)<br>
+          (accelerate — feels like releasing)
+        </div>
+      </div>
+    </div>
+    
+    <h3 style="margin-top: 32px;">Drag-to-dismiss behavior</h3>
+    <p class="lede">Users can drag the sheet down to dismiss. The sheet follows the finger with rubber-band resistance past the top. Below 25% drag distance OR insufficient velocity, it snaps back.</p>
+    
+    <table class="token-table">
+      <thead>
+        <tr>
+          <th>Trigger</th>
+          <th>Threshold</th>
+          <th>Behavior</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td>Drag down distance</td><td>≥ 25% of sheet height</td><td>Dismisses</td></tr>
+        <tr><td>Drag velocity</td><td>≥ 600 px/s downward</td><td>Dismisses (even from 5% drag)</td></tr>
+        <tr><td>Drag up beyond top</td><td>—</td><td>Rubber-band resistance, snaps back</td></tr>
+        <tr><td>Tap backdrop</td><td>—</td><td>Dismisses (unless confirmation sheet)</td></tr>
+        <tr><td>Tap close button</td><td>—</td><td>Dismisses</td></tr>
+        <tr><td>Hardware back (Android)</td><td>—</td><td>Dismisses</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ============================================ -->
+<!-- USAGE RULES -->
+<!-- ============================================ -->
+<section class="section">
+  <div class="section-label">Usage rules</div>
+  <h2 class="section-title">Six rules for sheets.</h2>
+  <p class="section-description">Rules that prevent the most common ways bottom sheet systems fragment over time.</p>
+  
+  <div class="spec-card">
+    <ol style="list-style: none; padding-left: 0; counter-reset: rule;">
+      <li style="padding: 16px 0; border-bottom: 0.5px solid var(--ink-200); counter-increment: rule; padding-left: 32px; position: relative;">
+        <span style="position: absolute; left: 0; top: 16px; font-family: var(--font-display); font-size: 18px; font-weight: 500; color: var(--forest-800); font-variation-settings: 'opsz' 24;">01</span>
+        <div style="font-size: 13px; font-weight: 500; color: var(--ink-900); margin-bottom: 4px;">Never stack sheets on top of sheets.</div>
+        <div style="font-size: 12px; color: var(--ink-500); line-height: 1.5;">If sheet B needs to open from sheet A, dismiss A first (200ms), pause briefly, then open B. Stacked sheets create visual confusion and break the "one decision at a time" principle.</div>
+      </li>
+      <li style="padding: 16px 0; border-bottom: 0.5px solid var(--ink-200); counter-increment: rule; padding-left: 32px; position: relative;">
+        <span style="position: absolute; left: 0; top: 16px; font-family: var(--font-display); font-size: 18px; font-weight: 500; color: var(--forest-800); font-variation-settings: 'opsz' 24;">02</span>
+        <div style="font-size: 13px; font-weight: 500; color: var(--ink-900); margin-bottom: 4px;">Confirmation sheets require explicit CTAs — never tap-to-dismiss, always stacked.</div>
+        <div style="font-size: 12px; color: var(--ink-500); line-height: 1.5;">High-stakes decisions like spending credits or deleting data must be confirmed via a tap on a real button, not by accidentally tapping a backdrop. CTAs always stack vertically (primary on top, tertiary below) — never side-by-side. Stacking gives the primary action breathing room and prevents text truncation; it also signals visual hierarchy that side-by-side erases.</div>
+      </li>
+      <li style="padding: 16px 0; border-bottom: 0.5px solid var(--ink-200); counter-increment: rule; padding-left: 32px; position: relative;">
+        <span style="position: absolute; left: 0; top: 16px; font-family: var(--font-display); font-size: 18px; font-weight: 500; color: var(--forest-800); font-variation-settings: 'opsz' 24;">03</span>
+        <div style="font-size: 13px; font-weight: 500; color: var(--ink-900); margin-bottom: 4px;">Sheets max out at 85% of screen height.</div>
+        <div style="font-size: 12px; color: var(--ink-500); line-height: 1.5;">Past 85%, the dimmed background context is barely visible — at that point, use a full-screen route instead. The whole point of sheets is preserving spatial context.</div>
+      </li>
+      <li style="padding: 16px 0; border-bottom: 0.5px solid var(--ink-200); counter-increment: rule; padding-left: 32px; position: relative;">
+        <span style="position: absolute; left: 0; top: 16px; font-family: var(--font-display); font-size: 18px; font-weight: 500; color: var(--forest-800); font-variation-settings: 'opsz' 24;">04</span>
+        <div style="font-size: 13px; font-weight: 500; color: var(--ink-900); margin-bottom: 4px;">Footers are sticky; bodies scroll.</div>
+        <div style="font-size: 12px; color: var(--ink-500); line-height: 1.5;">When body content exceeds available space, only the body scrolls. The footer with primary CTA stays visible. Never make the user scroll to find the action button.</div>
+      </li>
+      <li style="padding: 16px 0; border-bottom: 0.5px solid var(--ink-200); counter-increment: rule; padding-left: 32px; position: relative;">
+        <span style="position: absolute; left: 0; top: 16px; font-family: var(--font-display); font-size: 18px; font-weight: 500; color: var(--forest-800); font-variation-settings: 'opsz' 24;">05</span>
+        <div style="font-size: 13px; font-weight: 500; color: var(--ink-900); margin-bottom: 4px;">Drag handle is always present, even when there's a close button.</div>
+        <div style="font-size: 12px; color: var(--ink-500); line-height: 1.5;">The handle teaches users "this surface can be dragged." Removing it on sheets that have a close button still leaves drag gestures functional but undiscoverable. Both affordances coexist.</div>
+      </li>
+      <li style="padding: 16px 0; counter-increment: rule; padding-left: 32px; position: relative;">
+        <span style="position: absolute; left: 0; top: 16px; font-family: var(--font-display); font-size: 18px; font-weight: 500; color: var(--forest-800); font-variation-settings: 'opsz' 24;">06</span>
+        <div style="font-size: 13px; font-weight: 500; color: var(--ink-900); margin-bottom: 4px;">Keyboard avoidance: sheet grows, doesn't shrink.</div>
+        <div style="font-size: 12px; color: var(--ink-500); line-height: 1.5;">When an input inside a sheet is focused and the keyboard opens, the sheet expands its height to push content above the keyboard. It does NOT shrink the sheet body to fit. This keeps the visual mental model stable.</div>
+      </li>
+    </ol>
+  </div>
+</section>
+
+<!-- ============================================ -->
+<!-- IMPLEMENTATION TOKENS -->
+<!-- ============================================ -->
+<section class="section">
+  <div class="section-label">Implementation tokens</div>
+  <h2 class="section-title">For engineering.</h2>
+  
+  <div class="spec-card">
+    <table class="token-table">
+      <thead>
+        <tr>
+          <th>Token</th>
+          <th>Value</th>
+          <th>Used by</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td>--bf-sheet-radius-top</td><td>16px</td><td>Top corners only</td></tr>
+        <tr><td>--bf-sheet-bg</td><td>--cream-50</td><td>Sheet background</td></tr>
+        <tr><td>--bf-sheet-backdrop</td><td>rgba(26, 26, 26, 0.4)</td><td>Backdrop overlay</td></tr>
+        <tr><td>--bf-sheet-handle-w</td><td>32px</td><td>Drag handle width</td></tr>
+        <tr><td>--bf-sheet-handle-h</td><td>4px</td><td>Drag handle height</td></tr>
+        <tr><td>--bf-sheet-handle-top</td><td>8px</td><td>Distance from top edge</td></tr>
+        <tr><td>--bf-sheet-handle-color</td><td>--ink-300</td><td>Drag handle color</td></tr>
+        <tr><td>--bf-sheet-padding-x</td><td>16px</td><td>Body horizontal padding</td></tr>
+        <tr><td>--bf-sheet-padding-y</td><td>16px</td><td>Body vertical padding</td></tr>
+        <tr><td>--bf-sheet-footer-pb</td><td>18px</td><td>Footer bottom padding (above home indicator)</td></tr>
+        <tr><td>--bf-sheet-max-height</td><td>85vh</td><td>Maximum sheet height</td></tr>
+        <tr><td>--bf-sheet-enter-duration</td><td>320ms</td><td>Slide-up timing</td></tr>
+        <tr><td>--bf-sheet-exit-duration</td><td>200ms</td><td>Slide-down timing</td></tr>
+        <tr><td>--bf-sheet-enter-easing</td><td>cubic-bezier(0, 0, 0.2, 1)</td><td>Decelerate</td></tr>
+        <tr><td>--bf-sheet-exit-easing</td><td>cubic-bezier(0.4, 0, 1, 1)</td><td>Accelerate</td></tr>
+        <tr><td>--bf-sheet-dismiss-threshold</td><td>0.25</td><td>25% drag distance</td></tr>
+        <tr><td>--bf-sheet-dismiss-velocity</td><td>600</td><td>Pixels/second</td></tr>
+      </tbody>
+    </table>
+    
+    <h3 style="margin-top: 32px;">Recommended library</h3>
+    <p class="lede">For React Native + Expo, use <code style="font-family: monospace; font-size: 13px;">@gorhom/bottom-sheet</code> — the de facto standard, handles all gesture mechanics, keyboard avoidance, and snap points correctly. Configure with the tokens above.</p>
+    
+    <div style="background: var(--ink-900); color: var(--cream-50); padding: 16px 20px; border-radius: 8px; font-family: monospace; font-size: 12px; line-height: 1.7;">
+<span style="color: var(--ink-400);"># Install</span><br>
+<span style="color: var(--amber-500);">npx</span> expo install @gorhom/bottom-sheet react-native-reanimated react-native-gesture-handler
+    </div>
+  </div>
+</section>
+
+<footer class="footer">
+  Bookflow bottom sheet system v1.0 · Five variants · One anatomy · One motion language
+</footer>
+
+</div>
+
+</body>
+</html>

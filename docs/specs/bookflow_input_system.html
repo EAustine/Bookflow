@@ -1,0 +1,1131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bookflow — Input Field System</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=Geist:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --forest-900: #0E2A21;
+    --forest-800: #1B4332;
+    --forest-700: #234D38;
+    --forest-600: #2D5A3F;
+    --forest-200: #B7CCB9;
+    --forest-100: #DAE6DC;
+    --forest-50: #EFF4F0;
+    --ink-900: #1A1A1A;
+    --ink-700: #3D3A36;
+    --ink-500: #6B6862;
+    --ink-400: #8A8780;
+    --ink-300: #B5B2AB;
+    --ink-200: #D8D5CC;
+    --ink-100: #ECE9E0;
+    --cream-50: #FAF7F2;
+    --cream-100: #F5F1E8;
+    --cream-200: #ECE5D5;
+    --amber-500: #D4A574;
+    --amber-200: #EFD9B5;
+    --amber-50: #FAF1E0;
+    --success: #2D7A4F;
+    --success-50: #E8F4ED;
+    --error: #B5453A;
+    --error-50: #FBEAE7;
+    --font-display: 'Fraunces', Georgia, serif;
+    --font-ui: 'Geist', -apple-system, sans-serif;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: var(--font-ui);
+    background: var(--cream-50);
+    color: var(--ink-900);
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+    padding: 56px 24px;
+  }
+  .page { max-width: 1200px; margin: 0 auto; }
+  
+  /* === Doc header === */
+  .doc-header {
+    text-align: center;
+    margin-bottom: 64px;
+    padding-bottom: 48px;
+    border-bottom: 1px solid var(--ink-200);
+  }
+  .doc-eyebrow {
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--forest-800);
+    margin-bottom: 20px;
+  }
+  .doc-title {
+    font-family: var(--font-display);
+    font-weight: 600;
+    font-size: 56px;
+    line-height: 1;
+    letter-spacing: -0.025em;
+    color: var(--ink-900);
+    margin-bottom: 20px;
+    font-variation-settings: "opsz" 144;
+  }
+  .doc-subtitle {
+    font-family: var(--font-display);
+    font-weight: 400;
+    font-style: italic;
+    font-size: 20px;
+    color: var(--ink-500);
+    max-width: 640px;
+    margin: 0 auto;
+    font-variation-settings: "opsz" 30;
+  }
+  
+  .section { margin-bottom: 96px; }
+  .section-label {
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--forest-800);
+    margin-bottom: 12px;
+  }
+  .section-title {
+    font-family: var(--font-display);
+    font-size: 32px;
+    font-weight: 500;
+    color: var(--ink-900);
+    margin-bottom: 14px;
+    font-variation-settings: "opsz" 72;
+    letter-spacing: -0.01em;
+  }
+  .section-description {
+    font-size: 14px;
+    color: var(--ink-500);
+    max-width: 720px;
+    margin-bottom: 32px;
+    line-height: 1.6;
+  }
+  
+  /* === Audit table === */
+  .audit-card {
+    background: var(--cream-100);
+    border-radius: 12px;
+    padding: 32px;
+    margin-bottom: 24px;
+  }
+  .audit-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+  }
+  .audit-table th {
+    text-align: left;
+    padding: 12px 16px;
+    font-size: 10px;
+    font-weight: 500;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--forest-800);
+    border-bottom: 1px solid var(--ink-200);
+  }
+  .audit-table td {
+    padding: 14px 16px;
+    border-bottom: 0.5px solid var(--ink-200);
+    vertical-align: top;
+    color: var(--ink-700);
+  }
+  .audit-table td:first-child {
+    font-family: monospace;
+    font-size: 12px;
+    color: var(--ink-900);
+  }
+  .audit-table tr:last-child td { border-bottom: none; }
+  .status-canonical { color: var(--forest-800); font-weight: 500; }
+  .status-needs-fix { color: var(--error); }
+  
+  /* === Spec card === */
+  .spec-card {
+    background: var(--cream-100);
+    border-radius: 16px;
+    padding: 40px;
+    margin-bottom: 24px;
+  }
+  .spec-card h3 {
+    font-family: var(--font-display);
+    font-size: 22px;
+    font-weight: 500;
+    color: var(--ink-900);
+    margin-bottom: 8px;
+    font-variation-settings: "opsz" 30;
+  }
+  .spec-card .lede {
+    font-size: 13px;
+    color: var(--ink-500);
+    margin-bottom: 28px;
+    max-width: 640px;
+    line-height: 1.6;
+  }
+  
+  /* === The actual input field system === */
+  .bf-input-group {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    width: 100%;
+    max-width: 360px;
+  }
+  
+  .bf-input-label {
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--ink-700);
+    letter-spacing: 0.01em;
+  }
+  
+  .bf-input-wrapper {
+    position: relative;
+    display: flex;
+    align-items: center;
+    background: var(--cream-50);
+    border: 1px solid var(--ink-200);
+    transition: border-color 120ms ease, background 120ms ease, box-shadow 120ms ease;
+  }
+  
+  .bf-input-wrapper:hover:not(.is-disabled):not(.is-focus):not(.is-error):not(.is-success) {
+    border-color: var(--ink-300);
+  }
+  
+  /* Sizes */
+  .bf-input-wrapper--compact { height: 32px; border-radius: 6px; padding: 0 10px; }
+  .bf-input-wrapper--standard { height: 44px; border-radius: 8px; padding: 0 12px; }
+  .bf-input-wrapper--large { height: 52px; border-radius: 10px; padding: 0 14px; }
+  
+  .bf-input {
+    flex: 1;
+    border: none;
+    background: transparent;
+    font-family: var(--font-ui);
+    color: var(--ink-900);
+    outline: none;
+    width: 100%;
+    height: 100%;
+  }
+  .bf-input--compact { font-size: 12px; }
+  .bf-input--standard { font-size: 14px; }
+  .bf-input--large { font-size: 16px; }
+  
+  .bf-input::placeholder { color: var(--ink-400); }
+  
+  /* States */
+  .bf-input-wrapper.is-focus,
+  .bf-input-wrapper.is-pressed {
+    border-color: var(--forest-800);
+    box-shadow: 0 0 0 3px var(--forest-50);
+  }
+  .bf-input-wrapper.is-pressed {
+    background: var(--cream-50);
+  }
+  
+  .bf-input-wrapper.is-disabled {
+    background: var(--ink-100);
+    border-color: var(--ink-200);
+    cursor: not-allowed;
+  }
+  .bf-input-wrapper.is-disabled .bf-input {
+    color: var(--ink-400);
+    cursor: not-allowed;
+  }
+  
+  .bf-input-wrapper.is-error {
+    border-color: var(--error);
+    background: var(--error-50);
+  }
+  .bf-input-wrapper.is-error.is-focus {
+    box-shadow: 0 0 0 3px rgba(181, 69, 58, 0.12);
+  }
+  
+  .bf-input-wrapper.is-success {
+    border-color: var(--success);
+  }
+  .bf-input-wrapper.is-success.is-focus {
+    box-shadow: 0 0 0 3px rgba(45, 122, 79, 0.12);
+  }
+  
+  .bf-input-wrapper.is-autofill {
+    background: var(--amber-50);
+    border-color: var(--amber-200);
+  }
+  
+  /* Adornments */
+  .bf-input-icon {
+    color: var(--ink-400);
+    display: flex;
+    align-items: center;
+    flex-shrink: 0;
+  }
+  .bf-input-icon--leading { margin-right: 8px; }
+  .bf-input-icon--trailing { margin-left: 8px; }
+  
+  .bf-input-clear {
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: var(--ink-300);
+    color: var(--cream-50);
+    border: none;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    margin-left: 8px;
+  }
+  .bf-input-clear:hover { background: var(--ink-500); }
+  
+  /* Helper / error / success text */
+  .bf-input-helper {
+    font-size: 11px;
+    color: var(--ink-500);
+    line-height: 1.4;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .bf-input-helper--error { color: var(--error); }
+  .bf-input-helper--success { color: var(--success); }
+  
+  .bf-input-counter {
+    font-size: 11px;
+    color: var(--ink-400);
+    font-variant-numeric: tabular-nums;
+    margin-left: auto;
+  }
+  
+  /* Textarea variant */
+  .bf-textarea-wrapper {
+    background: var(--cream-50);
+    border: 1px solid var(--ink-200);
+    border-radius: 8px;
+    padding: 12px;
+    transition: border-color 120ms ease, background 120ms ease, box-shadow 120ms ease;
+    width: 100%;
+    max-width: 360px;
+  }
+  .bf-textarea-wrapper.is-focus {
+    border-color: var(--forest-800);
+    box-shadow: 0 0 0 3px var(--forest-50);
+  }
+  .bf-textarea-wrapper.is-error {
+    border-color: var(--error);
+    background: var(--error-50);
+  }
+  .bf-textarea-wrapper.is-disabled {
+    background: var(--ink-100);
+    border-color: var(--ink-200);
+  }
+  .bf-textarea {
+    width: 100%;
+    border: none;
+    background: transparent;
+    font-family: var(--font-ui);
+    font-size: 14px;
+    color: var(--ink-900);
+    outline: none;
+    resize: vertical;
+    min-height: 80px;
+    line-height: 1.5;
+  }
+  .bf-textarea::placeholder { color: var(--ink-400); }
+  .bf-textarea-wrapper.is-disabled .bf-textarea {
+    color: var(--ink-400);
+    cursor: not-allowed;
+  }
+  
+  /* === Variant grid layout === */
+  .variant-grid {
+    display: grid;
+    grid-template-columns: 200px 1fr;
+    gap: 32px;
+    align-items: center;
+    padding: 24px 0;
+    border-bottom: 0.5px solid var(--ink-200);
+  }
+  .variant-grid:last-child { border-bottom: none; }
+  .variant-meta {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .variant-name {
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--ink-900);
+  }
+  .variant-tokens {
+    font-family: monospace;
+    font-size: 11px;
+    color: var(--ink-500);
+    line-height: 1.6;
+  }
+  
+  /* === States grid === */
+  .states-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 16px;
+    margin-bottom: 24px;
+  }
+  .state-cell {
+    background: var(--cream-50);
+    border: 0.5px solid var(--ink-200);
+    border-radius: 12px;
+    padding: 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .state-label {
+    font-size: 10px;
+    font-weight: 500;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--forest-800);
+  }
+  
+  /* === Token table === */
+  .token-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+    margin-top: 16px;
+  }
+  .token-table th {
+    text-align: left;
+    padding: 8px 12px;
+    font-size: 10px;
+    font-weight: 500;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--ink-500);
+    border-bottom: 0.5px solid var(--ink-200);
+  }
+  .token-table td {
+    padding: 8px 12px;
+    border-bottom: 0.5px solid var(--ink-100);
+    color: var(--ink-700);
+  }
+  .token-table td:first-child {
+    font-family: monospace;
+    color: var(--ink-900);
+    width: 30%;
+  }
+  .token-table td:nth-child(2) {
+    font-family: monospace;
+    color: var(--forest-800);
+    width: 35%;
+  }
+  
+  /* === Icon library section === */
+  .icon-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+    gap: 12px;
+    margin-top: 16px;
+  }
+  .icon-cell {
+    background: var(--cream-50);
+    border: 0.5px solid var(--ink-200);
+    border-radius: 8px;
+    padding: 16px 12px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    text-align: center;
+  }
+  .icon-cell svg {
+    color: var(--ink-700);
+  }
+  .icon-name {
+    font-family: monospace;
+    font-size: 10px;
+    color: var(--ink-500);
+  }
+  
+  .code-block {
+    background: var(--ink-900);
+    color: var(--cream-50);
+    padding: 20px 24px;
+    border-radius: 10px;
+    font-family: monospace;
+    font-size: 12px;
+    line-height: 1.7;
+    overflow-x: auto;
+    margin: 16px 0;
+  }
+  .code-block .comment { color: var(--ink-400); }
+  .code-block .keyword { color: var(--amber-500); }
+  .code-block .string { color: var(--forest-200); }
+  
+  .icon-size-row {
+    display: flex;
+    align-items: center;
+    gap: 32px;
+    background: var(--cream-50);
+    border: 0.5px solid var(--ink-200);
+    border-radius: 12px;
+    padding: 32px;
+    flex-wrap: wrap;
+  }
+  .icon-size-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+  }
+  .icon-size-label {
+    font-family: monospace;
+    font-size: 10px;
+    color: var(--ink-500);
+  }
+  
+  .footer {
+    text-align: center;
+    padding-top: 64px;
+    margin-top: 80px;
+    border-top: 1px solid var(--ink-200);
+    font-size: 12px;
+    color: var(--ink-500);
+  }
+</style>
+</head>
+<body>
+
+<!-- Hidden Lucide-style icon sprite — these match Lucide React Native at stroke-width 1.5 -->
+<svg width="0" height="0" style="position: absolute;" aria-hidden="true">
+  <defs>
+    <symbol id="icon-search" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></symbol>
+    <symbol id="icon-mail" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></symbol>
+    <symbol id="icon-lock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></symbol>
+    <symbol id="icon-eye" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></symbol>
+    <symbol id="icon-x" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></symbol>
+    <symbol id="icon-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></symbol>
+    <symbol id="icon-alert-circle" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="8" y2="12"/><line x1="12" x2="12.01" y1="16" y2="16"/></symbol>
+    <symbol id="icon-user" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></symbol>
+    <symbol id="icon-book" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2zM22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></symbol>
+    <symbol id="icon-headphones" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 18v-6a9 9 0 0 1 18 0v6"/><path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"/></symbol>
+    <symbol id="icon-globe" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/></symbol>
+    <symbol id="icon-settings" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></symbol>
+    <symbol id="icon-bell" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></symbol>
+    <symbol id="icon-plus" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></symbol>
+    <symbol id="icon-arrow-left" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></symbol>
+    <symbol id="icon-chevron-right" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></symbol>
+    <symbol id="icon-play" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="6 3 20 12 6 21 6 3"/></symbol>
+    <symbol id="icon-pause" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></symbol>
+    <symbol id="icon-message-circle" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/></symbol>
+    <symbol id="icon-sparkles" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.582a.5.5 0 0 1 0 .962L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"/></symbol>
+  </defs>
+</svg>
+
+<div class="page">
+
+<header class="doc-header">
+  <div class="doc-eyebrow">Brand identity · Volume 05</div>
+  <h1 class="doc-title">The input system.</h1>
+  <p class="doc-subtitle">Three variants, three sizes, seven states. Plus the Lucide icon library, configured to match the design language.</p>
+</header>
+
+<!-- ============================================ -->
+<!-- AUDIT FINDINGS -->
+<!-- ============================================ -->
+<section class="section">
+  <div class="section-label">Audit findings</div>
+  <h2 class="section-title">What we found across existing designs.</h2>
+  <p class="section-description">A single <code>.input-demo</code> style existed in the design showcase. It had the right starting point — cream-50 background, forest border on focus — but was missing every other state. No disabled, no error, no success, no autofill, no helper text, no validation patterns, no textarea variant. This audit unifies the system.</p>
+  
+  <div class="audit-card">
+    <table class="audit-table">
+      <thead>
+        <tr>
+          <th>Where it appeared</th>
+          <th>Variant</th>
+          <th>Spec</th>
+          <th>Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Design showcase ref cards</td>
+          <td>Text field</td>
+          <td>14px / 12px padding / 44px / r8 / cream-50 bg</td>
+          <td><span class="status-canonical">Foundation correct</span></td>
+        </tr>
+        <tr>
+          <td>Design showcase ref cards</td>
+          <td>Email field (filled)</td>
+          <td>Same as above with value</td>
+          <td><span class="status-canonical">Foundation correct</span></td>
+        </tr>
+        <tr>
+          <td>Design showcase</td>
+          <td>Search field</td>
+          <td>—</td>
+          <td><span class="status-needs-fix">No leading-icon variant defined</span></td>
+        </tr>
+        <tr>
+          <td>All designs</td>
+          <td>Textarea</td>
+          <td>—</td>
+          <td><span class="status-needs-fix">Variant doesn't exist</span></td>
+        </tr>
+        <tr>
+          <td>All designs, all variants</td>
+          <td>—</td>
+          <td>Missing disabled, error, success, autofill</td>
+          <td><span class="status-needs-fix">No state coverage</span></td>
+        </tr>
+        <tr>
+          <td>All designs</td>
+          <td>—</td>
+          <td>No helper text, error message, character count patterns</td>
+          <td><span class="status-needs-fix">Validation UX undefined</span></td>
+        </tr>
+        <tr>
+          <td>All designs</td>
+          <td>—</td>
+          <td>No size variations</td>
+          <td><span class="status-needs-fix">Only one implicit size</span></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ============================================ -->
+<!-- THREE VARIANTS -->
+<!-- ============================================ -->
+<section class="section">
+  <div class="section-label">Three variants</div>
+  <h2 class="section-title">Text field, search field, textarea.</h2>
+  <p class="section-description">All three share the same base styling system, the same cream-50 background, the same forest-800 focus state. They differ only in structure: search has a leading icon, textarea is multi-line. Every other input in the app is one of these three.</p>
+  
+  <div class="spec-card">
+    <h3>Text field — the default</h3>
+    <p class="lede">Used everywhere a single-line value is needed: name, email, password, search, settings values. Optional leading and trailing adornments.</p>
+    
+    <div style="display: flex; flex-direction: column; gap: 24px;">
+      <!-- Plain text field -->
+      <div class="bf-input-group">
+        <label class="bf-input-label">Display name</label>
+        <div class="bf-input-wrapper bf-input-wrapper--standard">
+          <input type="text" class="bf-input bf-input--standard" placeholder="What should we call you?">
+        </div>
+      </div>
+      
+      <!-- Text field with leading icon -->
+      <div class="bf-input-group">
+        <label class="bf-input-label">Email</label>
+        <div class="bf-input-wrapper bf-input-wrapper--standard">
+          <span class="bf-input-icon bf-input-icon--leading"><svg width="18" height="18"><use href="#icon-mail"/></svg></span>
+          <input type="email" class="bf-input bf-input--standard" placeholder="you@example.com">
+        </div>
+      </div>
+      
+      <!-- Password field with trailing icon -->
+      <div class="bf-input-group">
+        <label class="bf-input-label">Password</label>
+        <div class="bf-input-wrapper bf-input-wrapper--standard">
+          <span class="bf-input-icon bf-input-icon--leading"><svg width="18" height="18"><use href="#icon-lock"/></svg></span>
+          <input type="password" class="bf-input bf-input--standard" value="••••••••••">
+          <span class="bf-input-icon bf-input-icon--trailing" style="cursor: pointer;"><svg width="18" height="18"><use href="#icon-eye"/></svg></span>
+        </div>
+      </div>
+    </div>
+  </div>
+  
+  <div class="spec-card">
+    <h3>Search field — leading-icon by convention</h3>
+    <p class="lede">Always has a leading search icon. May have a trailing clear button when populated. Used in Library, Discover, and the main app search.</p>
+    
+    <div style="display: flex; flex-direction: column; gap: 24px;">
+      <div class="bf-input-group">
+        <div class="bf-input-wrapper bf-input-wrapper--standard">
+          <span class="bf-input-icon bf-input-icon--leading"><svg width="18" height="18"><use href="#icon-search"/></svg></span>
+          <input type="search" class="bf-input bf-input--standard" placeholder="Search by title or author">
+        </div>
+      </div>
+      
+      <div class="bf-input-group">
+        <div class="bf-input-wrapper bf-input-wrapper--standard is-pressed">
+          <span class="bf-input-icon bf-input-icon--leading"><svg width="18" height="18"><use href="#icon-search"/></svg></span>
+          <input type="search" class="bf-input bf-input--standard" value="atomic habits">
+          <button class="bf-input-clear"><svg width="10" height="10"><use href="#icon-x"/></svg></button>
+        </div>
+      </div>
+    </div>
+  </div>
+  
+  <div class="spec-card">
+    <h3>Textarea — for longer-form input</h3>
+    <p class="lede">Multi-line. Min height 80px. Resizable vertically by default. Used for feedback messages, notes, and the Q&A input field. Auto-grows as the user types up to a max height of 240px before scrolling internally.</p>
+    
+    <div style="display: flex; flex-direction: column; gap: 24px;">
+      <div class="bf-input-group">
+        <label class="bf-input-label">What didn't work?</label>
+        <div class="bf-textarea-wrapper">
+          <textarea class="bf-textarea" placeholder="Tell us what went wrong — be as specific as you'd like."></textarea>
+        </div>
+        <div class="bf-input-helper">
+          <span>Optional. Helps us improve.</span>
+          <span class="bf-input-counter">0 / 500</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================ -->
+<!-- THREE SIZES -->
+<!-- ============================================ -->
+<section class="section">
+  <div class="section-label">Three sizes</div>
+  <h2 class="section-title">Compact, standard, large.</h2>
+  <p class="section-description">Sizes mirror the button system for visual harmony. Standard is the default. Compact for inline placements within cards. Large for hero search bars and primary onboarding inputs. Sizes apply to text fields and search fields; textarea is always full size.</p>
+  
+  <div class="spec-card">
+    <div class="variant-grid">
+      <div class="variant-meta">
+        <div class="variant-name">Compact</div>
+        <div class="variant-tokens">
+          height: 32px<br>
+          padding: 0 10px<br>
+          font: 12px / 400<br>
+          radius: 6px<br>
+          icon: 14px
+        </div>
+      </div>
+      <div style="display: flex; gap: 12px; flex-wrap: wrap;">
+        <div class="bf-input-wrapper bf-input-wrapper--compact" style="max-width: 200px;">
+          <input type="text" class="bf-input bf-input--compact" placeholder="Quick add">
+        </div>
+        <div class="bf-input-wrapper bf-input-wrapper--compact" style="max-width: 200px;">
+          <span class="bf-input-icon bf-input-icon--leading"><svg width="14" height="14"><use href="#icon-search"/></svg></span>
+          <input type="search" class="bf-input bf-input--compact" placeholder="Filter">
+        </div>
+      </div>
+    </div>
+    
+    <div class="variant-grid">
+      <div class="variant-meta">
+        <div class="variant-name">Standard <span style="color: var(--forest-800); font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; margin-left: 8px;">Default</span></div>
+        <div class="variant-tokens">
+          height: 44px<br>
+          padding: 0 12px<br>
+          font: 14px / 400<br>
+          radius: 8px<br>
+          icon: 18px
+        </div>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 12px;">
+        <div class="bf-input-wrapper bf-input-wrapper--standard">
+          <input type="text" class="bf-input bf-input--standard" placeholder="Display name">
+        </div>
+        <div class="bf-input-wrapper bf-input-wrapper--standard">
+          <span class="bf-input-icon bf-input-icon--leading"><svg width="18" height="18"><use href="#icon-search"/></svg></span>
+          <input type="search" class="bf-input bf-input--standard" placeholder="Search by title or author">
+        </div>
+      </div>
+    </div>
+    
+    <div class="variant-grid">
+      <div class="variant-meta">
+        <div class="variant-name">Large</div>
+        <div class="variant-tokens">
+          height: 52px<br>
+          padding: 0 14px<br>
+          font: 16px / 400<br>
+          radius: 10px<br>
+          icon: 20px
+        </div>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 12px;">
+        <div class="bf-input-wrapper bf-input-wrapper--large">
+          <span class="bf-input-icon bf-input-icon--leading"><svg width="20" height="20"><use href="#icon-search"/></svg></span>
+          <input type="search" class="bf-input bf-input--large" placeholder="What do you want to read?">
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================ -->
+<!-- ALL SEVEN STATES -->
+<!-- ============================================ -->
+<section class="section">
+  <div class="section-label">Seven states</div>
+  <h2 class="section-title">Every variation a real input goes through.</h2>
+  <p class="section-description">An input in production travels through more states than buttons. We define seven that matter: enabled, disabled, focus, pressed, error, success, autofill. Note that focus and pressed look nearly identical — the difference is intent (focus = ready to type, pressed = actively typing).</p>
+  
+  <div class="spec-card">
+    <h3>All seven states · text field with leading icon</h3>
+    
+    <div class="states-grid">
+      <!-- 1. Enabled -->
+      <div class="state-cell">
+        <div class="state-label">01 · Enabled · empty</div>
+        <div class="bf-input-wrapper bf-input-wrapper--standard">
+          <span class="bf-input-icon bf-input-icon--leading"><svg width="18" height="18"><use href="#icon-mail"/></svg></span>
+          <input type="email" class="bf-input bf-input--standard" placeholder="you@example.com">
+        </div>
+      </div>
+      
+      <!-- 1b. Enabled · filled -->
+      <div class="state-cell">
+        <div class="state-label">01b · Enabled · filled</div>
+        <div class="bf-input-wrapper bf-input-wrapper--standard">
+          <span class="bf-input-icon bf-input-icon--leading"><svg width="18" height="18"><use href="#icon-mail"/></svg></span>
+          <input type="email" class="bf-input bf-input--standard" value="ama.m@gmail.com">
+        </div>
+      </div>
+      
+      <!-- 2. Disabled -->
+      <div class="state-cell">
+        <div class="state-label">02 · Disabled</div>
+        <div class="bf-input-wrapper bf-input-wrapper--standard is-disabled">
+          <span class="bf-input-icon bf-input-icon--leading"><svg width="18" height="18"><use href="#icon-mail"/></svg></span>
+          <input type="email" class="bf-input bf-input--standard" value="ama.m@gmail.com" disabled>
+        </div>
+        <div class="bf-input-helper">Email can't be changed once verified.</div>
+      </div>
+      
+      <!-- 3. Focus -->
+      <div class="state-cell">
+        <div class="state-label">03 · Focus · empty, ready</div>
+        <div class="bf-input-wrapper bf-input-wrapper--standard is-focus">
+          <span class="bf-input-icon bf-input-icon--leading"><svg width="18" height="18"><use href="#icon-mail"/></svg></span>
+          <input type="email" class="bf-input bf-input--standard" placeholder="you@example.com">
+        </div>
+      </div>
+      
+      <!-- 4. Pressed -->
+      <div class="state-cell">
+        <div class="state-label">04 · Pressed · actively typing</div>
+        <div class="bf-input-wrapper bf-input-wrapper--standard is-pressed">
+          <span class="bf-input-icon bf-input-icon--leading"><svg width="18" height="18"><use href="#icon-mail"/></svg></span>
+          <input type="email" class="bf-input bf-input--standard" value="ama.m@gma">
+        </div>
+      </div>
+      
+      <!-- 5. Error -->
+      <div class="state-cell">
+        <div class="state-label">05 · Error</div>
+        <div class="bf-input-wrapper bf-input-wrapper--standard is-error">
+          <span class="bf-input-icon bf-input-icon--leading"><svg width="18" height="18" style="color: var(--error);"><use href="#icon-mail"/></svg></span>
+          <input type="email" class="bf-input bf-input--standard" value="ama.m@gmail">
+        </div>
+        <div class="bf-input-helper bf-input-helper--error">
+          <svg width="14" height="14"><use href="#icon-alert-circle"/></svg>
+          Please enter a valid email address.
+        </div>
+      </div>
+      
+      <!-- 6. Success -->
+      <div class="state-cell">
+        <div class="state-label">06 · Success</div>
+        <div class="bf-input-wrapper bf-input-wrapper--standard is-success">
+          <span class="bf-input-icon bf-input-icon--leading"><svg width="18" height="18"><use href="#icon-mail"/></svg></span>
+          <input type="email" class="bf-input bf-input--standard" value="ama.m@gmail.com">
+          <span class="bf-input-icon bf-input-icon--trailing" style="color: var(--success);"><svg width="18" height="18"><use href="#icon-check"/></svg></span>
+        </div>
+        <div class="bf-input-helper bf-input-helper--success">
+          <svg width="14" height="14"><use href="#icon-check"/></svg>
+          Email verified.
+        </div>
+      </div>
+      
+      <!-- 7. Autofill -->
+      <div class="state-cell">
+        <div class="state-label">07 · Autofill</div>
+        <div class="bf-input-wrapper bf-input-wrapper--standard is-autofill">
+          <span class="bf-input-icon bf-input-icon--leading"><svg width="18" height="18"><use href="#icon-mail"/></svg></span>
+          <input type="email" class="bf-input bf-input--standard" value="ama.m@gmail.com">
+        </div>
+        <div class="bf-input-helper">Filled from your saved info.</div>
+      </div>
+      
+      <!-- 8. With character counter -->
+      <div class="state-cell">
+        <div class="state-label">+ Helper · with counter</div>
+        <div class="bf-input-wrapper bf-input-wrapper--standard">
+          <span class="bf-input-icon bf-input-icon--leading"><svg width="18" height="18"><use href="#icon-user"/></svg></span>
+          <input type="text" class="bf-input bf-input--standard" value="Ama Mensah">
+        </div>
+        <div class="bf-input-helper">
+          <span>Visible to friends only.</span>
+          <span class="bf-input-counter">10 / 50</span>
+        </div>
+      </div>
+    </div>
+    
+    <table class="token-table">
+      <thead>
+        <tr>
+          <th>State</th>
+          <th>Border / background</th>
+          <th>Notes</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td>Enabled</td><td>1px --ink-200 · cream-50 bg</td><td>Hover: border --ink-300</td></tr>
+        <tr><td>Disabled</td><td>1px --ink-200 · --ink-100 bg</td><td>Text --ink-400 · cursor not-allowed</td></tr>
+        <tr><td>Focus</td><td>1px --forest-800 · 3px forest-50 ring</td><td>Outline removed; ring via box-shadow</td></tr>
+        <tr><td>Pressed</td><td>Same as focus + cream-50 bg confirmed</td><td>Visually identical to focus; semantically distinct</td></tr>
+        <tr><td>Error</td><td>1px --error · --error-50 bg</td><td>Helper shows alert-circle icon + message in --error</td></tr>
+        <tr><td>Success</td><td>1px --success · cream-50 bg</td><td>Trailing check icon · helper in --success</td></tr>
+        <tr><td>Autofill</td><td>1px --amber-200 · --amber-50 bg</td><td>Subtle amber instead of browser-default yellow</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ============================================ -->
+<!-- TEXTAREA STATES -->
+<!-- ============================================ -->
+<section class="section">
+  <div class="section-label">Textarea states</div>
+  <h2 class="section-title">Same states, more breathing room.</h2>
+  <p class="section-description">Textareas use the same state semantics. The only structural differences: padding sits inside the wrapper rather than on the input, and the textarea grows vertically as the user types. Min-height 80px, max-height 240px before internal scrolling.</p>
+  
+  <div class="spec-card">
+    <div class="states-grid">
+      <div class="state-cell">
+        <div class="state-label">Enabled · empty</div>
+        <div class="bf-textarea-wrapper">
+          <textarea class="bf-textarea" placeholder="Tell us what you think..."></textarea>
+        </div>
+      </div>
+      
+      <div class="state-cell">
+        <div class="state-label">Focus · ready</div>
+        <div class="bf-textarea-wrapper is-focus">
+          <textarea class="bf-textarea" placeholder="Tell us what you think..."></textarea>
+        </div>
+      </div>
+      
+      <div class="state-cell">
+        <div class="state-label">Pressed · typing</div>
+        <div class="bf-textarea-wrapper is-focus">
+          <textarea class="bf-textarea">The summary missed the main argument about cue stacking. The chapter spends</textarea>
+        </div>
+        <div class="bf-input-helper">
+          <span>What we get right helps too.</span>
+          <span class="bf-input-counter">73 / 500</span>
+        </div>
+      </div>
+      
+      <div class="state-cell">
+        <div class="state-label">Error</div>
+        <div class="bf-textarea-wrapper is-error">
+          <textarea class="bf-textarea">Too short.</textarea>
+        </div>
+        <div class="bf-input-helper bf-input-helper--error">
+          <svg width="14" height="14"><use href="#icon-alert-circle"/></svg>
+          Please write at least 20 characters.
+        </div>
+      </div>
+      
+      <div class="state-cell">
+        <div class="state-label">Disabled</div>
+        <div class="bf-textarea-wrapper is-disabled">
+          <textarea class="bf-textarea" disabled>Feedback is closed for this beta cycle.</textarea>
+        </div>
+      </div>
+      
+      <div class="state-cell">
+        <div class="state-label">Success</div>
+        <div class="bf-textarea-wrapper" style="border-color: var(--success);">
+          <textarea class="bf-textarea">The summary captured the four-step habit loop perfectly. Useful for studying.</textarea>
+        </div>
+        <div class="bf-input-helper bf-input-helper--success">
+          <svg width="14" height="14"><use href="#icon-check"/></svg>
+          Thanks — feedback received.
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================ -->
+<!-- ICON LIBRARY: LUCIDE REACT NATIVE -->
+<!-- ============================================ -->
+<section class="section">
+  <div class="section-label">Icon library</div>
+  <h2 class="section-title">Lucide React Native — configured for Bookflow.</h2>
+  <p class="section-description">Lucide is the icon library for the entire system: 1,400+ icons, clean editorial line style that matches the design language, tree-shakable so the bundle stays small. We override the default 2px stroke to 1.5px for a slightly lighter feel that matches Fraunces and Geist's character.</p>
+  
+  <div class="spec-card">
+    <h3>Installation & setup</h3>
+    
+    <div class="code-block"><span class="comment"># Install for Expo / React Native</span>
+<span class="keyword">npx</span> expo install lucide-react-native
+<span class="keyword">npx</span> expo install react-native-svg
+</div>
+    
+    <p style="font-size: 13px; color: var(--ink-700); margin: 16px 0 8px;"><strong>Why two packages?</strong> Lucide React Native renders SVG natively. <code style="font-family: monospace; font-size: 12px;">react-native-svg</code> provides the SVG rendering engine. Both are required.</p>
+    
+    <h3 style="margin-top: 32px;">Default usage pattern</h3>
+    <p class="lede">Import only the icons you use. Tree-shaking ensures unused icons don't bloat the bundle. Always pass <code style="font-family: monospace; font-size: 12px;">strokeWidth={1.5}</code> to match the design language.</p>
+    
+    <div class="code-block"><span class="comment">// Import individual icons — tree-shakable</span>
+<span class="keyword">import</span> { Search, Mail, Lock, Eye } <span class="keyword">from</span> <span class="string">'lucide-react-native'</span>;
+
+<span class="comment">// Use with consistent stroke and color</span>
+&lt;Search
+  size={<span class="string">18</span>}
+  strokeWidth={<span class="string">1.5</span>}
+  color={tokens.colors.ink<span class="string">[700]</span>}
+/&gt;
+</div>
+    
+    <h3 style="margin-top: 32px;">Wrap it: build a single <code style="font-family: monospace; font-size: 18px;">&lt;Icon /&gt;</code> component</h3>
+    <p class="lede">Don't pass <code style="font-family: monospace; font-size: 12px;">strokeWidth={1.5}</code> manually every time — that's how inconsistencies creep back in. Wrap Lucide once, lock the defaults, use the wrapper everywhere.</p>
+    
+    <div class="code-block"><span class="comment">// components/Icon.tsx</span>
+<span class="keyword">import</span> * <span class="keyword">as</span> Lucide <span class="keyword">from</span> <span class="string">'lucide-react-native'</span>;
+<span class="keyword">import</span> { tokens } <span class="keyword">from</span> <span class="string">'~/design/tokens'</span>;
+
+<span class="keyword">type</span> IconName = <span class="keyword">keyof typeof</span> Lucide;
+
+<span class="keyword">export</span> <span class="keyword">function</span> Icon({
+  name,
+  size = <span class="string">18</span>,
+  color = tokens.colors.ink<span class="string">[700]</span>,
+}: {
+  name: IconName;
+  size?: number;
+  color?: string;
+}) {
+  <span class="keyword">const</span> Component = Lucide<span class="string">[name]</span> <span class="keyword">as</span> React.ComponentType&lt;any&gt;;
+  <span class="keyword">return</span> &lt;Component size={size} strokeWidth={<span class="string">1.5</span>} color={color} /&gt;;
+}
+
+<span class="comment">// Usage anywhere</span>
+&lt;Icon name=<span class="string">"Search"</span> /&gt;
+&lt;Icon name=<span class="string">"Mail"</span> size={<span class="string">14</span>} color={tokens.colors.error} /&gt;
+</div>
+  </div>
+  
+  <div class="spec-card">
+    <h3>Icon size scale</h3>
+    <p class="lede">Four sizes cover every use case in the app. Smaller sizes use the same 1.5px stroke — at very small sizes (12px) the line work stays crisp, just barely.</p>
+    
+    <div class="icon-size-row">
+      <div class="icon-size-item">
+        <svg width="14" height="14" style="color: var(--ink-700);"><use href="#icon-search"/></svg>
+        <div class="icon-size-label">14px</div>
+        <div style="font-size: 10px; color: var(--ink-500); max-width: 70px; text-align: center;">Inline · helper text</div>
+      </div>
+      <div class="icon-size-item">
+        <svg width="18" height="18" style="color: var(--ink-700);"><use href="#icon-search"/></svg>
+        <div class="icon-size-label">18px <span style="color: var(--forest-800);">·  default</span></div>
+        <div style="font-size: 10px; color: var(--ink-500); max-width: 70px; text-align: center;">Inputs · buttons · most UI</div>
+      </div>
+      <div class="icon-size-item">
+        <svg width="20" height="20" style="color: var(--ink-700);"><use href="#icon-search"/></svg>
+        <div class="icon-size-label">20px</div>
+        <div style="font-size: 10px; color: var(--ink-500); max-width: 70px; text-align: center;">Tab nav · large inputs</div>
+      </div>
+      <div class="icon-size-item">
+        <svg width="24" height="24" style="color: var(--ink-700);"><use href="#icon-search"/></svg>
+        <div class="icon-size-label">24px</div>
+        <div style="font-size: 10px; color: var(--ink-500); max-width: 70px; text-align: center;">Headers · empty states</div>
+      </div>
+    </div>
+  </div>
+  
+  <div class="spec-card">
+    <h3>Curated icon set for MVP</h3>
+    <p class="lede">These are the Lucide icons used across Bookflow's MVP screens. All available at <code style="font-family: monospace; font-size: 12px;">lucide-react-native</code> with the corresponding name. Curating the set helps engineering audit imports and helps designers know what's already approved.</p>
+    
+    <div class="icon-grid">
+      <div class="icon-cell"><svg width="20" height="20"><use href="#icon-search"/></svg><div class="icon-name">Search</div></div>
+      <div class="icon-cell"><svg width="20" height="20"><use href="#icon-book"/></svg><div class="icon-name">BookOpen</div></div>
+      <div class="icon-cell"><svg width="20" height="20"><use href="#icon-headphones"/></svg><div class="icon-name">Headphones</div></div>
+      <div class="icon-cell"><svg width="20" height="20"><use href="#icon-globe"/></svg><div class="icon-name">Globe</div></div>
+      <div class="icon-cell"><svg width="20" height="20"><use href="#icon-user"/></svg><div class="icon-name">User</div></div>
+      <div class="icon-cell"><svg width="20" height="20"><use href="#icon-mail"/></svg><div class="icon-name">Mail</div></div>
+      <div class="icon-cell"><svg width="20" height="20"><use href="#icon-lock"/></svg><div class="icon-name">Lock</div></div>
+      <div class="icon-cell"><svg width="20" height="20"><use href="#icon-eye"/></svg><div class="icon-name">Eye</div></div>
+      <div class="icon-cell"><svg width="20" height="20"><use href="#icon-x"/></svg><div class="icon-name">X</div></div>
+      <div class="icon-cell"><svg width="20" height="20"><use href="#icon-check"/></svg><div class="icon-name">Check</div></div>
+      <div class="icon-cell"><svg width="20" height="20"><use href="#icon-alert-circle"/></svg><div class="icon-name">AlertCircle</div></div>
+      <div class="icon-cell"><svg width="20" height="20"><use href="#icon-plus"/></svg><div class="icon-name">Plus</div></div>
+      <div class="icon-cell"><svg width="20" height="20"><use href="#icon-arrow-left"/></svg><div class="icon-name">ArrowLeft</div></div>
+      <div class="icon-cell"><svg width="20" height="20"><use href="#icon-chevron-right"/></svg><div class="icon-name">ChevronRight</div></div>
+      <div class="icon-cell"><svg width="20" height="20"><use href="#icon-play"/></svg><div class="icon-name">Play</div></div>
+      <div class="icon-cell"><svg width="20" height="20"><use href="#icon-pause"/></svg><div class="icon-name">Pause</div></div>
+      <div class="icon-cell"><svg width="20" height="20"><use href="#icon-message-circle"/></svg><div class="icon-name">MessageCircle</div></div>
+      <div class="icon-cell"><svg width="20" height="20"><use href="#icon-settings"/></svg><div class="icon-name">Settings</div></div>
+      <div class="icon-cell"><svg width="20" height="20"><use href="#icon-bell"/></svg><div class="icon-name">Bell</div></div>
+      <div class="icon-cell"><svg width="20" height="20"><use href="#icon-sparkles"/></svg><div class="icon-name">Sparkles</div></div>
+    </div>
+    
+    <p style="font-size: 12px; color: var(--ink-500); margin-top: 16px; font-style: italic;">Adding a new icon? First check this set. If you genuinely need a new one, add it here so the next person sees it's already approved. Browse all 1,400+ at <code style="font-family: monospace;">lucide.dev/icons</code>.</p>
+  </div>
+</section>
+
+<!-- ============================================ -->
+<!-- USAGE RULES -->
+<!-- ============================================ -->
+<section class="section">
+  <div class="section-label">Usage rules</div>
+  <h2 class="section-title">Six rules for inputs.</h2>
+  <p class="section-description">The same kind of guardrails we set for buttons. These prevent the common patterns that fragment input systems over time.</p>
+  
+  <div class="spec-card">
+    <ol style="list-style: none; padding-left: 0; counter-reset: rule;">
+      <li style="padding: 16px 0; border-bottom: 0.5px solid var(--ink-200); counter-increment: rule; padding-left: 32px; position: relative;">
+        <span style="position: absolute; left: 0; top: 16px; font-family: var(--font-display); font-size: 18px; font-weight: 500; color: var(--forest-800); font-variation-settings: 'opsz' 24;">01</span>
+        <div style="font-size: 13px; font-weight: 500; color: var(--ink-900); margin-bottom: 4px;">Always include a label, even when it seems redundant.</div>
+        <div style="font-size: 12px; color: var(--ink-500); line-height: 1.5;">Placeholder is not a label. Screen readers ignore placeholder text. If a visible label feels redundant, hide it visually with a sr-only class but keep it in the DOM.</div>
+      </li>
+      <li style="padding: 16px 0; border-bottom: 0.5px solid var(--ink-200); counter-increment: rule; padding-left: 32px; position: relative;">
+        <span style="position: absolute; left: 0; top: 16px; font-family: var(--font-display); font-size: 18px; font-weight: 500; color: var(--forest-800); font-variation-settings: 'opsz' 24;">02</span>
+        <div style="font-size: 13px; font-weight: 500; color: var(--ink-900); margin-bottom: 4px;">Validate on blur, not on every keystroke.</div>
+        <div style="font-size: 12px; color: var(--ink-500); line-height: 1.5;">Showing "invalid email" while the user is mid-typing feels punishing. Wait until they've finished and moved on. The exception: password strength and character counters update live.</div>
+      </li>
+      <li style="padding: 16px 0; border-bottom: 0.5px solid var(--ink-200); counter-increment: rule; padding-left: 32px; position: relative;">
+        <span style="position: absolute; left: 0; top: 16px; font-family: var(--font-display); font-size: 18px; font-weight: 500; color: var(--forest-800); font-variation-settings: 'opsz' 24;">03</span>
+        <div style="font-size: 13px; font-weight: 500; color: var(--ink-900); margin-bottom: 4px;">Error messages explain what's wrong AND how to fix it.</div>
+        <div style="font-size: 12px; color: var(--ink-500); line-height: 1.5;">Bad: "Invalid input." Good: "Please enter a valid email address — we'll send a verification link." The fix is implicit but present.</div>
+      </li>
+      <li style="padding: 16px 0; border-bottom: 0.5px solid var(--ink-200); counter-increment: rule; padding-left: 32px; position: relative;">
+        <span style="position: absolute; left: 0; top: 16px; font-family: var(--font-display); font-size: 18px; font-weight: 500; color: var(--forest-800); font-variation-settings: 'opsz' 24;">04</span>
+        <div style="font-size: 13px; font-weight: 500; color: var(--ink-900); margin-bottom: 4px;">Success state is for high-stakes confirmations only.</div>
+        <div style="font-size: 12px; color: var(--ink-500); line-height: 1.5;">Don't add a green checkmark every time someone types something correctly — that's noise. Reserve success state for verification (email verified, password strength sufficient, .edu confirmed).</div>
+      </li>
+      <li style="padding: 16px 0; border-bottom: 0.5px solid var(--ink-200); counter-increment: rule; padding-left: 32px; position: relative;">
+        <span style="position: absolute; left: 0; top: 16px; font-family: var(--font-display); font-size: 18px; font-weight: 500; color: var(--forest-800); font-variation-settings: 'opsz' 24;">05</span>
+        <div style="font-size: 13px; font-weight: 500; color: var(--ink-900); margin-bottom: 4px;">Disabled inputs need a "why" explanation.</div>
+        <div style="font-size: 12px; color: var(--ink-500); line-height: 1.5;">A field that's grayed out without explanation feels broken. Always pair with helper text: "Email can't be changed once verified" or "Edit your name in Account settings."</div>
+      </li>
+      <li style="padding: 16px 0; counter-increment: rule; padding-left: 32px; position: relative;">
+        <span style="position: absolute; left: 0; top: 16px; font-family: var(--font-display); font-size: 18px; font-weight: 500; color: var(--forest-800); font-variation-settings: 'opsz' 24;">06</span>
+        <div style="font-size: 13px; font-weight: 500; color: var(--ink-900); margin-bottom: 4px;">Use the right input type for keyboard hints on mobile.</div>
+        <div style="font-size: 12px; color: var(--ink-500); line-height: 1.5;">Email → <code style="font-family: monospace; font-size: 11px;">type="email"</code>, phone → <code style="font-family: monospace; font-size: 11px;">type="tel"</code>, search → <code style="font-family: monospace; font-size: 11px;">type="search"</code>. Wrong type means wrong on-screen keyboard — frustrating on mobile.</div>
+      </li>
+    </ol>
+  </div>
+</section>
+
+<footer class="footer">
+  Bookflow input system v1.0 · Three variants · Three sizes · Seven states · Plus Lucide React Native icon library configured to match
+</footer>
+
+</div>
+
+</body>
+</html>

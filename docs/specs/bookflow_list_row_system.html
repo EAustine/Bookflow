@@ -1,0 +1,1125 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bookflow — List Row System</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=Geist:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --forest-900: #0E2A21;
+    --forest-800: #1B4332;
+    --forest-200: #B7CCB9;
+    --forest-100: #DAE6DC;
+    --forest-50: #EFF4F0;
+    --ink-900: #1A1A1A;
+    --ink-700: #3D3A36;
+    --ink-500: #6B6862;
+    --ink-400: #8A8780;
+    --ink-300: #B5B2AB;
+    --ink-200: #D8D5CC;
+    --ink-100: #ECE9E0;
+    --cream-50: #FAF7F2;
+    --cream-100: #F5F1E8;
+    --cream-200: #ECE5D5;
+    --amber-200: #EFD9B5;
+    --error: #B5453A;
+    --success: #2D7A4F;
+    --font-display: 'Fraunces', Georgia, serif;
+    --font-ui: 'Geist', -apple-system, sans-serif;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: var(--font-ui);
+    background: var(--cream-50);
+    color: var(--ink-900);
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+    padding: 56px 24px;
+  }
+  .page { max-width: 1200px; margin: 0 auto; }
+  
+  .doc-header {
+    text-align: center;
+    margin-bottom: 64px;
+    padding-bottom: 48px;
+    border-bottom: 1px solid var(--ink-200);
+  }
+  .doc-eyebrow {
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--forest-800);
+    margin-bottom: 20px;
+  }
+  .doc-title {
+    font-family: var(--font-display);
+    font-weight: 600;
+    font-size: 56px;
+    line-height: 1;
+    letter-spacing: -0.025em;
+    color: var(--ink-900);
+    margin-bottom: 20px;
+    font-variation-settings: "opsz" 144;
+  }
+  .doc-subtitle {
+    font-family: var(--font-display);
+    font-weight: 400;
+    font-style: italic;
+    font-size: 20px;
+    color: var(--ink-500);
+    max-width: 640px;
+    margin: 0 auto;
+    font-variation-settings: "opsz" 30;
+  }
+  
+  .section { margin-bottom: 96px; }
+  .section-label {
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--forest-800);
+    margin-bottom: 12px;
+  }
+  .section-title {
+    font-family: var(--font-display);
+    font-size: 32px;
+    font-weight: 500;
+    color: var(--ink-900);
+    margin-bottom: 14px;
+    font-variation-settings: "opsz" 72;
+    letter-spacing: -0.01em;
+  }
+  .section-description {
+    font-size: 14px;
+    color: var(--ink-500);
+    max-width: 720px;
+    margin-bottom: 32px;
+    line-height: 1.6;
+  }
+  
+  .spec-card {
+    background: var(--cream-100);
+    border-radius: 16px;
+    padding: 40px;
+    margin-bottom: 24px;
+  }
+  .spec-card h3 {
+    font-family: var(--font-display);
+    font-size: 22px;
+    font-weight: 500;
+    color: var(--ink-900);
+    margin-bottom: 8px;
+    font-variation-settings: "opsz" 30;
+  }
+  .spec-card .lede {
+    font-size: 13px;
+    color: var(--ink-500);
+    margin-bottom: 28px;
+    max-width: 640px;
+    line-height: 1.6;
+  }
+  
+  /* === Anatomy === */
+  .anatomy-row-display {
+    background: var(--cream-50);
+    border: 1.5px dashed var(--forest-800);
+    border-radius: 8px;
+    padding: 16px 16px 12px;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    margin-bottom: 32px;
+    margin-top: 16px;
+    position: relative;
+  }
+  .anatomy-slot {
+    border: 1px dashed var(--ink-300);
+    border-radius: 4px;
+    padding: 8px;
+    background: rgba(255,255,255,0.6);
+    position: relative;
+  }
+  .anatomy-slot-leading {
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--ink-700);
+  }
+  .anatomy-slot-content {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-height: 32px;
+    justify-content: center;
+  }
+  .anatomy-slot-trailing {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--ink-700);
+  }
+  .anatomy-tag {
+    position: absolute;
+    top: -10px;
+    left: 8px;
+    background: var(--forest-800);
+    color: var(--cream-50);
+    font-size: 9px;
+    padding: 2px 6px;
+    border-radius: 3px;
+    font-weight: 500;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+  }
+  .anatomy-labels {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 24px;
+  }
+  .anatomy-label-card {
+    padding-left: 16px;
+    border-left: 2px solid var(--forest-800);
+  }
+  .anatomy-label-name {
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--forest-800);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 6px;
+  }
+  .anatomy-label-options {
+    font-size: 12px;
+    color: var(--ink-700);
+    line-height: 1.6;
+  }
+  
+  /* === The list row component === */
+  .bf-list {
+    background: var(--cream-50);
+    border-radius: 10px;
+    overflow: hidden;
+    border: 0.5px solid var(--ink-200);
+    max-width: 360px;
+  }
+  .bf-row {
+    display: flex;
+    align-items: center;
+    padding: 0 14px;
+    gap: 12px;
+    cursor: pointer;
+    border-bottom: 0.5px solid var(--ink-200);
+    transition: background 100ms ease;
+    background: var(--cream-50);
+  }
+  .bf-row:last-child { border-bottom: none; }
+  .bf-row--standard { min-height: 56px; }
+  .bf-row--compact { min-height: 48px; }
+  .bf-row:hover:not(.is-disabled):not(.is-selected) { background: var(--cream-100); }
+  .bf-row:active:not(.is-disabled),
+  .bf-row.is-pressed { background: var(--cream-200); }
+  .bf-row.is-disabled { cursor: not-allowed; opacity: 0.5; }
+  .bf-row.is-selected { background: var(--forest-50); }
+  
+  .bf-row-leading {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .bf-row-leading--icon-only {
+    width: 24px;
+    height: 24px;
+    color: var(--ink-700);
+  }
+  .bf-row-leading--icon-bg {
+    width: 32px;
+    height: 32px;
+    background: var(--cream-100);
+    border-radius: 6px;
+    color: var(--ink-700);
+  }
+  .bf-row-leading--icon-bg-compact {
+    width: 28px;
+    height: 28px;
+    background: var(--cream-100);
+    border-radius: 6px;
+    color: var(--ink-700);
+  }
+  .bf-row-leading--radio {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    border: 1.5px solid var(--ink-300);
+    background: var(--cream-50);
+  }
+  .bf-row-leading--radio.is-on {
+    border-color: var(--forest-800);
+    background: var(--forest-800);
+    color: var(--cream-50);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  
+  .bf-row-content {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    padding: 8px 0;
+  }
+  .bf-row-label {
+    font-size: 14px;
+    color: var(--ink-900);
+    font-weight: 500;
+    line-height: 1.3;
+  }
+  .bf-row-label--compact { font-size: 13px; font-weight: 400; }
+  .bf-row-label--destructive { color: var(--error); }
+  .bf-row-sublabel {
+    font-size: 11px;
+    color: var(--ink-500);
+    line-height: 1.4;
+    margin-top: 2px;
+  }
+  
+  .bf-row-trailing {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--ink-500);
+  }
+  .bf-row-hint {
+    font-size: 12px;
+    color: var(--ink-500);
+    text-align: right;
+    max-width: 140px;
+  }
+  .bf-row-chevron { color: var(--ink-300); display: flex; }
+  .bf-row-check { color: var(--forest-800); }
+  .bf-row-badge {
+    font-size: 10px;
+    padding: 3px 8px;
+    background: var(--cream-100);
+    color: var(--ink-700);
+    border-radius: 12px;
+    font-weight: 500;
+  }
+  .bf-row-badge--locked { color: var(--ink-400); }
+  .bf-row-badge--new { background: var(--amber-200); color: #6E4F1F; }
+  
+  .bf-toggle {
+    width: 36px;
+    height: 22px;
+    background: var(--ink-200);
+    border-radius: 12px;
+    position: relative;
+    cursor: pointer;
+    transition: background 160ms ease;
+    flex-shrink: 0;
+  }
+  .bf-toggle.is-on { background: var(--forest-800); }
+  .bf-toggle::after {
+    content: "";
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 18px;
+    height: 18px;
+    background: var(--cream-50);
+    border-radius: 50%;
+    transition: transform 160ms ease;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+  }
+  .bf-toggle.is-on::after { transform: translateX(14px); }
+  
+  .bf-list-section-label {
+    font-size: 10px;
+    font-weight: 500;
+    color: var(--ink-500);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    margin-bottom: 8px;
+    margin-top: 24px;
+  }
+  .bf-list-section-label:first-child { margin-top: 0; }
+  
+  .states-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 16px;
+  }
+  .state-cell {
+    background: var(--cream-50);
+    border: 0.5px solid var(--ink-200);
+    border-radius: 12px;
+    padding: 16px;
+  }
+  .state-label {
+    font-size: 10px;
+    font-weight: 500;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--forest-800);
+    margin-bottom: 12px;
+  }
+  
+  .phones-row {
+    display: flex;
+    gap: 32px;
+    justify-content: center;
+    flex-wrap: wrap;
+    margin-top: 16px;
+  }
+  .phone-wrap { display: flex; flex-direction: column; align-items: center; gap: 12px; }
+  .phone-label { font-size: 11px; color: var(--ink-500); font-weight: 500; }
+  .phone {
+    width: 280px;
+    height: 580px;
+    background: var(--cream-50);
+    border-radius: 36px;
+    overflow: hidden;
+    border: 1px solid var(--ink-200);
+    display: flex;
+    flex-direction: column;
+  }
+  .status-bar {
+    display: flex;
+    justify-content: space-between;
+    padding: 16px 24px 8px;
+    font-size: 11px;
+    color: var(--ink-700);
+    font-weight: 500;
+  }
+  .phone-header {
+    padding: 4px 16px 14px;
+    border-bottom: 0.5px solid var(--ink-200);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .phone-back { color: var(--ink-700); font-size: 16px; }
+  .phone-title {
+    font-family: var(--font-display);
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--ink-900);
+    font-variation-settings: "opsz" 18;
+  }
+  .phone-content { flex: 1; overflow-y: auto; padding: 16px; }
+  
+  .token-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+    margin-top: 16px;
+  }
+  .token-table th {
+    text-align: left;
+    padding: 8px 12px;
+    font-size: 10px;
+    font-weight: 500;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--ink-500);
+    border-bottom: 0.5px solid var(--ink-200);
+  }
+  .token-table td {
+    padding: 8px 12px;
+    border-bottom: 0.5px solid var(--ink-100);
+    color: var(--ink-700);
+  }
+  .token-table td:first-child {
+    font-family: monospace;
+    color: var(--ink-900);
+    width: 30%;
+  }
+  .token-table td:nth-child(2) {
+    font-family: monospace;
+    color: var(--forest-800);
+    width: 35%;
+  }
+  
+  .footer {
+    text-align: center;
+    padding-top: 64px;
+    margin-top: 80px;
+    border-top: 1px solid var(--ink-200);
+    font-size: 12px;
+    color: var(--ink-500);
+  }
+</style>
+</head>
+<body>
+
+<svg width="0" height="0" style="position: absolute;" aria-hidden="true">
+  <defs>
+    <symbol id="icon-chevron-right" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></symbol>
+    <symbol id="icon-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></symbol>
+    <symbol id="icon-text" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M17 6.1H3"/><path d="M21 12.1H3"/><path d="M15.1 18H3"/></symbol>
+    <symbol id="icon-headphones" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 18v-6a9 9 0 0 1 18 0v6"/><path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"/></symbol>
+    <symbol id="icon-globe" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/></symbol>
+    <symbol id="icon-bell" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></symbol>
+    <symbol id="icon-lock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></symbol>
+    <symbol id="icon-help" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" x2="12.01" y1="17" y2="17"/></symbol>
+    <symbol id="icon-mail" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></symbol>
+    <symbol id="icon-info" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></symbol>
+    <symbol id="icon-credit-card" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="14" x="2" y="5" rx="2"/><line x1="2" x2="22" y1="10" y2="10"/></symbol>
+    <symbol id="icon-arrow-up-down" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m21 16-4 4-4-4"/><path d="M17 20V4"/><path d="m3 8 4-4 4 4"/><path d="M7 4v16"/></symbol>
+  </defs>
+</svg>
+
+<div class="page">
+
+<header class="doc-header">
+  <div class="doc-eyebrow">Brand identity · Volume 07</div>
+  <h1 class="doc-title">The list row.</h1>
+  <p class="doc-subtitle">The most-used component in the app — present in every Settings screen, every list, every picker.</p>
+</header>
+
+<!-- Why -->
+<section class="section">
+  <div class="section-label">Why list rows matter</div>
+  <h2 class="section-title">40+ instances across the MVP.</h2>
+  <p class="section-description">List rows appear more often than any other interactive component in Bookflow — Settings has 15+ rows alone, plus Library list items, Voice picker rows, Account screens, FAQ entries, and more. Getting one canonical list row right cascades into a more polished feel everywhere.</p>
+  
+  <div class="spec-card">
+    <h3>Where list rows appear</h3>
+    <table class="token-table">
+      <thead>
+        <tr><th>Screen</th><th>Pattern used</th><th>Approx. count</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Settings</td><td>Settings + Toggle + Action</td><td>~ 15 rows</td></tr>
+        <tr><td>Library list</td><td>Settings (book metadata)</td><td>~ 4–10 rows</td></tr>
+        <tr><td>Voice picker</td><td>Selection</td><td>4 rows</td></tr>
+        <tr><td>Sort & filter sheet</td><td>Selection</td><td>4 rows</td></tr>
+        <tr><td>Account & subscription</td><td>Settings + Action + Destructive</td><td>~ 8 rows</td></tr>
+        <tr><td>Help & FAQ</td><td>Settings (with chevron)</td><td>~ 6+ rows</td></tr>
+        <tr><td>Notification preferences</td><td>Toggle</td><td>3+ rows</td></tr>
+        <tr><td>Practice questions config</td><td>Selection (radio)</td><td>3 rows per group</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- Anatomy -->
+<section class="section">
+  <div class="section-label">Anatomy</div>
+  <h2 class="section-title">Three slots, one skeleton.</h2>
+  <p class="section-description">Every list row in Bookflow is the same component with three slots. The 6 patterns we'll define are simply different combinations of what fills each slot.</p>
+  
+  <div class="spec-card">
+    <div class="anatomy-row-display">
+      <div class="anatomy-slot anatomy-slot-leading">
+        <div class="anatomy-tag">Leading</div>
+        <svg width="20" height="20"><use href="#icon-text"/></svg>
+      </div>
+      <div class="anatomy-slot anatomy-slot-content">
+        <div class="anatomy-tag">Content</div>
+        <div style="font-size: 13px; font-weight: 500; color: var(--ink-900);">Reading display</div>
+        <div style="font-size: 11px; color: var(--ink-500);">Sans-serif · Light</div>
+      </div>
+      <div class="anatomy-slot anatomy-slot-trailing">
+        <div class="anatomy-tag">Trailing</div>
+        <svg width="14" height="14"><use href="#icon-chevron-right"/></svg>
+      </div>
+    </div>
+    
+    <div class="anatomy-labels">
+      <div class="anatomy-label-card">
+        <div class="anatomy-label-name">Leading slot</div>
+        <div class="anatomy-label-options">
+          • Empty<br>
+          • Icon (24px, no background)<br>
+          • Icon with background (32×32, cream-100, r6)<br>
+          • Radio circle (for selection patterns)
+        </div>
+      </div>
+      <div class="anatomy-label-card">
+        <div class="anatomy-label-name">Content slot</div>
+        <div class="anatomy-label-options">
+          • Label only (Geist 500, 14px)<br>
+          • Label + sub-label (sub: ink-500, 11px)<br>
+          • Label can be destructive (red)<br>
+          Always required.
+        </div>
+      </div>
+      <div class="anatomy-label-card">
+        <div class="anatomy-label-name">Trailing slot</div>
+        <div class="anatomy-label-options">
+          • Empty<br>
+          • Hint (current value, ink-500)<br>
+          • Chevron · hint + chevron<br>
+          • Toggle · check · badge
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Six Patterns -->
+<section class="section">
+  <div class="section-label">Six patterns</div>
+  <h2 class="section-title">Recipes for the slots.</h2>
+  <p class="section-description">Each pattern is a defined combination of what fills the three slots. Naming them gives engineering and design a shared vocabulary — instead of "another row with a chevron," it's "Settings pattern."</p>
+</section>
+
+<!-- 01 Settings -->
+<section class="section" style="margin-bottom: 56px;">
+  <div class="spec-card">
+    <h3>01 · Settings pattern</h3>
+    <p class="lede">Tappable row that drills into a sub-screen. Shows current value as a hint, has a chevron. The most common pattern — used for almost every Settings row, Account fields, FAQ entries, and book metadata in Library lists.</p>
+    
+    <div class="bf-list">
+      <div class="bf-row bf-row--standard">
+        <div class="bf-row-leading bf-row-leading--icon-bg"><svg width="18" height="18"><use href="#icon-text"/></svg></div>
+        <div class="bf-row-content"><div class="bf-row-label">Reading display</div></div>
+        <div class="bf-row-trailing">
+          <span class="bf-row-hint">Sans-serif · Light</span>
+          <span class="bf-row-chevron"><svg width="16" height="16"><use href="#icon-chevron-right"/></svg></span>
+        </div>
+      </div>
+      <div class="bf-row bf-row--standard">
+        <div class="bf-row-leading bf-row-leading--icon-bg"><svg width="18" height="18"><use href="#icon-headphones"/></svg></div>
+        <div class="bf-row-content"><div class="bf-row-label">Default voice</div></div>
+        <div class="bf-row-trailing">
+          <span class="bf-row-hint">Sarah</span>
+          <span class="bf-row-chevron"><svg width="16" height="16"><use href="#icon-chevron-right"/></svg></span>
+        </div>
+      </div>
+      <div class="bf-row bf-row--standard">
+        <div class="bf-row-leading bf-row-leading--icon-bg"><svg width="18" height="18"><use href="#icon-globe"/></svg></div>
+        <div class="bf-row-content"><div class="bf-row-label">Translation language</div></div>
+        <div class="bf-row-trailing">
+          <span class="bf-row-hint">Twi</span>
+          <span class="bf-row-chevron"><svg width="16" height="16"><use href="#icon-chevron-right"/></svg></span>
+        </div>
+      </div>
+    </div>
+    
+    <table class="token-table">
+      <thead><tr><th>Slot</th><th>Content</th><th>Notes</th></tr></thead>
+      <tbody>
+        <tr><td>Leading</td><td>Icon-with-bg (32×32, cream-100, r6, icon 18px)</td><td>Sometimes icon-only or empty for sub-pages</td></tr>
+        <tr><td>Content</td><td>Label only</td><td>14px · 500 weight</td></tr>
+        <tr><td>Trailing</td><td>Hint (ink-500) + chevron (ink-300)</td><td>Hint shows current value</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- 02 Toggle -->
+<section class="section" style="margin-bottom: 56px;">
+  <div class="spec-card">
+    <h3>02 · Toggle pattern</h3>
+    <p class="lede">Row controls a binary on/off setting. Includes optional descriptive sub-label explaining what the toggle does. Used for Notification preferences, Resume audio after calls, Daily reading reminder.</p>
+    
+    <div class="bf-list">
+      <div class="bf-row bf-row--standard">
+        <div class="bf-row-content">
+          <div class="bf-row-label">Daily reading reminder</div>
+          <div class="bf-row-sublabel">8:00 PM</div>
+        </div>
+        <div class="bf-row-trailing"><div class="bf-toggle is-on"></div></div>
+      </div>
+      <div class="bf-row bf-row--standard">
+        <div class="bf-row-content">
+          <div class="bf-row-label">Usage warnings</div>
+          <div class="bf-row-sublabel">When near monthly limits</div>
+        </div>
+        <div class="bf-row-trailing"><div class="bf-toggle is-on"></div></div>
+      </div>
+      <div class="bf-row bf-row--standard">
+        <div class="bf-row-content">
+          <div class="bf-row-label">Product updates</div>
+          <div class="bf-row-sublabel">Occasional, never spammy</div>
+        </div>
+        <div class="bf-row-trailing"><div class="bf-toggle"></div></div>
+      </div>
+      <div class="bf-row bf-row--standard">
+        <div class="bf-row-content"><div class="bf-row-label">Resume audio after calls</div></div>
+        <div class="bf-row-trailing"><div class="bf-toggle is-on"></div></div>
+      </div>
+    </div>
+    
+    <table class="token-table">
+      <thead><tr><th>Slot</th><th>Content</th><th>Notes</th></tr></thead>
+      <tbody>
+        <tr><td>Leading</td><td>Empty (typical) or icon</td><td>Toggle rows are usually icon-less for cleaner reading</td></tr>
+        <tr><td>Content</td><td>Label + optional sub-label</td><td>Sub-label explains what toggle does</td></tr>
+        <tr><td>Trailing</td><td>Toggle (36×22, forest-800 when on)</td><td>Tap anywhere on row toggles the switch</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- 03 Action -->
+<section class="section" style="margin-bottom: 56px;">
+  <div class="spec-card">
+    <h3>03 · Action pattern</h3>
+    <p class="lede">Tap performs an action immediately — no chevron, because there's nothing to drill into. Used for "Restore purchases," "Export my data," "Send feedback," and similar one-shot actions.</p>
+    
+    <div class="bf-list">
+      <div class="bf-row bf-row--standard">
+        <div class="bf-row-leading bf-row-leading--icon-bg"><svg width="18" height="18"><use href="#icon-credit-card"/></svg></div>
+        <div class="bf-row-content"><div class="bf-row-label">Restore purchases</div></div>
+      </div>
+      <div class="bf-row bf-row--standard">
+        <div class="bf-row-leading bf-row-leading--icon-bg"><svg width="18" height="18"><use href="#icon-arrow-up-down"/></svg></div>
+        <div class="bf-row-content">
+          <div class="bf-row-label">Export my data</div>
+          <div class="bf-row-sublabel">Download library, summaries, and chat history</div>
+        </div>
+      </div>
+      <div class="bf-row bf-row--standard">
+        <div class="bf-row-leading bf-row-leading--icon-bg"><svg width="18" height="18"><use href="#icon-mail"/></svg></div>
+        <div class="bf-row-content"><div class="bf-row-label">Send feedback</div></div>
+      </div>
+    </div>
+    
+    <table class="token-table">
+      <thead><tr><th>Slot</th><th>Content</th><th>Notes</th></tr></thead>
+      <tbody>
+        <tr><td>Leading</td><td>Icon-with-bg (semantically meaningful)</td><td>Helps differentiate actions visually</td></tr>
+        <tr><td>Content</td><td>Label + optional sub-label</td><td>Sub-label clarifies what the action does</td></tr>
+        <tr><td>Trailing</td><td>Empty</td><td>No chevron — chevron implies "drills into more"</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- 04 Selection -->
+<section class="section" style="margin-bottom: 56px;">
+  <div class="spec-card">
+    <h3>04 · Selection pattern</h3>
+    <p class="lede">User picks one option from a list. Selected item shows a check or filled radio. Used in Voice picker, Sort & filter, Practice questions config.</p>
+    
+    <p style="font-size: 11px; color: var(--ink-500); text-transform: uppercase; letter-spacing: 0.05em; font-weight: 500; margin-bottom: 8px;">Variant A · Trailing checkmark</p>
+    <div class="bf-list" style="margin-bottom: 24px;">
+      <div class="bf-row bf-row--standard is-selected">
+        <div class="bf-row-leading bf-row-leading--icon-bg"><svg width="18" height="18"><use href="#icon-headphones"/></svg></div>
+        <div class="bf-row-content">
+          <div class="bf-row-label">Sarah</div>
+          <div class="bf-row-sublabel">Warm, neutral · Free</div>
+        </div>
+        <div class="bf-row-trailing"><span class="bf-row-check"><svg width="18" height="18"><use href="#icon-check"/></svg></span></div>
+      </div>
+      <div class="bf-row bf-row--standard">
+        <div class="bf-row-leading bf-row-leading--icon-bg"><svg width="18" height="18"><use href="#icon-lock"/></svg></div>
+        <div class="bf-row-content">
+          <div class="bf-row-label">Daniel</div>
+          <div class="bf-row-sublabel">Deep, calm</div>
+        </div>
+        <div class="bf-row-trailing"><span class="bf-row-badge bf-row-badge--locked">Pro</span></div>
+      </div>
+      <div class="bf-row bf-row--standard">
+        <div class="bf-row-leading bf-row-leading--icon-bg"><svg width="18" height="18"><use href="#icon-lock"/></svg></div>
+        <div class="bf-row-content">
+          <div class="bf-row-label">Maya</div>
+          <div class="bf-row-sublabel">Bright, energetic</div>
+        </div>
+        <div class="bf-row-trailing"><span class="bf-row-badge bf-row-badge--locked">Pro</span></div>
+      </div>
+    </div>
+    
+    <p style="font-size: 11px; color: var(--ink-500); text-transform: uppercase; letter-spacing: 0.05em; font-weight: 500; margin-bottom: 8px;">Variant B · Leading radio</p>
+    <div class="bf-list">
+      <div class="bf-row bf-row--standard">
+        <div class="bf-row-leading">
+          <div class="bf-row-leading--radio is-on">
+            <svg width="10" height="10"><use href="#icon-check"/></svg>
+          </div>
+        </div>
+        <div class="bf-row-content">
+          <div class="bf-row-label">Sequential</div>
+          <div class="bf-row-sublabel">Recommended · in chapter order</div>
+        </div>
+      </div>
+      <div class="bf-row bf-row--standard">
+        <div class="bf-row-leading"><div class="bf-row-leading--radio"></div></div>
+        <div class="bf-row-content">
+          <div class="bf-row-label">Randomized</div>
+          <div class="bf-row-sublabel">Exam-prep mode</div>
+        </div>
+      </div>
+    </div>
+    
+    <table class="token-table">
+      <thead><tr><th>Slot</th><th>Variant A</th><th>Variant B</th></tr></thead>
+      <tbody>
+        <tr><td>Leading</td><td>Icon-with-bg or empty</td><td>Radio circle (20×20)</td></tr>
+        <tr><td>Content</td><td>Label + sub-label</td><td>Label + sub-label</td></tr>
+        <tr><td>Trailing</td><td>Checkmark (selected) or badge</td><td>Empty</td></tr>
+        <tr><td>Selected state</td><td>forest-50 background tint</td><td>forest-50 background tint</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- 05 Destructive -->
+<section class="section" style="margin-bottom: 56px;">
+  <div class="spec-card">
+    <h3>05 · Destructive pattern</h3>
+    <p class="lede">Red label, no leading icon, often a single row at the bottom of a list. Always opens a confirmation sheet before firing. Used for Sign out, Delete account, Remove book, Clear conversation.</p>
+    
+    <div class="bf-list">
+      <div class="bf-row bf-row--standard">
+        <div class="bf-row-content"><div class="bf-row-label bf-row-label--destructive">Sign out</div></div>
+      </div>
+      <div class="bf-row bf-row--standard">
+        <div class="bf-row-content"><div class="bf-row-label bf-row-label--destructive">Delete account</div></div>
+      </div>
+    </div>
+    
+    <div style="background: var(--cream-50); border: 0.5px solid var(--ink-200); border-radius: 8px; padding: 12px 14px; margin-top: 16px; display: flex; gap: 10px; align-items: flex-start;">
+      <span style="color: var(--forest-800); flex-shrink: 0;"><svg width="14" height="14"><use href="#icon-info"/></svg></span>
+      <div style="font-size: 12px; color: var(--ink-700); line-height: 1.5;">Destructive rows always trigger a confirmation sheet (per <code style="font-family: monospace; font-size: 11px;">bottom-sheet rule 02</code>) — never fire the action immediately on tap.</div>
+    </div>
+  </div>
+</section>
+
+<!-- 06 Status -->
+<section class="section" style="margin-bottom: 56px;">
+  <div class="spec-card">
+    <h3>06 · Status pattern</h3>
+    <p class="lede">Read-only or status-bearing row. Trailing slot shows a badge (Pro, New, Verified) or a static value. Used in Account & subscription (plan status), book detail (read time), Voice picker (free vs. Pro voices).</p>
+    
+    <div class="bf-list">
+      <div class="bf-row bf-row--standard">
+        <div class="bf-row-leading bf-row-leading--icon-bg"><svg width="18" height="18"><use href="#icon-credit-card"/></svg></div>
+        <div class="bf-row-content">
+          <div class="bf-row-label">Current plan</div>
+          <div class="bf-row-sublabel">Limited · resets monthly</div>
+        </div>
+        <div class="bf-row-trailing"><span class="bf-row-badge">Free</span></div>
+      </div>
+      <div class="bf-row bf-row--standard">
+        <div class="bf-row-leading bf-row-leading--icon-bg"><svg width="18" height="18"><use href="#icon-mail"/></svg></div>
+        <div class="bf-row-content">
+          <div class="bf-row-label">Email</div>
+          <div class="bf-row-sublabel">ama.m@gmail.com</div>
+        </div>
+        <div class="bf-row-trailing"><span class="bf-row-check"><svg width="14" height="14"><use href="#icon-check"/></svg></span></div>
+      </div>
+      <div class="bf-row bf-row--standard">
+        <div class="bf-row-leading bf-row-leading--icon-bg"><svg width="18" height="18"><use href="#icon-bell"/></svg></div>
+        <div class="bf-row-content"><div class="bf-row-label">Daily reminder</div></div>
+        <div class="bf-row-trailing"><span class="bf-row-badge bf-row-badge--new">New</span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Two sizes -->
+<section class="section">
+  <div class="section-label">Two sizes</div>
+  <h2 class="section-title">Standard and compact.</h2>
+  <p class="section-description">Standard (56px) is the default. Compact (48px) is for dense lists where breathing room matters less than seeing more rows at once — typically pickers and FAQ lists.</p>
+  
+  <div class="spec-card">
+    <p style="font-size: 11px; color: var(--ink-500); text-transform: uppercase; letter-spacing: 0.05em; font-weight: 500; margin-bottom: 8px;">Standard · 56px</p>
+    <div class="bf-list" style="margin-bottom: 24px;">
+      <div class="bf-row bf-row--standard">
+        <div class="bf-row-leading bf-row-leading--icon-bg"><svg width="18" height="18"><use href="#icon-help"/></svg></div>
+        <div class="bf-row-content"><div class="bf-row-label">Help & FAQ</div></div>
+        <div class="bf-row-trailing"><span class="bf-row-chevron"><svg width="16" height="16"><use href="#icon-chevron-right"/></svg></span></div>
+      </div>
+      <div class="bf-row bf-row--standard">
+        <div class="bf-row-leading bf-row-leading--icon-bg"><svg width="18" height="18"><use href="#icon-mail"/></svg></div>
+        <div class="bf-row-content"><div class="bf-row-label">Send feedback</div></div>
+        <div class="bf-row-trailing"><span class="bf-row-chevron"><svg width="16" height="16"><use href="#icon-chevron-right"/></svg></span></div>
+      </div>
+    </div>
+    
+    <p style="font-size: 11px; color: var(--ink-500); text-transform: uppercase; letter-spacing: 0.05em; font-weight: 500; margin-bottom: 8px;">Compact · 48px</p>
+    <div class="bf-list">
+      <div class="bf-row bf-row--compact">
+        <div class="bf-row-content"><div class="bf-row-label bf-row-label--compact">How do I cancel my subscription?</div></div>
+        <div class="bf-row-trailing"><span class="bf-row-chevron"><svg width="14" height="14"><use href="#icon-chevron-right"/></svg></span></div>
+      </div>
+      <div class="bf-row bf-row--compact">
+        <div class="bf-row-content"><div class="bf-row-label bf-row-label--compact">Why is my audio limited?</div></div>
+        <div class="bf-row-trailing"><span class="bf-row-chevron"><svg width="14" height="14"><use href="#icon-chevron-right"/></svg></span></div>
+      </div>
+      <div class="bf-row bf-row--compact">
+        <div class="bf-row-content"><div class="bf-row-label bf-row-label--compact">Can I use Bookflow offline?</div></div>
+        <div class="bf-row-trailing"><span class="bf-row-chevron"><svg width="14" height="14"><use href="#icon-chevron-right"/></svg></span></div>
+      </div>
+      <div class="bf-row bf-row--compact">
+        <div class="bf-row-content"><div class="bf-row-label bf-row-label--compact">How accurate are AI summaries?</div></div>
+        <div class="bf-row-trailing"><span class="bf-row-chevron"><svg width="14" height="14"><use href="#icon-chevron-right"/></svg></span></div>
+      </div>
+    </div>
+    
+    <table class="token-table">
+      <thead><tr><th>Token</th><th>Standard</th><th>Compact</th></tr></thead>
+      <tbody>
+        <tr><td>min-height</td><td>56px</td><td>48px</td></tr>
+        <tr><td>Label font</td><td>14px / 500 weight</td><td>13px / 400 weight</td></tr>
+        <tr><td>Sub-label</td><td>11px / 400 (when present)</td><td>10px / 400 (rarely used)</td></tr>
+        <tr><td>Padding-x</td><td>14px</td><td>14px (consistent)</td></tr>
+        <tr><td>Leading icon-bg size</td><td>32×32</td><td>28×28 (when present)</td></tr>
+        <tr><td>Used for</td><td>Settings, Account, Library</td><td>FAQ, dense pickers, short lists</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- States -->
+<section class="section">
+  <div class="section-label">Four states</div>
+  <h2 class="section-title">Default, pressed, disabled, selected.</h2>
+  <p class="section-description">Hover doesn't really apply to mobile — the equivalent is the brief "pressed" feedback when a finger lands on a row. Disabled is rare but used for unavailable options. Selected is the picker pattern's active state.</p>
+  
+  <div class="spec-card">
+    <div class="states-grid">
+      <div class="state-cell">
+        <div class="state-label">01 · Default</div>
+        <div class="bf-list">
+          <div class="bf-row bf-row--standard">
+            <div class="bf-row-leading bf-row-leading--icon-bg"><svg width="18" height="18"><use href="#icon-text"/></svg></div>
+            <div class="bf-row-content"><div class="bf-row-label">Reading display</div></div>
+            <div class="bf-row-trailing">
+              <span class="bf-row-hint">Sans-serif</span>
+              <span class="bf-row-chevron"><svg width="16" height="16"><use href="#icon-chevron-right"/></svg></span>
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      <div class="state-cell">
+        <div class="state-label">02 · Pressed</div>
+        <div class="bf-list">
+          <div class="bf-row bf-row--standard is-pressed">
+            <div class="bf-row-leading bf-row-leading--icon-bg"><svg width="18" height="18"><use href="#icon-text"/></svg></div>
+            <div class="bf-row-content"><div class="bf-row-label">Reading display</div></div>
+            <div class="bf-row-trailing">
+              <span class="bf-row-hint">Sans-serif</span>
+              <span class="bf-row-chevron"><svg width="16" height="16"><use href="#icon-chevron-right"/></svg></span>
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      <div class="state-cell">
+        <div class="state-label">03 · Disabled</div>
+        <div class="bf-list">
+          <div class="bf-row bf-row--standard is-disabled">
+            <div class="bf-row-leading bf-row-leading--icon-bg"><svg width="18" height="18"><use href="#icon-globe"/></svg></div>
+            <div class="bf-row-content">
+              <div class="bf-row-label">Translation language</div>
+              <div class="bf-row-sublabel">Available with Pro</div>
+            </div>
+            <div class="bf-row-trailing"><span class="bf-row-chevron"><svg width="16" height="16"><use href="#icon-chevron-right"/></svg></span></div>
+          </div>
+        </div>
+      </div>
+      
+      <div class="state-cell">
+        <div class="state-label">04 · Selected</div>
+        <div class="bf-list">
+          <div class="bf-row bf-row--standard is-selected">
+            <div class="bf-row-leading bf-row-leading--icon-bg"><svg width="18" height="18"><use href="#icon-headphones"/></svg></div>
+            <div class="bf-row-content">
+              <div class="bf-row-label">Sarah</div>
+              <div class="bf-row-sublabel">Warm, neutral · Free</div>
+            </div>
+            <div class="bf-row-trailing"><span class="bf-row-check"><svg width="18" height="18"><use href="#icon-check"/></svg></span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    
+    <table class="token-table">
+      <thead><tr><th>State</th><th>Background</th><th>Notes</th></tr></thead>
+      <tbody>
+        <tr><td>Default</td><td>cream-50</td><td>—</td></tr>
+        <tr><td>Hovered (web)</td><td>cream-100</td><td>Subtle warm-up on hover</td></tr>
+        <tr><td>Pressed</td><td>cream-200</td><td>100ms ease transition</td></tr>
+        <tr><td>Disabled</td><td>cream-50 · 50% opacity</td><td>cursor not-allowed; sub-label often explains why</td></tr>
+        <tr><td>Selected</td><td>forest-50</td><td>Used by Selection pattern only</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- In context -->
+<section class="section">
+  <div class="section-label">In context</div>
+  <h2 class="section-title">A real screen, made of list rows.</h2>
+  <p class="section-description">The Settings screen, fully assembled from the patterns above. Every row is one of the six. Section headers (small uppercase labels) group rows into related sets — they aren't part of the row component but live in the list container.</p>
+  
+  <div class="phones-row">
+    <div class="phone-wrap">
+      <div class="phone-label">Settings · all six patterns</div>
+      <div class="phone">
+        <div class="status-bar"><span>9:41</span><span>•••</span></div>
+        <div class="phone-header">
+          <div class="phone-back">‹</div>
+          <div class="phone-title">Settings</div>
+        </div>
+        <div class="phone-content">
+          
+          <div class="bf-list-section-label">Reading & audio</div>
+          <div class="bf-list">
+            <div class="bf-row bf-row--standard">
+              <div class="bf-row-leading bf-row-leading--icon-bg"><svg width="18" height="18"><use href="#icon-text"/></svg></div>
+              <div class="bf-row-content"><div class="bf-row-label">Reading display</div></div>
+              <div class="bf-row-trailing">
+                <span class="bf-row-hint">Sans-serif</span>
+                <span class="bf-row-chevron"><svg width="14" height="14"><use href="#icon-chevron-right"/></svg></span>
+              </div>
+            </div>
+            <div class="bf-row bf-row--standard">
+              <div class="bf-row-leading bf-row-leading--icon-bg"><svg width="18" height="18"><use href="#icon-headphones"/></svg></div>
+              <div class="bf-row-content"><div class="bf-row-label">Default voice</div></div>
+              <div class="bf-row-trailing">
+                <span class="bf-row-hint">Sarah</span>
+                <span class="bf-row-chevron"><svg width="14" height="14"><use href="#icon-chevron-right"/></svg></span>
+              </div>
+            </div>
+            <div class="bf-row bf-row--standard">
+              <div class="bf-row-content"><div class="bf-row-label">Resume audio after calls</div></div>
+              <div class="bf-row-trailing"><div class="bf-toggle is-on"></div></div>
+            </div>
+          </div>
+          
+          <div class="bf-list-section-label">Notifications</div>
+          <div class="bf-list">
+            <div class="bf-row bf-row--standard">
+              <div class="bf-row-content">
+                <div class="bf-row-label">Daily reading reminder</div>
+                <div class="bf-row-sublabel">8:00 PM</div>
+              </div>
+              <div class="bf-row-trailing"><div class="bf-toggle is-on"></div></div>
+            </div>
+            <div class="bf-row bf-row--standard">
+              <div class="bf-row-content">
+                <div class="bf-row-label">Product updates</div>
+                <div class="bf-row-sublabel">Occasional, never spammy</div>
+              </div>
+              <div class="bf-row-trailing"><div class="bf-toggle"></div></div>
+            </div>
+          </div>
+          
+          <div class="bf-list-section-label">Subscription</div>
+          <div class="bf-list">
+            <div class="bf-row bf-row--standard">
+              <div class="bf-row-leading bf-row-leading--icon-bg"><svg width="18" height="18"><use href="#icon-credit-card"/></svg></div>
+              <div class="bf-row-content"><div class="bf-row-label">Current plan</div></div>
+              <div class="bf-row-trailing"><span class="bf-row-badge">Free</span></div>
+            </div>
+            <div class="bf-row bf-row--standard">
+              <div class="bf-row-leading bf-row-leading--icon-bg"><svg width="18" height="18"><use href="#icon-credit-card"/></svg></div>
+              <div class="bf-row-content"><div class="bf-row-label">Restore purchases</div></div>
+            </div>
+          </div>
+          
+          <div class="bf-list-section-label">Account</div>
+          <div class="bf-list">
+            <div class="bf-row bf-row--standard">
+              <div class="bf-row-content"><div class="bf-row-label bf-row-label--destructive">Sign out</div></div>
+            </div>
+            <div class="bf-row bf-row--standard">
+              <div class="bf-row-content"><div class="bf-row-label bf-row-label--destructive">Delete account</div></div>
+            </div>
+          </div>
+          
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Rules -->
+<section class="section">
+  <div class="section-label">Usage rules</div>
+  <h2 class="section-title">Six rules.</h2>
+  <p class="section-description">Constraints that prevent the most common ways list-row systems fragment over time.</p>
+  
+  <div class="spec-card">
+    <ol style="list-style: none; padding-left: 0; counter-reset: rule;">
+      <li style="padding: 16px 0; border-bottom: 0.5px solid var(--ink-200); counter-increment: rule; padding-left: 32px; position: relative;">
+        <span style="position: absolute; left: 0; top: 16px; font-family: var(--font-display); font-size: 18px; font-weight: 500; color: var(--forest-800); font-variation-settings: 'opsz' 24;">01</span>
+        <div style="font-size: 13px; font-weight: 500; color: var(--ink-900); margin-bottom: 4px;">Every row maps to exactly one of the six patterns.</div>
+        <div style="font-size: 12px; color: var(--ink-500); line-height: 1.5;">If a new context "needs" a 7th pattern, the patterns are wrong — revisit the system. Don't invent one-offs.</div>
+      </li>
+      <li style="padding: 16px 0; border-bottom: 0.5px solid var(--ink-200); counter-increment: rule; padding-left: 32px; position: relative;">
+        <span style="position: absolute; left: 0; top: 16px; font-family: var(--font-display); font-size: 18px; font-weight: 500; color: var(--forest-800); font-variation-settings: 'opsz' 24;">02</span>
+        <div style="font-size: 13px; font-weight: 500; color: var(--ink-900); margin-bottom: 4px;">Chevrons mean "drills into more" — never use them for actions.</div>
+        <div style="font-size: 12px; color: var(--ink-500); line-height: 1.5;">Restore purchases doesn't get a chevron. Settings → Display does. The chevron is a navigation affordance, not a generic tap indicator.</div>
+      </li>
+      <li style="padding: 16px 0; border-bottom: 0.5px solid var(--ink-200); counter-increment: rule; padding-left: 32px; position: relative;">
+        <span style="position: absolute; left: 0; top: 16px; font-family: var(--font-display); font-size: 18px; font-weight: 500; color: var(--forest-800); font-variation-settings: 'opsz' 24;">03</span>
+        <div style="font-size: 13px; font-weight: 500; color: var(--ink-900); margin-bottom: 4px;">Tap target is the entire row, not just the label.</div>
+        <div style="font-size: 12px; color: var(--ink-500); line-height: 1.5;">Including toggle rows — tapping anywhere on a toggle row should flip the switch. The toggle still animates, but the entire row is the hit area.</div>
+      </li>
+      <li style="padding: 16px 0; border-bottom: 0.5px solid var(--ink-200); counter-increment: rule; padding-left: 32px; position: relative;">
+        <span style="position: absolute; left: 0; top: 16px; font-family: var(--font-display); font-size: 18px; font-weight: 500; color: var(--forest-800); font-variation-settings: 'opsz' 24;">04</span>
+        <div style="font-size: 13px; font-weight: 500; color: var(--ink-900); margin-bottom: 4px;">Disabled rows must explain why in the sub-label.</div>
+        <div style="font-size: 12px; color: var(--ink-500); line-height: 1.5;">"Translation language" disabled with sub-label "Available with Pro" — never just dim a row without context. Mystery is friction.</div>
+      </li>
+      <li style="padding: 16px 0; border-bottom: 0.5px solid var(--ink-200); counter-increment: rule; padding-left: 32px; position: relative;">
+        <span style="position: absolute; left: 0; top: 16px; font-family: var(--font-display); font-size: 18px; font-weight: 500; color: var(--forest-800); font-variation-settings: 'opsz' 24;">05</span>
+        <div style="font-size: 13px; font-weight: 500; color: var(--ink-900); margin-bottom: 4px;">Destructive rows always trigger confirmation, never fire on tap.</div>
+        <div style="font-size: 12px; color: var(--ink-500); line-height: 1.5;">Sign out, Delete account, Remove book — all open a confirmation bottom sheet. The row is the trigger, not the action.</div>
+      </li>
+      <li style="padding: 16px 0; counter-increment: rule; padding-left: 32px; position: relative;">
+        <span style="position: absolute; left: 0; top: 16px; font-family: var(--font-display); font-size: 18px; font-weight: 500; color: var(--forest-800); font-variation-settings: 'opsz' 24;">06</span>
+        <div style="font-size: 13px; font-weight: 500; color: var(--ink-900); margin-bottom: 4px;">Group related rows with section labels, never mix patterns within a single list.</div>
+        <div style="font-size: 12px; color: var(--ink-500); line-height: 1.5;">Toggles in their own list, settings rows in another, destructive at the bottom. Mixing patterns in one bordered list creates visual noise.</div>
+      </li>
+    </ol>
+  </div>
+</section>
+
+<!-- Tokens -->
+<section class="section">
+  <div class="section-label">Implementation tokens</div>
+  <h2 class="section-title">For engineering.</h2>
+  
+  <div class="spec-card">
+    <table class="token-table">
+      <thead><tr><th>Token</th><th>Value</th><th>Used by</th></tr></thead>
+      <tbody>
+        <tr><td>--bf-row-min-height-standard</td><td>56px</td><td>Standard size</td></tr>
+        <tr><td>--bf-row-min-height-compact</td><td>48px</td><td>Compact size</td></tr>
+        <tr><td>--bf-row-padding-x</td><td>14px</td><td>All sizes</td></tr>
+        <tr><td>--bf-row-gap</td><td>12px</td><td>Between slots</td></tr>
+        <tr><td>--bf-row-label-font</td><td>14px / 500</td><td>Standard label</td></tr>
+        <tr><td>--bf-row-label-font-compact</td><td>13px / 400</td><td>Compact label</td></tr>
+        <tr><td>--bf-row-sublabel-font</td><td>11px / 400</td><td>Sub-label</td></tr>
+        <tr><td>--bf-row-bg-default</td><td>--cream-50</td><td>Default state</td></tr>
+        <tr><td>--bf-row-bg-pressed</td><td>--cream-200</td><td>Pressed state</td></tr>
+        <tr><td>--bf-row-bg-selected</td><td>--forest-50</td><td>Selected state</td></tr>
+        <tr><td>--bf-row-divider</td><td>0.5px solid --ink-200</td><td>Between rows in a list</td></tr>
+        <tr><td>--bf-row-leading-icon-bg-size</td><td>32×32 (28×28 compact)</td><td>Icon-with-bg variant</td></tr>
+        <tr><td>--bf-row-leading-icon-size</td><td>18px (16px compact)</td><td>Icon glyph</td></tr>
+        <tr><td>--bf-row-chevron-size</td><td>16px (14px compact)</td><td>Trailing chevron</td></tr>
+        <tr><td>--bf-row-chevron-color</td><td>--ink-300</td><td>Chevron stroke</td></tr>
+        <tr><td>--bf-row-transition</td><td>100ms ease (background)</td><td>Pressed feedback</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<footer class="footer">
+  Bookflow list row system v1.0 · One anatomy · Six patterns · Two sizes · Four states
+</footer>
+
+</div>
+
+</body>
+</html>
