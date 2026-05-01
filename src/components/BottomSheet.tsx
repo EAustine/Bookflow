@@ -106,11 +106,11 @@ const styles = StyleSheet.create({
     fontSize: tokens.fontSizes.display.sm,
     fontWeight: '500',
     color: tokens.colors.ink[900],
-    paddingTop: tokens.spacing[2],
-    paddingBottom: tokens.spacing[3],
+    paddingTop: tokens.space.sm,
+    paddingBottom: tokens.space.md,
   },
   footer: {
-    paddingTop: tokens.spacing[4],
-    gap: tokens.spacing[2],
+    paddingTop: tokens.space.lg,
+    gap: tokens.space.sm,
   },
 });

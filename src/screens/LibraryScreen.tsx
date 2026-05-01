@@ -1174,7 +1174,7 @@ const styles = StyleSheet.create({
     gap: 10,
     paddingHorizontal: tokens.space.lg,
     paddingVertical: 10,
-    borderBottomWidth: 0.5,
+    borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: tokens.borderColors.subtle,
     backgroundColor: tokens.bgColors.canvas,
   },
@@ -1246,7 +1246,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: tokens.space.xs,
   },
   recentChipBorder: {
-    borderBottomWidth: 0.5,
+    borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: tokens.borderColors.subtle,
   },
   recentChipLabel: {
@@ -1271,7 +1271,7 @@ const styles = StyleSheet.create({
   resultList: {
     marginHorizontal: tokens.space.lg,
     borderRadius: tokens.radii.xl,
-    borderWidth: 0.5,
+    borderWidth: StyleSheet.hairlineWidth,
     borderColor: tokens.borderColors.subtle,
     overflow: 'hidden',
     backgroundColor: tokens.bgColors.canvas,
@@ -1441,13 +1441,13 @@ const styles = StyleSheet.create({
   // Book list
   bookList: {
     borderRadius: tokens.radii.xl,
-    borderWidth: 0.5,
+    borderWidth: StyleSheet.hairlineWidth,
     borderColor: tokens.borderColors.subtle,
     overflow: 'hidden',
     backgroundColor: tokens.bgColors.canvas,
   },
   bookDivider: {
-    height: 0.5,
+    height: StyleSheet.hairlineWidth,
     backgroundColor: tokens.borderColors.subtle,
   },
   bookRow: {
@@ -1556,7 +1556,7 @@ const styles = StyleSheet.create({
     color: tokens.textColors.subtle,
   },
   sheetDivider: {
-    height: 0.5,
+    height: StyleSheet.hairlineWidth,
     backgroundColor: tokens.borderColors.subtle,
     marginBottom: tokens.space.lg,
   },

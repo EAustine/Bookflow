@@ -48,8 +48,19 @@ export const colors = {
     50: '#FAF1E0',
   },
 
+  // Sepia reader theme
+  sepia: {
+    bg: '#F3ECD9',
+    surface: '#EDE4CF',
+    text: '#3A2D1E',
+    muted: '#7A6A52',
+    subtle: '#9C8A6E',
+    border: '#DDD0B8',
+  },
+
   // Semantic
   error: '#B5453A',
+  errorPressed: '#9C3B30',
   errorBg: '#FBEAE7',
   success: '#2D7A4F',
   successBg: '#E8F4ED',
