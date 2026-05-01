@@ -31,6 +31,7 @@ import { mockBooks } from '~/data/mockBooks';
 import type { Book } from '~/types/book';
 import { ReaderScreen } from '~/screens/ReaderScreen';
 import { ListenScreen, MiniPlayer } from '~/screens/ListenScreen';
+import { SoftWarningBanner } from '~/screens/PaywallScreen';
 
 type SortKey = 'recent' | 'added' | 'title' | 'progress';
 type FilterKey = 'all' | 'in-progress' | 'not-started' | 'finished';
@@ -49,11 +50,13 @@ const SORT_LABELS: Record<SortKey, string> = {
 export type LibraryScreenProps = {
   onTabChange: (tab: TabKey) => void;
   userName?: string;
+  onUpgrade?: () => void;
 };
 
-export function LibraryScreen({ onTabChange, userName }: LibraryScreenProps) {
+export function LibraryScreen({ onTabChange, userName, onUpgrade }: LibraryScreenProps) {
   const [selectedBook, setSelectedBook] = useState<Book | null>(null);
   const [listeningBook, setListeningBook] = useState<Book | null>(null);
+  const [showBanner, setShowBanner] = useState(true);
   const [miniPlayerBook, setMiniPlayerBook] = useState<Book | null>(null);
   const [appliedSort, setAppliedSort] = useState<SortKey>('recent');
   const [appliedFilter, setAppliedFilter] = useState<FilterKey>('all');
@@ -267,6 +270,13 @@ export function LibraryScreen({ onTabChange, userName }: LibraryScreenProps) {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
+        {showBanner && onUpgrade && (
+          <SoftWarningBanner
+            minutesLeft={18}
+            onUpgrade={onUpgrade}
+            onDismiss={() => setShowBanner(false)}
+          />
+        )}
         <Header onSearch={openSearch} onFilter={openSheet} onAdd={() => {}} />
         {continueBook && <ContinueCard book={continueBook} onOpen={setSelectedBook} />}
         <SectionHeader

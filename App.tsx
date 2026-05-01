@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import Constants from 'expo-constants';
 import { StatusBar } from 'expo-status-bar';
-import { LogBox, Platform, StyleSheet } from 'react-native';
+import { LogBox, Platform, StyleSheet, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { BottomSheetModalProvider } from '@gorhom/bottom-sheet';
@@ -29,6 +29,8 @@ import { supabase } from '~/lib/supabase';
 import type { TabKey } from '~/components';
 import { AuthCallbackScreen } from '~/screens/AuthCallbackScreen';
 import { ComingSoonScreen } from '~/screens/ComingSoonScreen';
+import { DiscoverScreen } from '~/screens/DiscoverScreen';
+import { PaywallPlanScreen } from '~/screens/PaywallScreen';
 import { LibraryScreen } from '~/screens/LibraryScreen';
 import { OnboardingFirstBookScreen } from '~/screens/OnboardingFirstBookScreen';
 import { OnboardingIntentScreen } from '~/screens/OnboardingIntentScreen';
@@ -91,6 +93,7 @@ export default function App() {
   // so future deep-links (e.g. "open Bookflow on the You tab") have one
   // setter to call.
   const [activeTab, setActiveTab] = useState<TabKey>('library');
+  const [paywallVisible, setPaywallVisible] = useState(false);
   const [callbackError, setCallbackError] = useState<AuthExchangeErrorKind>('unknown');
   // Functional setter so a late-firing splash timer can't drag us back to
   // 'welcome' after the deep-link handler has already moved past splash.
@@ -279,6 +282,7 @@ export default function App() {
                 <LibraryScreen
                   onTabChange={setActiveTab}
                   userName={MOCK_PROFILE.name}
+                  onUpgrade={() => setPaywallVisible(true)}
                 />
               )}
               {activeTab === 'you' && (
@@ -289,13 +293,18 @@ export default function App() {
                   onSignOut={handleSignOut}
                 />
               )}
-              {(activeTab === 'discover' || activeTab === 'listen') && (
-                <ComingSoonScreen
-                  tab={activeTab}
-                  onTabChange={setActiveTab}
-                />
+              {activeTab === 'discover' && (
+                <DiscoverScreen onTabChange={setActiveTab} />
+              )}
+              {activeTab === 'listen' && (
+                <ComingSoonScreen tab="listen" onTabChange={setActiveTab} />
               )}
             </>
+          )}
+          {paywallVisible && (
+            <View style={styles.paywallOverlay}>
+              <PaywallPlanScreen onClose={() => setPaywallVisible(false)} />
+            </View>
           )}
           <StatusBar style="dark" />
         </BottomSheetModalProvider>
@@ -307,5 +316,9 @@ export default function App() {
 const styles = StyleSheet.create({
   root: {
     flex: 1,
+  },
+  paywallOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 100,
   },
 });

@@ -8,7 +8,9 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { BottomSheet, type BottomSheetRef, Icon, Text } from '~/components';
+import { BottomSheet, ChapterSheet, type BottomSheetRef, Icon, Text } from '~/components';
+import { AIToolsSheet, SummaryScreen, ChatScreen } from '~/screens/AIToolsScreen';
+import { PracticeQuestionsScreen } from '~/screens/PracticeQuestionsScreen';
 import { tokens } from '~/design/tokens';
 import type { Book } from '~/types/book';
 import {
@@ -103,7 +105,10 @@ export function ReaderScreen({ book, onBack, onListen }: ReaderScreenProps) {
     useReaderStore();
 
   const [tappedWord, setTappedWord] = useState<string | null>(null);
+  const [aiMode, setAIMode] = useState<'summary' | 'chat' | 'practice' | null>(null);
   const typoSheetRef = useRef<BottomSheetRef>(null);
+  const chapterSheetRef = useRef<BottomSheetRef>(null);
+  const aiSheetRef = useRef<BottomSheetRef>(null);
 
   const palette = THEME[theme];
   const chapter = CHAPTER_CONTENT[book.id] ?? FALLBACK_CHAPTER;
@@ -127,6 +132,16 @@ export function ReaderScreen({ book, onBack, onListen }: ReaderScreenProps) {
 
   const dismissPopover = useCallback(() => setTappedWord(null), []);
 
+  if (aiMode === 'summary') {
+    return <SummaryScreen book={book} onBack={() => setAIMode(null)} />;
+  }
+  if (aiMode === 'chat') {
+    return <ChatScreen book={book} onBack={() => setAIMode(null)} />;
+  }
+  if (aiMode === 'practice') {
+    return <PracticeQuestionsScreen book={book} onBack={() => setAIMode(null)} />;
+  }
+
   return (
     <SafeAreaView
       style={[styles.safe, { backgroundColor: palette.bg }]}
@@ -139,6 +154,7 @@ export function ReaderScreen({ book, onBack, onListen }: ReaderScreenProps) {
         palette={palette}
         onBack={onBack}
         onTypography={() => typoSheetRef.current?.present()}
+        onChapters={() => chapterSheetRef.current?.present()}
       />
 
       {/* Reading area */}
@@ -186,7 +202,12 @@ export function ReaderScreen({ book, onBack, onListen }: ReaderScreenProps) {
       </View>
 
       {/* Action bar */}
-      <ActionBar palette={palette} onListen={onListen} />
+      <ActionBar
+        palette={palette}
+        onListen={onListen}
+        onAITools={() => aiSheetRef.current?.present()}
+        onChapters={() => chapterSheetRef.current?.present()}
+      />
 
       {/* Dismiss overlay + translate popover */}
       {tappedWord && (
@@ -199,6 +220,18 @@ export function ReaderScreen({ book, onBack, onListen }: ReaderScreenProps) {
           <TranslatePopover word={tappedWord} onDismiss={dismissPopover} />
         </>
       )}
+
+      {/* Chapter list sheet */}
+      <ChapterSheet ref={chapterSheetRef} book={book} mode="reader" />
+
+      {/* AI tools sheet */}
+      <AIToolsSheet
+        ref={aiSheetRef}
+        book={book}
+        onSummarize={() => setAIMode('summary')}
+        onPractice={() => setAIMode('practice')}
+        onAsk={() => setAIMode('chat')}
+      />
 
       {/* Typography sheet */}
       <BottomSheet ref={typoSheetRef}>
@@ -226,12 +259,14 @@ function ReaderHeader({
   palette,
   onBack,
   onTypography,
+  onChapters,
 }: {
   book: Book;
   meta: string;
   palette: (typeof THEME)[ReaderTheme];
   onBack: () => void;
   onTypography: () => void;
+  onChapters: () => void;
 }) {
   return (
     <View
@@ -272,7 +307,7 @@ function ReaderHeader({
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Chapters"
-          onPress={() => {}}
+          onPress={onChapters}
           hitSlop={8}
           style={styles.headerBtn}
         >
@@ -329,15 +364,19 @@ function TappableParagraph({
 function ActionBar({
   palette,
   onListen,
+  onAITools,
+  onChapters,
 }: {
   palette: (typeof THEME)[ReaderTheme];
   onListen?: () => void;
+  onAITools?: () => void;
+  onChapters?: () => void;
 }) {
   const ACTIONS = [
-    { icon: 'Headphones' as const, label: 'Listen', primary: true, onPress: onListen },
-    { icon: 'Wand' as const,       label: 'AI tools', primary: false, onPress: undefined },
-    { icon: 'ListDetails' as const, label: 'Chapters', primary: false, onPress: undefined },
-    { icon: 'Search' as const,     label: 'Search', primary: false, onPress: undefined },
+    { icon: 'Headphones' as const,  label: 'Listen',   primary: true,  onPress: onListen },
+    { icon: 'Wand' as const,        label: 'AI tools', primary: false, onPress: onAITools },
+    { icon: 'ListDetails' as const, label: 'Chapters', primary: false, onPress: onChapters },
+    { icon: 'Search' as const,      label: 'Search',   primary: false, onPress: undefined },
   ];
 
   return (

@@ -9,7 +9,7 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { BottomSheet, type BottomSheetRef, Icon, Text } from '~/components';
+import { BottomSheet, ChapterSheet, type BottomSheetRef, Icon, Text } from '~/components';
 import { tokens } from '~/design/tokens';
 import type { Book } from '~/types/book';
 
@@ -75,22 +75,33 @@ export function ListenScreen({ book, onBack, onMinimize }: ListenScreenProps) {
   const [currentWordIdx, setCurrentWordIdx] = useState(0);
   const [selectedVoiceId, setSelectedVoiceId] = useState('sarah');
   const voiceSheetRef = useRef<BottomSheetRef>(null);
+  const chapterSheetRef = useRef<BottomSheetRef>(null);
 
   const activeSentenceWords = useMemo(
     () => PARAGRAPHS[ACTIVE_PARA][ACTIVE_SENTENCE].split(/\s+/),
     [],
   );
 
+  const speed: Speed = SPEEDS[speedIdx];
+
   useEffect(() => {
     if (!isPlaying) return;
     const id = setInterval(() => {
       setCurrentWordIdx((p) => (p + 1) % activeSentenceWords.length);
-    }, 750);
+    }, Math.round(750 / speed));
     return () => clearInterval(id);
-  }, [isPlaying, activeSentenceWords.length]);
+  }, [isPlaying, activeSentenceWords.length, speed]);
+
+  // Advance scrub position 1 tick per second while playing
+  useEffect(() => {
+    if (!isPlaying) return;
+    const id = setInterval(() => {
+      setScrubPos((p) => Math.min(1, p + 1 / TOTAL_SECS));
+    }, 1000);
+    return () => clearInterval(id);
+  }, [isPlaying]);
 
   const chNum = book.currentChapter?.match(/\d+/)?.[0] ?? '1';
-  const speed: Speed = SPEEDS[speedIdx];
   const elapsedSecs = Math.round(scrubPos * TOTAL_SECS);
   const selectedVoice = VOICES.find((v) => v.id === selectedVoiceId) ?? VOICES[0];
 
@@ -113,11 +124,13 @@ export function ListenScreen({ book, onBack, onMinimize }: ListenScreenProps) {
 
   const skipBack = useCallback(() => {
     setScrubPos((p) => Math.max(0, p - 15 / TOTAL_SECS));
+    setCurrentWordIdx((p) => Math.max(0, p - 5));
   }, []);
 
   const skipForward = useCallback(() => {
     setScrubPos((p) => Math.min(1, p + 15 / TOTAL_SECS));
-  }, []);
+    setCurrentWordIdx((p) => Math.min(activeSentenceWords.length - 1, p + 5));
+  }, [activeSentenceWords.length]);
 
   return (
     <SafeAreaView
@@ -146,7 +159,7 @@ export function ListenScreen({ book, onBack, onMinimize }: ListenScreenProps) {
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Chapters"
-          onPress={() => {}}
+          onPress={() => chapterSheetRef.current?.present()}
           hitSlop={8}
           style={styles.headerBtn}
         >
@@ -217,7 +230,7 @@ export function ListenScreen({ book, onBack, onMinimize }: ListenScreenProps) {
               onPress={skipBack}
               style={styles.transportBtn}
             >
-              <Icon name="PlayerSkipBack" size={24} color={tokens.textColors.secondary} />
+              <Icon name="PlayerTrackPrev" size={24} color={tokens.textColors.secondary} />
             </Pressable>
             <Text style={styles.skipLabel}>−15s</Text>
           </View>
@@ -240,7 +253,7 @@ export function ListenScreen({ book, onBack, onMinimize }: ListenScreenProps) {
               onPress={skipForward}
               style={styles.transportBtn}
             >
-              <Icon name="PlayerSkipForward" size={24} color={tokens.textColors.secondary} />
+              <Icon name="PlayerTrackNext" size={24} color={tokens.textColors.secondary} />
             </Pressable>
             <Text style={styles.skipLabel}>+15s</Text>
           </View>
@@ -264,12 +277,21 @@ export function ListenScreen({ book, onBack, onMinimize }: ListenScreenProps) {
             <Icon name="Headphones" size={12} color={tokens.textColors.muted} />
             <Text style={styles.pillLabel}>{selectedVoice.name}</Text>
           </Pressable>
-          <Pressable style={styles.pill} onPress={() => {}}>
+          <Pressable style={styles.pill} onPress={() => chapterSheetRef.current?.present()}>
             <Icon name="ListDetails" size={12} color={tokens.textColors.muted} />
             <Text style={styles.pillLabel}>Ch. {chNum}</Text>
           </Pressable>
         </View>
       </View>
+
+      {/* Chapter list sheet */}
+      <ChapterSheet
+        ref={chapterSheetRef}
+        book={book}
+        mode="listen"
+        totalSecs={TOTAL_SECS}
+        scrubPos={scrubPos}
+      />
 
       {/* Voice picker sheet */}
       <BottomSheet ref={voiceSheetRef}>
@@ -514,9 +536,17 @@ function VoiceRow({
           </>
         ) : (
           <>
-            {isSelected ? (
+            <Pressable
+              onPress={(e) => { e.stopPropagation(); }}
+              style={styles.previewBtn}
+              hitSlop={4}
+            >
+              <Icon name="Play" size={9} color={tokens.textColors.muted} />
+              <Text style={styles.previewBtnLabel}>Preview</Text>
+            </Pressable>
+            {isSelected && (
               <Icon name="Check" size={16} color={tokens.colors.forest[800]} strokeWidth={2} />
-            ) : null}
+            )}
           </>
         )}
       </View>
@@ -533,6 +563,25 @@ export type MiniPlayerProps = {
 
 export function MiniPlayer({ book, onExpand }: MiniPlayerProps) {
   const [isPlaying, setIsPlaying] = useState(true);
+  const [scrubPos, setScrubPos] = useState(book.progressPercent / 100);
+
+  useEffect(() => {
+    if (!isPlaying) return;
+    const id = setInterval(() => {
+      setScrubPos((p) => Math.min(1, p + 1 / TOTAL_SECS));
+    }, 1000);
+    return () => clearInterval(id);
+  }, [isPlaying]);
+
+  const handleSkipBack = useCallback((e: { stopPropagation: () => void }) => {
+    e.stopPropagation();
+    setScrubPos((p) => Math.max(0, p - 15 / TOTAL_SECS));
+  }, []);
+
+  const handlePlayPause = useCallback((e: { stopPropagation: () => void }) => {
+    e.stopPropagation();
+    setIsPlaying((p) => !p);
+  }, []);
 
   return (
     <Pressable
@@ -556,29 +605,23 @@ export function MiniPlayer({ book, onExpand }: MiniPlayerProps) {
           <View
             style={[
               styles.miniProgressFill,
-              { width: `${book.progressPercent}%` as `${number}%` },
+              { width: `${scrubPos * 100}%` as `${number}%` },
             ]}
           />
         </View>
       </View>
 
-      {/* Controls — stop propagation so taps on buttons don't expand */}
+      {/* Controls */}
       <View style={styles.miniControls}>
         <Pressable
-          onPress={(e) => {
-            e.stopPropagation();
-            /* skip back */
-          }}
+          onPress={handleSkipBack}
           style={styles.miniBtn}
           hitSlop={8}
         >
-          <Icon name="PlayerSkipBack" size={18} color={tokens.colors.cream[50]} />
+          <Icon name="PlayerTrackPrev" size={18} color={tokens.colors.cream[50]} />
         </Pressable>
         <Pressable
-          onPress={(e) => {
-            e.stopPropagation();
-            setIsPlaying((p) => !p);
-          }}
+          onPress={handlePlayPause}
           style={styles.miniPlayBtn}
           hitSlop={4}
         >
@@ -681,8 +724,8 @@ const styles = StyleSheet.create({
   // Paragraphs
   para: {
     fontFamily: tokens.fonts.reading,
-    fontSize: 16,
-    lineHeight: 16 * 1.78,
+    fontSize: 20,
+    lineHeight: 20 * 1.78,
     marginBottom: 18,
   },
   paraDim: {
@@ -766,17 +809,18 @@ const styles = StyleSheet.create({
   transport: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    gap: 20,
+    justifyContent: 'space-between',
+    paddingHorizontal: 8,
     marginBottom: 12,
   },
   speedPill: {
-    height: 28,
-    paddingHorizontal: 10,
-    borderRadius: 14,
+    height: 32,
+    paddingHorizontal: 12,
+    borderRadius: 16,
     backgroundColor: tokens.bgColors.surface,
     alignItems: 'center',
     justifyContent: 'center',
+    minWidth: 44,
   },
   speedLabel: {
     fontFamily: tokens.fonts.uiMedium,
@@ -786,11 +830,10 @@ const styles = StyleSheet.create({
   },
   skipWrap: {
     alignItems: 'center',
-    gap: 0,
   },
   transportBtn: {
-    width: 36,
-    height: 36,
+    width: 40,
+    height: 40,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -802,9 +845,9 @@ const styles = StyleSheet.create({
     marginTop: -4,
   },
   playBtn: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
+    width: 60,
+    height: 60,
+    borderRadius: 30,
     backgroundColor: tokens.colors.forest[800],
     alignItems: 'center',
     justifyContent: 'center',
@@ -818,19 +861,22 @@ const styles = StyleSheet.create({
   // Pills
   pillsRow: {
     flexDirection: 'row',
-    justifyContent: 'center',
+    justifyContent: 'space-between',
     gap: 8,
+    paddingHorizontal: 8,
     paddingBottom: 24,
   },
   pill: {
-    height: 30,
+    flex: 1,
+    height: 32,
     paddingHorizontal: 12,
-    borderRadius: 15,
+    borderRadius: 16,
     backgroundColor: tokens.bgColors.surface,
     borderWidth: 0.5,
     borderColor: tokens.borderColors.subtle,
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
     gap: 5,
   },
   pillLabel: {
@@ -924,6 +970,23 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
     flexShrink: 0,
+  },
+  previewBtn: {
+    height: 26,
+    paddingHorizontal: 10,
+    borderRadius: 13,
+    backgroundColor: tokens.bgColors.surface,
+    borderWidth: 0.5,
+    borderColor: tokens.borderColors.subtle,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  previewBtnLabel: {
+    fontFamily: tokens.fonts.uiMedium,
+    fontSize: 11,
+    fontWeight: '500',
+    color: tokens.textColors.muted,
   },
   proBadge: {
     backgroundColor: tokens.colors.amber[200],

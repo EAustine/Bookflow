@@ -25,3 +25,6 @@ export type { TextProps, TextAlign } from './Text';
 
 export { TabBar } from './TabBar';
 export type { TabBarProps, TabKey } from './TabBar';
+
+export { ChapterSheet } from './ChapterSheet';
+export type { ChapterSheetProps } from './ChapterSheet';
