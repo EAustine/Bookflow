@@ -104,6 +104,7 @@ export function ReaderScreen({ book, onBack, onListen }: ReaderScreenProps) {
 
   const [tappedWord, setTappedWord] = useState<string | null>(null);
   const typoSheetRef = useRef<BottomSheetRef>(null);
+  const practiceSheetRef = useRef<BottomSheetRef>(null);
 
   const palette = THEME[theme];
   const chapter = CHAPTER_CONTENT[book.id] ?? FALLBACK_CHAPTER;
@@ -186,7 +187,11 @@ export function ReaderScreen({ book, onBack, onListen }: ReaderScreenProps) {
       </View>
 
       {/* Action bar */}
-      <ActionBar palette={palette} onListen={onListen} />
+      <ActionBar
+        palette={palette}
+        onListen={onListen}
+        onAITools={() => practiceSheetRef.current?.present()}
+      />
 
       {/* Dismiss overlay + translate popover */}
       {tappedWord && (
@@ -199,6 +204,11 @@ export function ReaderScreen({ book, onBack, onListen }: ReaderScreenProps) {
           <TranslatePopover word={tappedWord} onDismiss={dismissPopover} />
         </>
       )}
+
+      {/* Practice questions sheet */}
+      <BottomSheet ref={practiceSheetRef} title="Practice questions">
+        <PracticeQuestionsSheet />
+      </BottomSheet>
 
       {/* Typography sheet */}
       <BottomSheet ref={typoSheetRef}>
@@ -329,13 +339,15 @@ function TappableParagraph({
 function ActionBar({
   palette,
   onListen,
+  onAITools,
 }: {
   palette: (typeof THEME)[ReaderTheme];
   onListen?: () => void;
+  onAITools?: () => void;
 }) {
   const ACTIONS = [
     { icon: 'Headphones' as const, label: 'Listen', primary: true, onPress: onListen },
-    { icon: 'Wand' as const,       label: 'AI tools', primary: false, onPress: undefined },
+    { icon: 'Wand' as const,       label: 'AI tools', primary: false, onPress: onAITools },
     { icon: 'ListDetails' as const, label: 'Chapters', primary: false, onPress: undefined },
     { icon: 'Search' as const,     label: 'Search', primary: false, onPress: undefined },
   ];
@@ -616,6 +628,102 @@ function SizeSlider({
         <View style={[styles.sliderThumb, { left: thumbLeft }]} />
       </View>
       <Text style={styles.sliderALarge}>A</Text>
+    </View>
+  );
+}
+
+// ─── Practice questions sheet ─────────────────────────────────────────────────
+
+type QuestionCount = 5 | 10 | 15;
+type QuestionType = 'mixed' | 'mcq' | 'short';
+type QuestionOrder = 'sequential' | 'randomised';
+
+const PQ_COUNT_OPTIONS: { value: QuestionCount; recommended?: true }[] = [
+  { value: 5 },
+  { value: 10, recommended: true },
+  { value: 15 },
+];
+
+const PQ_TYPE_OPTIONS: { value: QuestionType; label: string; recommended?: true }[] = [
+  { value: 'mixed',  label: 'Mixed',  recommended: true },
+  { value: 'mcq',    label: 'MCQ' },
+  { value: 'short',  label: 'Short' },
+];
+
+const PQ_ORDER_OPTIONS: { value: QuestionOrder; label: string; recommended?: true }[] = [
+  { value: 'sequential',  label: 'Sequential',  recommended: true },
+  { value: 'randomised',  label: 'Randomised' },
+];
+
+function PracticeQuestionsSheet() {
+  const [count, setCount] = useState<QuestionCount>(10);
+  const [type,  setType]  = useState<QuestionType>('mixed');
+  const [order, setOrder] = useState<QuestionOrder>('sequential');
+
+  return (
+    <View style={styles.pqSheet}>
+      <Text style={styles.sheetSectionLabel}>Number of questions</Text>
+      <View style={styles.pqSegmented}>
+        {PQ_COUNT_OPTIONS.map((opt) => {
+          const selected = count === opt.value;
+          return (
+            <Pressable
+              key={opt.value}
+              style={[styles.pqTile, selected && styles.pqTileSelected]}
+              onPress={() => setCount(opt.value)}
+            >
+              <Text style={[styles.pqTileLabel, selected && styles.pqTileLabelSelected]}>
+                {opt.value}
+              </Text>
+              {selected && opt.recommended && (
+                <Text style={styles.pqRecommended}>recommended</Text>
+              )}
+            </Pressable>
+          );
+        })}
+      </View>
+
+      <Text style={styles.sheetSectionLabel}>Question type</Text>
+      <View style={styles.pqSegmented}>
+        {PQ_TYPE_OPTIONS.map((opt) => {
+          const selected = type === opt.value;
+          return (
+            <Pressable
+              key={opt.value}
+              style={[styles.pqTile, selected && styles.pqTileSelected]}
+              onPress={() => setType(opt.value)}
+            >
+              <Text style={[styles.pqTileLabel, selected && styles.pqTileLabelSelected]}>
+                {opt.label}
+              </Text>
+              {selected && opt.recommended && (
+                <Text style={styles.pqRecommended}>recommended</Text>
+              )}
+            </Pressable>
+          );
+        })}
+      </View>
+
+      <Text style={styles.sheetSectionLabel}>Question order</Text>
+      <View style={styles.pqSegmented}>
+        {PQ_ORDER_OPTIONS.map((opt) => {
+          const selected = order === opt.value;
+          return (
+            <Pressable
+              key={opt.value}
+              style={[styles.pqTile, selected && styles.pqTileSelected]}
+              onPress={() => setOrder(opt.value)}
+            >
+              <Text style={[styles.pqTileLabel, selected && styles.pqTileLabelSelected]}>
+                {opt.label}
+              </Text>
+              {selected && opt.recommended && (
+                <Text style={styles.pqRecommended}>recommended</Text>
+              )}
+            </Pressable>
+          );
+        })}
+      </View>
     </View>
   );
 }
@@ -1058,5 +1166,53 @@ const styles = StyleSheet.create({
     width: 10,
     height: 10,
     borderRadius: 5,
+  },
+
+  // Practice questions sheet
+  pqSheet: {
+    paddingTop: tokens.space.sm,
+    paddingBottom: tokens.space.md,
+    gap: tokens.space.md,
+  },
+  pqSegmented: {
+    flexDirection: 'row',
+    backgroundColor: tokens.bgColors.surface,
+    borderRadius: tokens.radii.xl,
+    padding: 4,
+    gap: 4,
+    marginBottom: tokens.space.sm,
+  },
+  // Fixed height + justifyContent center means the label+recommended block is
+  // always vertically centered regardless of whether the sub-label is present.
+  pqTile: {
+    flex: 1,
+    height: 62,
+    borderRadius: tokens.radii.lg,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  pqTileSelected: {
+    backgroundColor: tokens.bgColors.canvas,
+    shadowColor: tokens.colors.ink[900],
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.06,
+    shadowRadius: 3,
+    elevation: 1,
+  },
+  pqTileLabel: {
+    fontFamily: tokens.fonts.ui,
+    fontSize: tokens.fontSizes.ui.md,
+    color: tokens.textColors.muted,
+  },
+  pqTileLabelSelected: {
+    fontFamily: tokens.fonts.uiMedium,
+    fontWeight: '500',
+    color: tokens.textColors.primary,
+  },
+  pqRecommended: {
+    fontFamily: tokens.fonts.ui,
+    fontSize: tokens.fontSizes.ui.xxs,
+    color: tokens.textColors.muted,
+    marginTop: 2,
   },
 });
