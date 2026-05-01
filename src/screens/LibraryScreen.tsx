@@ -61,6 +61,8 @@ export function LibraryScreen({ onTabChange, userName }: LibraryScreenProps) {
   const [pendingFilter, setPendingFilter] = useState<FilterKey>('all');
   const sheetRef = useRef<BottomSheetRef>(null);
 
+  const [showUsageBanner, setShowUsageBanner] = useState(true);
+
   // Search state
   const [searchMode, setSearchMode] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -262,6 +264,13 @@ export function LibraryScreen({ onTabChange, userName }: LibraryScreenProps) {
 
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
+      {showUsageBanner && (
+        <UsageBanner
+          minutesLeft={18}
+          onPress={() => {}}
+          onDismiss={() => setShowUsageBanner(false)}
+        />
+      )}
       <ScrollView
         style={styles.scroll}
         contentContainerStyle={styles.scrollContent}
@@ -558,6 +567,45 @@ function DiscoverNudge({
         <Text style={styles.nudgeSub}>{subtitle}</Text>
       </View>
       <Icon name="ChevronRight" size={14} color={tokens.colors.forest[700]} />
+    </Pressable>
+  );
+}
+
+// ─── Usage banner ────────────────────────────────────────────────────────────
+
+function UsageBanner({
+  minutesLeft,
+  onPress,
+  onDismiss,
+}: {
+  minutesLeft: number;
+  onPress: () => void;
+  onDismiss: () => void;
+}) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      onPress={onPress}
+      style={({ pressed }) => [styles.usageBanner, pressed && { opacity: 0.85 }]}
+    >
+      <Icon name="AlertTriangle" size={16} color={tokens.colors.amber[500]} />
+      <View style={styles.usageBannerText}>
+        <Text style={styles.usageBannerTitle}>
+          {minutesLeft} minutes of audio left this month
+        </Text>
+        <Text style={styles.usageBannerSub}>
+          Tap to see upgrade options before you hit the limit.
+        </Text>
+      </View>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="Dismiss"
+        onPress={onDismiss}
+        hitSlop={8}
+        style={styles.usageBannerDismiss}
+      >
+        <Icon name="X" size={14} color={tokens.textColors.muted} />
+      </Pressable>
     </Pressable>
   );
 }
@@ -1129,6 +1177,40 @@ const styles = StyleSheet.create({
     paddingHorizontal: tokens.space.lg,
     paddingTop: tokens.space.sm,
     paddingBottom: tokens.space['2xl'],
+  },
+
+  // Usage banner — no horizontal margin so it spans edge to edge
+  usageBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: tokens.space.md,
+    paddingHorizontal: tokens.space.lg,
+    paddingVertical: tokens.space.md,
+    backgroundColor: tokens.colors.amber[50],
+  },
+  usageBannerText: {
+    flex: 1,
+    gap: 2,
+  },
+  usageBannerTitle: {
+    fontFamily: tokens.fonts.uiMedium,
+    fontSize: tokens.fontSizes.ui.sm,
+    fontWeight: '500',
+    color: tokens.colors.amber[500],
+  },
+  usageBannerSub: {
+    fontFamily: tokens.fonts.ui,
+    fontSize: tokens.fontSizes.ui.xs,
+    color: tokens.textColors.muted,
+  },
+  usageBannerDismiss: {
+    width: 28,
+    height: 28,
+    borderRadius: tokens.radii.full,
+    backgroundColor: tokens.bgColors.raised,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
   },
   searchScrollContent: {
     paddingBottom: tokens.space['2xl'],
