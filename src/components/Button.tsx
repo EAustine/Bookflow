@@ -192,7 +192,7 @@ function getPressedStyle(variant: ButtonVariant) {
       return { backgroundColor: tokens.colors.forest[100] };
     case 'destructive':
       // Slight darken on press — keeps the affordance honest without flashing.
-      return { backgroundColor: '#9C3B30' };
+      return { backgroundColor: tokens.colors.errorPressed };
   }
 }
 
