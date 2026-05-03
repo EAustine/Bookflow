@@ -630,8 +630,8 @@ const s = StyleSheet.create({
 
   // Soft warning banner
   softWarning: {
-    marginHorizontal: 20,
-    marginTop: 10,
+    marginHorizontal: tokens.space.lg,
+    marginTop: tokens.space.sm,
     backgroundColor: WARN_BG,
     borderRadius: 10,
     borderWidth: 0.5,

@@ -15,18 +15,17 @@ export type SignUpScreenProps = {
   onBack: () => void;
   /** Pressed when user taps "Sign in" link in footer. */
   onSignIn: () => void;
-  onComplete: () => void;
-  onGoogleSignIn: () => void;
+  /** Called when user taps "Open email app". Passes the collected full name. */
+  onComplete: (fullName?: string) => void;
 };
 
-export function SignUpScreen({ onBack, onSignIn, onComplete, onGoogleSignIn }: SignUpScreenProps) {
+export function SignUpScreen({ onBack, onSignIn, onComplete }: SignUpScreenProps) {
   return (
     <SignInScreen
       variant="signup"
       onBack={onBack}
       onSwitchVariant={onSignIn}
       onComplete={onComplete}
-      onGoogleSignIn={onGoogleSignIn}
     />
   );
 }

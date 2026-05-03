@@ -7,7 +7,7 @@
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
-    "newArchEnabled": false,
+    "newArchEnabled": true,
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
@@ -15,10 +15,7 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.eaustine.bookflow",
-      "infoPlist": {
-        "UIBackgroundModes": ["audio"]
-      }
+      "bundleIdentifier": "com.eaustine.bookflow"
     },
     "android": {
       "adaptiveIcon": {
@@ -33,16 +30,7 @@
     },
     "plugins": [
       "expo-router",
-      "expo-web-browser",
-      [
-        "expo-build-properties",
-        {
-          "android": {
-            "kotlinVersion": "2.0.21",
-            "minSdkVersion": 24
-          }
-        }
-      ]
+      "expo-web-browser"
     ],
     "experiments": {
       "tsconfigPaths": true

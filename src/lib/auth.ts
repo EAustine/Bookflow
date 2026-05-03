@@ -34,6 +34,8 @@ export type SendMagicLinkArgs = {
   variant: 'signin' | 'signup';
   /** Marketing-consent flag. Persisted as `marketing_consent` on signup. */
   marketingConsent?: boolean;
+  /** Full name collected on signup. Stored as `full_name` in user metadata. */
+  fullName?: string;
 };
 
 export type SendMagicLinkResult =
@@ -51,6 +53,7 @@ export async function sendMagicLink({
   email,
   variant,
   marketingConsent,
+  fullName,
 }: SendMagicLinkArgs): Promise<SendMagicLinkResult> {
   const trimmed = email.trim().toLowerCase();
   const { error } = await supabase.auth.signInWithOtp({
@@ -61,7 +64,7 @@ export async function sendMagicLink({
       shouldCreateUser: variant === 'signup',
       data:
         variant === 'signup'
-          ? { marketing_consent: marketingConsent ?? false }
+          ? { marketing_consent: marketingConsent ?? false, full_name: fullName ?? '' }
           : undefined,
       emailRedirectTo: AUTH_CALLBACK_URL,
     },

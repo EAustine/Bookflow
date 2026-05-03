@@ -1036,11 +1036,10 @@ const styles = StyleSheet.create({
   },
   segOpt: {
     flex: 1,
-    height: 32,
     borderRadius: 6,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 2,
+    paddingVertical: 10,
   },
   segOptActive: {
     backgroundColor: tokens.bgColors.canvas,

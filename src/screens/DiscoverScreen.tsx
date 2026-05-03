@@ -462,6 +462,7 @@ function DetailView({
         <Pressable onPress={onBack} style={s.iconBtn} hitSlop={8}>
           <Icon name="ArrowLeft" size={18} color={tokens.colors.ink[700]} />
         </Pressable>
+        <Text style={s.detailHeaderTitle}>Book details</Text>
         <Pressable style={s.iconBtn} hitSlop={8}>
           <Icon name="Upload" size={17} color={tokens.colors.ink[700]} />
         </Pressable>
@@ -578,8 +579,8 @@ const s = StyleSheet.create({
   // Home
   homeHeader: {
     paddingHorizontal: 20,
-    paddingTop: 14,
-    paddingBottom: 10,
+    paddingTop: tokens.space.lg,
+    paddingBottom: tokens.space.lg,
   },
   homeTitle: {
     fontFamily: tokens.fonts.display,
@@ -589,7 +590,7 @@ const s = StyleSheet.create({
   },
   searchBar: {
     marginHorizontal: 20,
-    marginBottom: 14,
+    marginBottom: tokens.space.lg,
     height: 40,
     backgroundColor: tokens.colors.cream[100],
     borderRadius: 9999,
@@ -607,7 +608,7 @@ const s = StyleSheet.create({
   },
   chipScroll: {
     paddingHorizontal: 20,
-    paddingBottom: 14,
+    paddingBottom: tokens.space.lg,
     gap: 8,
   },
   chip: {
@@ -944,6 +945,14 @@ const s = StyleSheet.create({
     paddingVertical: 8,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: tokens.colors.ink[200],
+  },
+  detailHeaderTitle: {
+    flex: 1,
+    textAlign: 'center',
+    fontFamily: tokens.fonts.display,
+    fontSize: 17,
+    fontWeight: '500',
+    color: tokens.textColors.primary,
   },
   detailScroll: {
     paddingHorizontal: 20,

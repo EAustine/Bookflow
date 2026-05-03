@@ -32,6 +32,24 @@ import type { Book } from '~/types/book';
 import { ReaderScreen } from '~/screens/ReaderScreen';
 import { ListenScreen, MiniPlayer } from '~/screens/ListenScreen';
 import { SoftWarningBanner } from '~/screens/PaywallScreen';
+import {
+  AddBookSheet,
+  ConfirmSheet,
+  ProcessingScreen,
+  ScannedPdfErrorScreen,
+} from '~/screens/UploadFlowScreen';
+import { useNetworkState } from '~/hooks/useNetworkState';
+import { LibrarySkeleton } from '~/screens/SkeletonScreens';
+
+/**
+ * Flip to `true` to preview the library first-load skeleton.
+ */
+const MOCK_LIBRARY_LOADING = false;
+
+// Offline banner colour constants (slate palette — not in design tokens)
+const OFFLINE_COLOR = '#4A5568';
+const OFFLINE_BG = '#F0F2F5';
+const OFFLINE_BORDER = '#CBD5E0';
 
 type SortKey = 'recent' | 'added' | 'title' | 'progress';
 type FilterKey = 'all' | 'in-progress' | 'not-started' | 'finished';
@@ -54,6 +72,9 @@ export type LibraryScreenProps = {
 };
 
 export function LibraryScreen({ onTabChange, userName, onUpgrade }: LibraryScreenProps) {
+  const { isConnected } = useNetworkState();
+  const isOffline = !isConnected;
+
   const [selectedBook, setSelectedBook] = useState<Book | null>(null);
   const [listeningBook, setListeningBook] = useState<Book | null>(null);
   const [showBanner, setShowBanner] = useState(true);
@@ -63,6 +84,10 @@ export function LibraryScreen({ onTabChange, userName, onUpgrade }: LibraryScree
   const [pendingSort, setPendingSort] = useState<SortKey>('recent');
   const [pendingFilter, setPendingFilter] = useState<FilterKey>('all');
   const sheetRef = useRef<BottomSheetRef>(null);
+  const addSheetRef = useRef<BottomSheetRef>(null);
+  const confirmSheetRef = useRef<BottomSheetRef>(null);
+  const [showProcessing, setShowProcessing] = useState(false);
+  const [showScannedPdfError, setShowScannedPdfError] = useState(false);
 
   // Search state
   const [searchMode, setSearchMode] = useState(false);
@@ -167,6 +192,10 @@ export function LibraryScreen({ onTabChange, userName, onUpgrade }: LibraryScree
       )
     : [];
 
+  if (MOCK_LIBRARY_LOADING) {
+    return <LibrarySkeleton />;
+  }
+
   if (listeningBook) {
     return (
       <ListenScreen
@@ -234,6 +263,31 @@ export function LibraryScreen({ onTabChange, userName, onUpgrade }: LibraryScree
     );
   }
 
+  if (showProcessing) {
+    return (
+      <ProcessingScreen
+        onBackground={() => setShowProcessing(false)}
+        onCancel={() => setShowProcessing(false)}
+      />
+    );
+  }
+
+  if (showScannedPdfError) {
+    return (
+      <ScannedPdfErrorScreen
+        onTryAnother={() => {
+          setShowScannedPdfError(false);
+          // Re-open add sheet after a tick so the screen transition completes
+          setTimeout(() => addSheetRef.current?.present(), 50);
+        }}
+        onBrowse={() => {
+          setShowScannedPdfError(false);
+          onTabChange('discover');
+        }}
+      />
+    );
+  }
+
   const isEmpty = mockBooks.length === 0;
 
   if (isEmpty) {
@@ -244,10 +298,10 @@ export function LibraryScreen({ onTabChange, userName, onUpgrade }: LibraryScree
           contentContainerStyle={styles.emptyScrollContent}
           showsVerticalScrollIndicator={false}
         >
-          <Header onSearch={openSearch} onAdd={() => {}} />
+          <Header onSearch={openSearch} onAdd={() => addSheetRef.current?.present()} />
           <LibraryEmptyContent
             userName={userName}
-            onUpload={() => {}}
+            onUpload={() => addSheetRef.current?.present()}
             onSeeAll={() => onTabChange('discover')}
             onBookPress={() => {}}
           />
@@ -259,26 +313,38 @@ export function LibraryScreen({ onTabChange, userName, onUpgrade }: LibraryScree
           />
         )}
         <TabBar activeTab="library" onChange={onTabChange} />
+        <AddBookSheet
+          ref={addSheetRef}
+          onUpload={() => confirmSheetRef.current?.present()}
+          onBrowse={() => onTabChange('discover')}
+        />
+        <ConfirmSheet
+          ref={confirmSheetRef}
+          onConfirm={() => setShowProcessing(true)}
+          onBack={() => addSheetRef.current?.present()}
+          onScannedPdf={() => setShowScannedPdfError(true)}
+        />
       </SafeAreaView>
     );
   }
 
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
+      {isOffline && <OfflineBanner onRetry={() => {}} />}
+      {!isOffline && showBanner && onUpgrade && (
+        <SoftWarningBanner
+          minutesLeft={18}
+          onUpgrade={onUpgrade}
+          onDismiss={() => setShowBanner(false)}
+        />
+      )}
       <ScrollView
         style={styles.scroll}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        {showBanner && onUpgrade && (
-          <SoftWarningBanner
-            minutesLeft={18}
-            onUpgrade={onUpgrade}
-            onDismiss={() => setShowBanner(false)}
-          />
-        )}
-        <Header onSearch={openSearch} onFilter={openSheet} onAdd={() => {}} />
-        {continueBook && <ContinueCard book={continueBook} onOpen={setSelectedBook} />}
+        <Header onSearch={openSearch} onFilter={openSheet} onAdd={() => addSheetRef.current?.present()} isOffline={isOffline} />
+        {continueBook && <ContinueCard book={continueBook} onOpen={setSelectedBook} isOffline={isOffline} />}
         <SectionHeader
           count={sorted.length}
           sortLabel={SORT_LABELS[appliedSort]}
@@ -305,6 +371,16 @@ export function LibraryScreen({ onTabChange, userName, onUpgrade }: LibraryScree
           onApply={handleApply}
         />
       </BottomSheet>
+      <AddBookSheet
+        ref={addSheetRef}
+        onUpload={() => confirmSheetRef.current?.present()}
+        onBrowse={() => onTabChange('discover')}
+      />
+      <ConfirmSheet
+        ref={confirmSheetRef}
+        onConfirm={() => setShowProcessing(true)}
+        onBack={() => addSheetRef.current?.present()}
+      />
     </SafeAreaView>
   );
 }
@@ -574,22 +650,48 @@ function DiscoverNudge({
 
 // ─── Library header ──────────────────────────────────────────────────────────
 
+// ─── Offline banner ──────────────────────────────────────────────────────────
+
+function OfflineBanner({ onRetry }: { onRetry: () => void }) {
+  return (
+    <View style={styles.offlineBanner}>
+      <View style={styles.offlineDot} />
+      <View style={styles.offlineTextWrap}>
+        <Text style={styles.offlineTitle}>No connection</Text>
+        <Text style={styles.offlineSub}>Reading still works · Streaming unavailable</Text>
+      </View>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="Retry connection"
+        onPress={onRetry}
+        style={({ pressed }) => [styles.offlineRetryBtn, pressed && { opacity: 0.7 }]}
+        hitSlop={6}
+      >
+        <Icon name="Refresh" size={11} color={OFFLINE_COLOR} />
+        <Text style={styles.offlineRetryLabel}>Retry</Text>
+      </Pressable>
+    </View>
+  );
+}
+
 function Header({
   onSearch,
   onFilter,
   onAdd,
+  isOffline,
 }: {
   onSearch: () => void;
   onFilter?: () => void;
   onAdd: () => void;
+  isOffline?: boolean;
 }) {
   return (
     <View style={styles.header}>
       <Text style={styles.headerTitle}>Library</Text>
       <View style={styles.headerActions}>
-        <CircleIconButton icon="Search" onPress={onSearch} />
-        {onFilter && <CircleIconButton icon="Filter" onPress={onFilter} />}
-        <CircleIconButton icon="Plus" onPress={onAdd} />
+        <CircleIconButton icon="Search" onPress={onSearch} dimmed={isOffline} />
+        {onFilter && <CircleIconButton icon="Filter" onPress={onFilter} dimmed={isOffline} />}
+        <CircleIconButton icon="Plus" onPress={onAdd} dimmed={isOffline} />
       </View>
     </View>
   );
@@ -598,17 +700,21 @@ function Header({
 function CircleIconButton({
   icon,
   onPress,
+  dimmed,
 }: {
   icon: 'Search' | 'Filter' | 'Plus';
   onPress: () => void;
+  dimmed?: boolean;
 }) {
   return (
     <Pressable
       accessibilityRole="button"
       onPress={onPress}
+      disabled={dimmed}
       style={({ pressed }) => [
         styles.circleButton,
-        pressed && { backgroundColor: tokens.bgColors.raised },
+        pressed && !dimmed && { backgroundColor: tokens.bgColors.raised },
+        dimmed && styles.circleButtonDimmed,
       ]}
     >
       <Icon name={icon} size={18} color={tokens.textColors.secondary} />
@@ -618,7 +724,15 @@ function CircleIconButton({
 
 // ─── Continue card ───────────────────────────────────────────────────────────
 
-function ContinueCard({ book, onOpen }: { book: Book; onOpen: (book: Book) => void }) {
+function ContinueCard({
+  book,
+  onOpen,
+  isOffline,
+}: {
+  book: Book;
+  onOpen: (book: Book) => void;
+  isOffline?: boolean;
+}) {
   const chapterNum = book.currentChapter?.match(/\d+/)?.[0];
   const statusLine = chapterNum && book.totalChapters
     ? `Chapter ${chapterNum} · ${book.progressPercent}% done`
@@ -643,13 +757,14 @@ function ContinueCard({ book, onOpen }: { book: Book; onOpen: (book: Book) => vo
             <ProgressBar percent={book.progressPercent} height={3} />
           </View>
           <View style={styles.continueActions}>
-            <View style={styles.listenWrap}>
+            <View style={[styles.listenWrap, isOffline && { opacity: 0.4 }]}>
               <Button
                 label="Listen"
                 variant="primary"
                 size="compact"
                 leadingIcon="Play"
                 fullWidth
+                disabled={isOffline}
                 onPress={() => onOpen(book)}
               />
             </View>
@@ -660,6 +775,14 @@ function ContinueCard({ book, onOpen }: { book: Book; onOpen: (book: Book) => vo
               onPress={() => onOpen(book)}
             />
           </View>
+          {isOffline && (
+            <View style={styles.streamingUnavailable}>
+              <Icon name="AlertTriangle" size={10} color={tokens.textColors.disabled} strokeWidth={1.5} />
+              <Text style={styles.streamingUnavailableText}>
+                Audio streaming unavailable offline
+              </Text>
+            </View>
+          )}
         </View>
       </View>
     </View>
@@ -909,6 +1032,11 @@ function BookCover({
       <Text style={[styles.coverInitial, { fontSize: dims.fontSize }]} color="inverse">
         {book.title.charAt(0)}
       </Text>
+      {book.downloaded && (
+        <View style={[styles.downloadedBadge, size === 'sm' && styles.downloadedBadgeSm]}>
+          <Icon name="Download" size={size === 'sm' ? 7 : 8} color={tokens.colors.cream[50]} strokeWidth={2.5} />
+        </View>
+      )}
     </View>
   );
 }
@@ -1133,6 +1261,99 @@ const styles = StyleSheet.create({
   safe: {
     flex: 1,
     backgroundColor: tokens.bgColors.canvas,
+  },
+
+  // Offline banner
+  offlineBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 10,
+    paddingHorizontal: tokens.space.lg,
+    backgroundColor: OFFLINE_BG,
+    borderBottomWidth: 0.5,
+    borderBottomColor: OFFLINE_BORDER,
+  },
+  offlineDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: OFFLINE_COLOR,
+    flexShrink: 0,
+  },
+  offlineTextWrap: {
+    flex: 1,
+  },
+  offlineTitle: {
+    fontFamily: tokens.fonts.uiMedium,
+    fontSize: 12,
+    fontWeight: '500',
+    color: OFFLINE_COLOR,
+  },
+  offlineSub: {
+    fontFamily: tokens.fonts.ui,
+    fontSize: 11,
+    color: tokens.textColors.muted,
+    marginTop: 1,
+  },
+  offlineRetryBtn: {
+    height: 26,
+    paddingHorizontal: 10,
+    borderRadius: 6,
+    backgroundColor: tokens.bgColors.canvas,
+    borderWidth: 0.5,
+    borderColor: OFFLINE_BORDER,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    flexShrink: 0,
+  },
+  offlineRetryLabel: {
+    fontFamily: tokens.fonts.uiMedium,
+    fontSize: 11,
+    fontWeight: '500',
+    color: OFFLINE_COLOR,
+  },
+
+  // Dimmed icon button
+  circleButtonDimmed: {
+    opacity: 0.4,
+  },
+
+  // Streaming unavailable tag
+  streamingUnavailable: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: 5,
+  },
+  streamingUnavailableText: {
+    fontFamily: tokens.fonts.ui,
+    fontSize: 10,
+    color: tokens.textColors.disabled,
+  },
+
+  // Download badge on cover
+  downloadedBadge: {
+    position: 'absolute',
+    top: -6,
+    right: -6,
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: tokens.colors.forest[800],
+    borderWidth: 2,
+    borderColor: tokens.bgColors.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  downloadedBadgeSm: {
+    width: 15,
+    height: 15,
+    borderRadius: 8,
+    top: -5,
+    right: -5,
+    borderWidth: 1.5,
   },
   scroll: { flex: 1 },
   scrollContent: {

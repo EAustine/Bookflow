@@ -28,3 +28,6 @@ export type { TabBarProps, TabKey } from './TabBar';
 
 export { ChapterSheet } from './ChapterSheet';
 export type { ChapterSheetProps } from './ChapterSheet';
+
+export { Skeleton } from './Skeleton';
+export type { SkeletonProps } from './Skeleton';

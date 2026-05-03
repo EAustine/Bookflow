@@ -13,4 +13,6 @@ export type Book = {
   lastReadAt: Date | null;
   addedAt: Date;
   coverColor: string;
+  /** true when the book's audio has been cached for offline playback. */
+  downloaded?: boolean;
 };

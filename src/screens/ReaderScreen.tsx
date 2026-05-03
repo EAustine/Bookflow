@@ -1,15 +1,18 @@
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { forwardRef, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  Animated,
   GestureResponderEvent,
   Pressable,
   ScrollView,
   StyleSheet,
+  Switch,
   Text as RNText,
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { BottomSheet, ChapterSheet, type BottomSheetRef, Icon, Text } from '~/components';
 import { AIToolsSheet, SummaryScreen, ChatScreen } from '~/screens/AIToolsScreen';
+import { ReaderSkeleton } from '~/screens/SkeletonScreens';
 import { PracticeQuestionsScreen } from '~/screens/PracticeQuestionsScreen';
 import { tokens } from '~/design/tokens';
 import type { Book } from '~/types/book';
@@ -19,6 +22,12 @@ import {
   type ReaderTheme,
   useReaderStore,
 } from '~/stores/readerStore';
+import {
+  BottomSheetBackdrop,
+  type BottomSheetBackdropProps,
+  BottomSheetModal,
+  BottomSheetView,
+} from '@gorhom/bottom-sheet';
 
 // ─── Mock chapter content ─────────────────────────────────────────────────────
 
@@ -59,26 +68,34 @@ const THEME = {
     border: tokens.borderColors.subtle,
     headerBg: tokens.bgColors.canvas,
     actionBg: tokens.bgColors.canvas,
+    primary: tokens.colors.forest[800],
+    primaryIcon: tokens.colors.cream[50],
   },
   sepia: {
-    bg: tokens.colors.sepia.bg,
-    surface: tokens.colors.sepia.surface,
-    text: tokens.colors.sepia.text,
-    muted: tokens.colors.sepia.muted,
-    subtle: tokens.colors.sepia.subtle,
-    border: tokens.colors.sepia.border,
-    headerBg: tokens.colors.sepia.bg,
-    actionBg: tokens.colors.sepia.bg,
+    // Warm parchment — spec: #F5EDD8 bg, #3D2B1F text, #7A5C3E muted, #D4C4A0 border
+    bg: '#F5EDD8',
+    surface: '#EDE0C4',
+    text: '#3D2B1F',
+    muted: '#7A5C3E',
+    subtle: '#7A5C3E',
+    border: '#D4C4A0',
+    headerBg: '#F5EDD8',
+    actionBg: '#F5EDD8',
+    primary: '#7A5C3E',
+    primaryIcon: '#F5EDD8',
   },
   dark: {
-    bg: tokens.colors.ink[900],
-    surface: tokens.colors.ink[700],
-    text: tokens.colors.cream[50],
-    muted: tokens.colors.ink[400],
-    subtle: tokens.colors.ink[400],
-    border: tokens.colors.ink[700],
-    headerBg: tokens.colors.ink[900],
-    actionBg: tokens.colors.ink[900],
+    // Forest-tinted near-black — spec: #1A1F1B bg, #E8E5DC text, #4A7C59 accent
+    bg: '#1A1F1B',
+    surface: '#232A24',
+    text: '#E8E5DC',
+    muted: '#8A8780',
+    subtle: '#8A8780',
+    border: '#3D453E',
+    headerBg: '#1A1F1B',
+    actionBg: '#1A1F1B',
+    primary: '#4A7C59',
+    primaryIcon: '#E8E5DC',
   },
 } as const;
 
@@ -98,17 +115,56 @@ export type ReaderScreenProps = {
   onListen?: () => void;
 };
 
+/**
+ * Flip to `true` to preview the reader text-loading skeleton.
+ */
+const MOCK_READER_LOADING = false;
+
 // ─── Screen ───────────────────────────────────────────────────────────────────
 
 export function ReaderScreen({ book, onBack, onListen }: ReaderScreenProps) {
-  const { preset, fontSize, fontFamily, theme, setPreset, setFontSize, setFontFamily, setTheme, reset } =
-    useReaderStore();
+  const {
+    preset, fontSize, fontFamily, theme, autoHide,
+    setPreset, setFontSize, setFontFamily, setTheme, setAutoHide, reset,
+  } = useReaderStore();
 
   const [tappedWord, setTappedWord] = useState<string | null>(null);
+  const [selectedSentence, setSelectedSentence] = useState<string | null>(null);
   const [aiMode, setAIMode] = useState<'summary' | 'chat' | 'practice' | null>(null);
   const typoSheetRef = useRef<BottomSheetRef>(null);
   const chapterSheetRef = useRef<BottomSheetRef>(null);
   const aiSheetRef = useRef<BottomSheetRef>(null);
+  const sentenceSheetRef = useRef<BottomSheetModal>(null);
+
+  // Auto-hide chrome
+  const chromeOpacity = useRef(new Animated.Value(1)).current;
+  const chromeVisible = useRef(true);
+  const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const showChrome = useCallback(() => {
+    if (!chromeVisible.current) {
+      chromeVisible.current = true;
+      Animated.timing(chromeOpacity, { toValue: 1, duration: 200, useNativeDriver: true }).start();
+    }
+    if (hideTimer.current) clearTimeout(hideTimer.current);
+    if (autoHide) {
+      hideTimer.current = setTimeout(() => {
+        chromeVisible.current = false;
+        Animated.timing(chromeOpacity, { toValue: 0, duration: 300, useNativeDriver: true }).start();
+      }, 3000);
+    }
+  }, [autoHide, chromeOpacity]);
+
+  useEffect(() => {
+    if (!autoHide) {
+      chromeVisible.current = true;
+      Animated.timing(chromeOpacity, { toValue: 1, duration: 200, useNativeDriver: true }).start();
+      if (hideTimer.current) clearTimeout(hideTimer.current);
+    } else {
+      showChrome();
+    }
+    return () => { if (hideTimer.current) clearTimeout(hideTimer.current); };
+  }, [autoHide, chromeOpacity, showChrome]);
 
   const palette = THEME[theme];
   const chapter = CHAPTER_CONTENT[book.id] ?? FALLBACK_CHAPTER;
@@ -130,7 +186,16 @@ export function ReaderScreen({ book, onBack, onListen }: ReaderScreenProps) {
     setTappedWord((prev) => (prev === cleaned ? null : cleaned));
   }, []);
 
+  const handleSentenceLongPress = useCallback((sentence: string) => {
+    setSelectedSentence(sentence);
+    sentenceSheetRef.current?.present();
+  }, []);
+
   const dismissPopover = useCallback(() => setTappedWord(null), []);
+
+  if (MOCK_READER_LOADING) {
+    return <ReaderSkeleton onBack={onBack} />;
+  }
 
   if (aiMode === 'summary') {
     return <SummaryScreen book={book} onBack={() => setAIMode(null)} />;
@@ -147,22 +212,26 @@ export function ReaderScreen({ book, onBack, onListen }: ReaderScreenProps) {
       style={[styles.safe, { backgroundColor: palette.bg }]}
       edges={['top', 'left', 'right', 'bottom']}
     >
-      {/* Header */}
-      <ReaderHeader
-        book={book}
-        meta={headerMeta}
-        palette={palette}
-        onBack={onBack}
-        onTypography={() => typoSheetRef.current?.present()}
-        onChapters={() => chapterSheetRef.current?.present()}
-      />
+      {/* Header — fades with auto-hide */}
+      <Animated.View style={{ opacity: chromeOpacity }}>
+        <ReaderHeader
+          book={book}
+          meta={headerMeta}
+          palette={palette}
+          onBack={onBack}
+          onTypography={() => typoSheetRef.current?.present()}
+          onChapters={() => chapterSheetRef.current?.present()}
+          pointerEvents={autoHide && !chromeVisible.current ? 'none' : 'auto'}
+        />
+      </Animated.View>
 
-      {/* Reading area */}
+      {/* Reading area — touch resets auto-hide timer */}
       <ScrollView
         style={styles.scroll}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
         onScrollBeginDrag={dismissPopover}
+        onTouchStart={showChrome}
       >
         <Text style={[styles.chapterLabel, { color: palette.subtle }]}>
           {chapter.label}
@@ -175,19 +244,21 @@ export function ReaderScreen({ book, onBack, onListen }: ReaderScreenProps) {
             key={i}
             text={para}
             tappedWord={tappedWord}
+            selectedSentence={selectedSentence}
             onWordPress={handleWordPress}
+            onSentenceLongPress={handleSentenceLongPress}
             style={{ fontFamily: readingFont, fontSize, color: palette.text }}
           />
         ))}
       </ScrollView>
 
-      {/* Progress bar */}
+      {/* Progress bar — always visible, even when chrome is hidden */}
       <View style={[styles.progressZone, { borderTopColor: palette.border, backgroundColor: palette.actionBg }]}>
         <View style={[styles.progressTrack, { backgroundColor: palette.surface }]}>
           <View
             style={[
               styles.progressFill,
-              { width: `${book.progressPercent}%` },
+              { width: `${book.progressPercent}%`, backgroundColor: palette.primary },
             ]}
           />
         </View>
@@ -201,15 +272,23 @@ export function ReaderScreen({ book, onBack, onListen }: ReaderScreenProps) {
         </View>
       </View>
 
-      {/* Action bar */}
-      <ActionBar
-        palette={palette}
-        onListen={onListen}
-        onAITools={() => aiSheetRef.current?.present()}
-        onChapters={() => chapterSheetRef.current?.present()}
-      />
+      {/* Action bar — fades with auto-hide */}
+      <Animated.View style={{ opacity: chromeOpacity }}>
+        <ActionBar
+          palette={palette}
+          onListen={onListen}
+          onAITools={() => aiSheetRef.current?.present()}
+          onChapters={() => chapterSheetRef.current?.present()}
+          pointerEvents={autoHide && !chromeVisible.current ? 'none' : 'auto'}
+        />
+      </Animated.View>
 
-      {/* Dismiss overlay + translate popover */}
+      {/* "Tap to show controls" hint when chrome is hidden */}
+      {autoHide && (
+        <TapHint opacity={chromeOpacity} onPress={showChrome} />
+      )}
+
+      {/* Dismiss overlay + word translate popover */}
       {tappedWord && (
         <>
           <Pressable
@@ -240,13 +319,22 @@ export function ReaderScreen({ book, onBack, onListen }: ReaderScreenProps) {
           fontSize={fontSize}
           fontFamily={fontFamily}
           theme={theme}
+          autoHide={autoHide}
           onPreset={setPreset}
           onFontSize={setFontSize}
           onFontFamily={setFontFamily}
           onTheme={setTheme}
+          onAutoHide={setAutoHide}
           onReset={reset}
         />
       </BottomSheet>
+
+      {/* Sentence translate sheet */}
+      <SentenceTranslateSheet
+        ref={sentenceSheetRef}
+        sentence={selectedSentence ?? ''}
+        onDismiss={() => { setSelectedSentence(null); sentenceSheetRef.current?.dismiss(); }}
+      />
     </SafeAreaView>
   );
 }
@@ -260,6 +348,7 @@ function ReaderHeader({
   onBack,
   onTypography,
   onChapters,
+  pointerEvents,
 }: {
   book: Book;
   meta: string;
@@ -267,6 +356,7 @@ function ReaderHeader({
   onBack: () => void;
   onTypography: () => void;
   onChapters: () => void;
+  pointerEvents?: 'none' | 'auto';
 }) {
   return (
     <View
@@ -274,6 +364,7 @@ function ReaderHeader({
         styles.header,
         { borderBottomColor: palette.border, backgroundColor: palette.headerBg },
       ]}
+      pointerEvents={pointerEvents}
     >
       <Pressable
         accessibilityRole="button"
@@ -323,16 +414,25 @@ function ReaderHeader({
 function TappableParagraph({
   text,
   tappedWord,
+  selectedSentence,
   onWordPress,
+  onSentenceLongPress,
   style,
 }: {
   text: string;
   tappedWord: string | null;
+  selectedSentence: string | null;
   onWordPress: (word: string) => void;
+  onSentenceLongPress: (sentence: string) => void;
   style: { fontFamily: string; fontSize: number; color: string };
 }) {
   const tl = tappedWord?.toLowerCase() ?? '';
-  const parts = useMemo(() => text.split(/(\s+)/), [text]);
+
+  // Split paragraph into sentences for long-press detection
+  const sentences = useMemo(() => {
+    const raw = text.match(/[^.!?]+[.!?]+(?:\s|$)|[^.!?]+$/g) ?? [text];
+    return raw.map((s) => s.trim()).filter(Boolean);
+  }, [text]);
 
   return (
     <RNText
@@ -341,17 +441,30 @@ function TappableParagraph({
         { fontFamily: style.fontFamily, fontSize: style.fontSize, lineHeight: style.fontSize * 1.78, color: style.color },
       ]}
     >
-      {parts.map((token, i) => {
-        if (/^\s+$/.test(token)) return token;
-        const clean = token.replace(/[^a-zA-Z'-]/g, '').toLowerCase();
-        const isTapped = clean.length > 1 && clean === tl;
+      {sentences.map((sentence, si) => {
+        const isSelected = selectedSentence === sentence;
+        const words = sentence.split(/(\s+)/);
         return (
           <RNText
-            key={i}
-            onPress={() => onWordPress(token)}
-            style={isTapped ? styles.wordTapped : undefined}
+            key={si}
+            onLongPress={() => onSentenceLongPress(sentence)}
+            style={isSelected ? styles.sentenceHighlight : undefined}
           >
-            {token}
+            {words.map((token, wi) => {
+              if (/^\s+$/.test(token)) return token;
+              const clean = token.replace(/[^a-zA-Z'-]/g, '').toLowerCase();
+              const isTapped = clean.length > 1 && clean === tl;
+              return (
+                <RNText
+                  key={wi}
+                  onPress={() => onWordPress(token)}
+                  style={isTapped ? styles.wordTapped : undefined}
+                >
+                  {token}
+                </RNText>
+              );
+            })}
+            {si < sentences.length - 1 ? ' ' : ''}
           </RNText>
         );
       })}
@@ -366,11 +479,13 @@ function ActionBar({
   onListen,
   onAITools,
   onChapters,
+  pointerEvents,
 }: {
   palette: (typeof THEME)[ReaderTheme];
   onListen?: () => void;
   onAITools?: () => void;
   onChapters?: () => void;
+  pointerEvents?: 'none' | 'auto';
 }) {
   const ACTIONS = [
     { icon: 'Headphones' as const,  label: 'Listen',   primary: true,  onPress: onListen },
@@ -380,7 +495,10 @@ function ActionBar({
   ];
 
   return (
-    <View style={[styles.actionBar, { borderTopColor: palette.border, backgroundColor: palette.actionBg }]}>
+    <View
+      style={[styles.actionBar, { borderTopColor: palette.border, backgroundColor: palette.actionBg }]}
+      pointerEvents={pointerEvents}
+    >
       {ACTIONS.map(({ icon, label, primary, onPress }) => (
         <Pressable
           key={label}
@@ -391,13 +509,13 @@ function ActionBar({
           <View
             style={[
               styles.actionIcon,
-              primary ? styles.actionIconPrimary : { backgroundColor: palette.surface },
+              { backgroundColor: primary ? palette.primary : palette.surface },
             ]}
           >
             <Icon
               name={icon}
               size={18}
-              color={primary ? tokens.bgColors.canvas : palette.text}
+              color={primary ? palette.primaryIcon : palette.text}
             />
           </View>
           <Text style={[styles.actionLabel, { color: palette.muted }]}>{label}</Text>
@@ -406,6 +524,118 @@ function ActionBar({
     </View>
   );
 }
+
+// ─── Tap hint (auto-hide) ─────────────────────────────────────────────────────
+
+function TapHint({
+  opacity,
+  onPress,
+}: {
+  opacity: Animated.Value;
+  onPress: () => void;
+}) {
+  // Invert: hint appears when chrome is hidden
+  const hintOpacity = opacity.interpolate({ inputRange: [0, 1], outputRange: [1, 0] });
+
+  return (
+    <Animated.View style={[styles.tapHint, { opacity: hintOpacity }]} pointerEvents="none">
+      <Pressable onPress={onPress} style={styles.tapHintInner}>
+        <Text style={styles.tapHintText}>Tap to show controls</Text>
+      </Pressable>
+    </Animated.View>
+  );
+}
+
+// ─── Sentence translate sheet ─────────────────────────────────────────────────
+
+const MOCK_TRANSLATION =
+  'Ɛno East Egg, na Chester Beckers ne Leeches baa, na nnipa bi a wofrɛ wɔn Bunsen — ɔbarima bi a menim no Yale — ne Dokota Webster Civet, a owui asubɔnten mu no afe a ato no Summer Maine.';
+
+const SentenceTranslateSheet = forwardRef<BottomSheetModal, {
+  sentence: string;
+  onDismiss: () => void;
+}>(function SentenceTranslateSheet({ sentence, onDismiss }, ref) {
+  const renderBackdrop = useCallback(
+    (props: BottomSheetBackdropProps) => (
+      <BottomSheetBackdrop
+        {...props}
+        appearsOnIndex={0}
+        disappearsOnIndex={-1}
+        opacity={0.4}
+        pressBehavior="close"
+        onPress={onDismiss}
+      />
+    ),
+    [onDismiss],
+  );
+
+  return (
+    <BottomSheetModal
+      ref={ref}
+      enableDynamicSizing
+      backdropComponent={renderBackdrop}
+      backgroundStyle={sentStyles.bg}
+      handleIndicatorStyle={sentStyles.handle}
+      handleStyle={sentStyles.handleWrap}
+      onDismiss={onDismiss}
+    >
+      <BottomSheetView style={sentStyles.content}>
+        {/* Language pair header */}
+        <View style={sentStyles.header}>
+          <View style={sentStyles.langPair}>
+            <View style={sentStyles.langBadgeFrom}>
+              <Text style={sentStyles.langBadgeFromText}>EN</Text>
+            </View>
+            <Text style={sentStyles.langArrow}>→</Text>
+            <View style={sentStyles.langBadgeTo}>
+              <Text style={sentStyles.langBadgeToText}>TWI</Text>
+            </View>
+          </View>
+          <Pressable
+            style={sentStyles.closeBtn}
+            onPress={onDismiss}
+            hitSlop={8}
+            accessibilityLabel="Close translation"
+          >
+            <Icon name="X" size={11} color={tokens.colors.ink[400]} strokeWidth={2.5} />
+          </Pressable>
+        </View>
+
+        {/* Original sentence */}
+        <Text style={sentStyles.original}>
+          "{sentence}"
+        </Text>
+
+        {/* Translation */}
+        <Text style={sentStyles.translation}>{MOCK_TRANSLATION}</Text>
+
+        {/* Actions */}
+        <View style={sentStyles.actions}>
+          <Pressable
+            style={({ pressed }) => [sentStyles.btn, sentStyles.btnAudio, pressed && { opacity: 0.8 }]}
+            onPress={() => {}}
+          >
+            <Icon name="Headphones" size={13} color={tokens.colors.ink[300]} strokeWidth={1.5} />
+            <Text style={sentStyles.btnAudioText}>Audio</Text>
+          </Pressable>
+          <Pressable
+            style={({ pressed }) => [sentStyles.btn, sentStyles.btnCopy, pressed && { opacity: 0.8 }]}
+            onPress={() => {}}
+          >
+            <Icon name="ListDetails" size={13} color={tokens.colors.ink[300]} strokeWidth={1.5} />
+            <Text style={sentStyles.btnCopyText}>Copy</Text>
+          </Pressable>
+          <Pressable
+            style={({ pressed }) => [sentStyles.btn, sentStyles.btnDone, pressed && { opacity: 0.85 }]}
+            onPress={onDismiss}
+          >
+            <Text style={sentStyles.btnDoneText}>Done</Text>
+          </Pressable>
+        </View>
+      </BottomSheetView>
+    </BottomSheetModal>
+  );
+});
 
 // ─── Translate popover ────────────────────────────────────────────────────────
 
@@ -480,7 +710,7 @@ const FONT_OPTIONS: { key: ReaderFontFamily; label: string }[] = [
 
 const THEME_OPTIONS: { key: ReaderTheme; label: string; bg: string; dot: string; dotBorder?: string; textColor: string }[] = [
   { key: 'light', label: 'Light', bg: tokens.bgColors.canvas,     dot: tokens.colors.cream[200], dotBorder: tokens.colors.ink[200], textColor: tokens.textColors.secondary },
-  { key: 'sepia', label: 'Sepia', bg: '#F3ECD9',                  dot: '#C4A882',                textColor: '#5C4A30'              },
+  { key: 'sepia', label: 'Sepia', bg: '#F5EDD8',                  dot: '#C4A882',                textColor: '#5C4A30'              },
   { key: 'dark',  label: 'Dark',  bg: tokens.colors.ink[900],     dot: tokens.colors.ink[700],   textColor: tokens.colors.cream[50] },
 ];
 
@@ -493,20 +723,24 @@ function TypographySheet({
   fontSize,
   fontFamily,
   theme,
+  autoHide,
   onPreset,
   onFontSize,
   onFontFamily,
   onTheme,
+  onAutoHide,
   onReset,
 }: {
   preset: ReaderPreset;
   fontSize: number;
   fontFamily: ReaderFontFamily;
   theme: ReaderTheme;
+  autoHide: boolean;
   onPreset: (p: ReaderPreset) => void;
   onFontSize: (n: number) => void;
   onFontFamily: (f: ReaderFontFamily) => void;
   onTheme: (t: ReaderTheme) => void;
+  onAutoHide: (v: boolean) => void;
   onReset: () => void;
 }) {
   return (
@@ -607,6 +841,21 @@ function TypographySheet({
             <Text style={[styles.themeOptionText, { color: t.textColor }]}>{t.label}</Text>
           </Pressable>
         ))}
+      </View>
+
+      <View style={styles.sheetDivider} />
+
+      {/* Auto-hide chrome */}
+      <View style={styles.autoHideRow}>
+        <View style={styles.autoHideText}>
+          <Text style={styles.sheetSectionLabel}>Auto-hide controls</Text>
+          <Text style={styles.autoHideDesc}>Hides header and buttons after 3 seconds of reading</Text>
+        </View>
+        <Switch
+          value={autoHide}
+          onValueChange={onAutoHide}
+          trackColor={{ true: tokens.colors.forest[800] }}
+        />
       </View>
     </View>
   );
@@ -1097,5 +1346,177 @@ const styles = StyleSheet.create({
     width: 10,
     height: 10,
     borderRadius: 5,
+  },
+
+  // Auto-hide toggle row
+  autoHideRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: tokens.space.md,
+    paddingBottom: tokens.space.sm,
+  },
+  autoHideText: {
+    flex: 1,
+  },
+  autoHideDesc: {
+    fontFamily: tokens.fonts.ui,
+    fontSize: 11,
+    color: tokens.textColors.muted,
+    marginTop: 2,
+  },
+
+  // Sentence highlight (long-press)
+  sentenceHighlight: {
+    backgroundColor: tokens.colors.amber[200],
+    borderRadius: 3,
+  },
+
+  // Tap hint (auto-hide)
+  tapHint: {
+    position: 'absolute',
+    bottom: 96,
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+    pointerEvents: 'none',
+  },
+  tapHintInner: {
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    borderRadius: 20,
+    paddingHorizontal: 16,
+    paddingVertical: 7,
+  },
+  tapHintText: {
+    fontFamily: tokens.fonts.ui,
+    fontSize: 12,
+    color: 'rgba(255,255,255,0.9)',
+  },
+});
+
+// ─── Sentence translate sheet styles ─────────────────────────────────────────
+
+const sentStyles = StyleSheet.create({
+  bg: {
+    backgroundColor: '#1A1A1A',
+  },
+  handle: {
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    width: 36,
+  },
+  handleWrap: {
+    paddingBottom: 0,
+  },
+  content: {
+    paddingHorizontal: tokens.space.lg,
+    paddingBottom: tokens.space.xl,
+    paddingTop: tokens.space.sm,
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: tokens.space.md,
+  },
+  langPair: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  langBadgeFrom: {
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    borderRadius: 4,
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+  },
+  langBadgeFromText: {
+    fontFamily: tokens.fonts.uiMedium,
+    fontSize: 10,
+    fontWeight: '600',
+    letterSpacing: 0.5,
+    color: tokens.colors.ink[300],
+  },
+  langArrow: {
+    fontFamily: tokens.fonts.ui,
+    fontSize: 12,
+    color: tokens.colors.ink[500],
+  },
+  langBadgeTo: {
+    backgroundColor: tokens.colors.forest[800],
+    borderRadius: 4,
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+  },
+  langBadgeToText: {
+    fontFamily: tokens.fonts.uiMedium,
+    fontSize: 10,
+    fontWeight: '600',
+    letterSpacing: 0.5,
+    color: tokens.colors.cream[50],
+  },
+  closeBtn: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  original: {
+    fontFamily: 'Literata_400Regular',
+    fontSize: 14,
+    fontStyle: 'italic',
+    color: tokens.colors.ink[300],
+    lineHeight: 22,
+    marginBottom: tokens.space.md,
+  },
+  translation: {
+    fontFamily: tokens.fonts.ui,
+    fontSize: 15,
+    color: tokens.colors.cream[50],
+    lineHeight: 24,
+    marginBottom: tokens.space.lg,
+  },
+  actions: {
+    flexDirection: 'row',
+    gap: tokens.space.sm,
+  },
+  btn: {
+    height: 38,
+    borderRadius: tokens.radii.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+    gap: 5,
+  },
+  btnAudio: {
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    paddingHorizontal: 14,
+  },
+  btnAudioText: {
+    fontFamily: tokens.fonts.uiMedium,
+    fontSize: 12,
+    fontWeight: '500',
+    color: tokens.colors.ink[300],
+  },
+  btnCopy: {
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    paddingHorizontal: 14,
+  },
+  btnCopyText: {
+    fontFamily: tokens.fonts.uiMedium,
+    fontSize: 12,
+    fontWeight: '500',
+    color: tokens.colors.ink[300],
+  },
+  btnDone: {
+    flex: 1,
+    backgroundColor: tokens.colors.forest[800],
+  },
+  btnDoneText: {
+    fontFamily: tokens.fonts.uiMedium,
+    fontSize: 13,
+    fontWeight: '500',
+    color: tokens.colors.cream[50],
   },
 });

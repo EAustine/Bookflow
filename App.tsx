@@ -28,12 +28,17 @@ import {
 import { supabase } from '~/lib/supabase';
 import type { TabKey } from '~/components';
 import { AuthCallbackScreen } from '~/screens/AuthCallbackScreen';
-import { ComingSoonScreen } from '~/screens/ComingSoonScreen';
 import { DiscoverScreen } from '~/screens/DiscoverScreen';
+import { ListenHomeScreen } from '~/screens/ListenHomeScreen';
+import {
+  type ListenPlaybackState,
+  type MonthStats,
+  type RecentTrack,
+} from '~/screens/ListenNowPlayingScreen';
 import { PaywallPlanScreen } from '~/screens/PaywallScreen';
 import { LibraryScreen } from '~/screens/LibraryScreen';
 import { OnboardingFirstBookScreen } from '~/screens/OnboardingFirstBookScreen';
-import { OnboardingIntentScreen } from '~/screens/OnboardingIntentScreen';
+import { OnboardingIntentScreen, type OnboardingIntent } from '~/screens/OnboardingIntentScreen';
 import { SignInScreen } from '~/screens/SignInScreen';
 import { SignUpScreen } from '~/screens/SignUpScreen';
 import { SplashScreen } from '~/screens/SplashScreen';
@@ -46,13 +51,25 @@ import { YouScreen, type YouPlan, type YouProfile } from '~/screens/YouScreen';
 // the unmount/remount cycle; resets on full page reload (every new link click).
 let authCallbackInFlight = false;
 
-// Placeholder data until M2 wires real profile/usage queries from Supabase.
-// Driving these from CLAUDE.md's persona Ama keeps mocks honest with
-// product intent rather than generic "John Doe" placeholders.
-const MOCK_PROFILE: YouProfile = {
-  name: 'Ama Mensah',
-  email: 'ama.mensah@gmail.com',
+// Mock Listen-tab data. Real audio playback + recent-listens query is M2 work;
+// for now the screen renders a representative book so the tab is interactive
+// instead of a "coming soon" stub.
+const MOCK_RECENT: RecentTrack[] = [
+  { id: 'r1', bookTitle: 'Atomic Habits', meta: 'Ch. 18 · just now',     initials: 'AH', coverColor: '#C7986E' },
+  { id: 'r2', bookTitle: 'Sapiens',       meta: 'Ch. 7 · yesterday',     initials: 'SA', coverColor: '#7A6E5C' },
+  { id: 'r3', bookTitle: 'Deep Work',     meta: 'Finished · 3 days ago', initials: 'DW', coverColor: '#5B6B58' },
+];
+
+const MOCK_MONTH: MonthStats = {
+  listeningHours: 4.2,
+  listeningHoursDelta: '↑ from 2.8h',
+  booksStarted: 3,
+  booksFinished: 1,
+  audioRemainingMin: 38,
+  audioResetLabel: 'Resets June 1',
 };
+
+// Placeholder usage data until M2 wires real queries from Supabase.
 const MOCK_PLAN: YouPlan = {
   name: 'Free',
   meters: {
@@ -95,6 +112,12 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<TabKey>('library');
   const [paywallVisible, setPaywallVisible] = useState(false);
   const [callbackError, setCallbackError] = useState<AuthExchangeErrorKind>('unknown');
+  const [signupName, setSignupName] = useState('');
+  // Listen-tab UI state. Audio playback (react-native-track-player) is
+  // deferred to M2 — RNTP 4.x doesn't compile cleanly against RN 0.83 + new
+  // arch and there's no book audio in the pipeline yet anyway. The Listen
+  // tab shows its empty state until M2 wires real playback.
+  const [listenState, setListenState] = useState<ListenPlaybackState>('paused');
   // Functional setter so a late-firing splash timer can't drag us back to
   // 'welcome' after the deep-link handler has already moved past splash.
   const onSplashComplete = useCallback(
@@ -109,14 +132,75 @@ export default function App() {
   const goToOnboardingIntent = useCallback(() => setStage('onboardingIntent'), []);
   const goToOnboardingFirstBook = useCallback(() => setStage('onboardingFirstBook'), []);
 
-  // Google OAuth success — same routing logic as magic-link: new users see
-  // onboarding, returning users go straight to library.
-  const onGoogleSignIn = useCallback(async () => {
-    const { data: { user } } = await supabase.auth.getUser();
-    const createdAt = user?.created_at ? new Date(user.created_at).getTime() : 0;
-    const isNewUser = Date.now() - createdAt < 5 * 60 * 1000;
-    setStage(isNewUser ? 'onboardingIntent' : 'library');
+  const handleSignInComplete = useCallback(() => goToAuthCallback(), [goToAuthCallback]);
+  const handleSignUpComplete = useCallback((fullName?: string) => {
+    if (fullName?.trim()) setSignupName(fullName.trim());
+    goToAuthCallback();
+  }, [goToAuthCallback]);
+
+  /**
+   * Onboarding persistence. We write to `profiles` then navigate forward —
+   * but the writes are best-effort. Onboarding is a soft signal (used for
+   * personalisation later); blocking forward motion on a network hiccup
+   * would be worse than silently logging the failure. Returning users get
+   * routed correctly via session-restore's `onboarding_complete` check, so
+   * a lost intent is purely cosmetic.
+   */
+  const persistOnboardingIntent = useCallback(async (intent: OnboardingIntent | null) => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+      const { error } = await supabase
+        .from('profiles')
+        .update({ onboarding_intent: intent })
+        .eq('id', user.id);
+      if (error) console.warn('[onboarding] persist intent failed:', error.message);
+    } catch (err) {
+      console.warn('[onboarding] persist intent threw:', err);
+    }
   }, []);
+
+  const persistOnboardingComplete = useCallback(async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+      const { error } = await supabase
+        .from('profiles')
+        .update({ onboarding_complete: true })
+        .eq('id', user.id);
+      if (error) console.warn('[onboarding] mark complete failed:', error.message);
+    } catch (err) {
+      console.warn('[onboarding] mark complete threw:', err);
+    }
+  }, []);
+
+  const handleOnboardingIntentContinue = useCallback(
+    (intent: OnboardingIntent) => {
+      // Fire-and-forget — navigation is independent of the write.
+      void persistOnboardingIntent(intent);
+      goToOnboardingFirstBook();
+    },
+    [goToOnboardingFirstBook, persistOnboardingIntent],
+  );
+
+  const handleOnboardingIntentSkip = useCallback(() => {
+    void persistOnboardingIntent(null);
+    goToOnboardingFirstBook();
+  }, [goToOnboardingFirstBook, persistOnboardingIntent]);
+
+  const handleOnboardingFirstBookContinue = useCallback(
+    (_selection: unknown) => {
+      // TODO: copy curated book into user library (M2).
+      void persistOnboardingComplete();
+      goToLibrary();
+    },
+    [goToLibrary, persistOnboardingComplete],
+  );
+
+  const handleOnboardingFirstBookSkip = useCallback(() => {
+    void persistOnboardingComplete();
+    goToLibrary();
+  }, [goToLibrary, persistOnboardingComplete]);
 
   /**
    * Sign-out flow. YouScreen surfaces the confirmation sheet, awaits this
@@ -173,13 +257,24 @@ export default function App() {
       if (cancelled) return;
 
       if (result.ok) {
-        // New users (account created within last 5 min) go through onboarding.
-        // Returning users skip straight to library. M2 will replace this with
-        // a profile.onboarding_intent query for a more reliable signal.
-        const { data: { user } } = await supabase.auth.getUser();
-        const createdAt = user?.created_at ? new Date(user.created_at).getTime() : 0;
-        const isNewUser = Date.now() - createdAt < 5 * 60 * 1000;
-        setStage(isNewUser ? 'onboardingIntent' : 'library');
+        // Route based on the profile flag, not a created_at heuristic. New
+        // users land on onboardingIntent (the trigger seeds the row with
+        // onboarding_complete=false); returning users go straight to library.
+        // If the profile lookup fails we default to library — RLS will catch
+        // any real auth issue downstream, and stranding the user is worse.
+        let onboardingComplete = false;
+        try {
+          const { data: profile } = await supabase
+            .from('profiles')
+            .select('onboarding_complete')
+            .eq('id', result.userId)
+            .single();
+          onboardingComplete = !!profile?.onboarding_complete;
+        } catch (err) {
+          console.warn('[auth] profile lookup after callback failed:', err);
+          onboardingComplete = true;
+        }
+        setStage(onboardingComplete ? 'library' : 'onboardingIntent');
       } else {
         setCallbackError(result.error);
         setStage('authCallbackError');
@@ -196,22 +291,41 @@ export default function App() {
   }, []);
 
   /**
-   * Session restoration on cold start. If the user already has a persisted
-   * Supabase session (signed in previously, token still valid), skip the
-   * Welcome/SignIn flow and land them on the library directly. The
-   * functional setStage guard makes sure the deep-link handler — which can
-   * race with this — keeps its precedence: a fresh sign-in via magic link
-   * should still see the verifying screen.
+   * Session restoration on cold start. If the user has a persisted Supabase
+   * session, look up their `onboarding_complete` flag and route directly to
+   * Library (completed) or back into the onboarding flow (incomplete — e.g.
+   * they killed the app mid-onboarding). The functional setStage guard
+   * makes sure the deep-link handler — which can race with this — keeps
+   * its precedence: a fresh sign-in via magic link should still see the
+   * verifying screen.
+   *
+   * Profile fetch failures fall through to Library — RLS enforces the row
+   * filter, so a missing/errored profile shouldn't strand the user on
+   * splash. Better to let them in and surface any DB issue downstream.
    */
   useEffect(() => {
     let cancelled = false;
-    supabase.auth
-      .getSession()
-      .then(({ data: { session } }) => {
-        if (cancelled || !session) return;
-        setStage((prev) => (prev === 'splash' ? 'library' : prev));
-      })
-      .catch(() => {});
+    (async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (cancelled || !session?.user) return;
+
+        const { data: profile, error } = await supabase
+          .from('profiles')
+          .select('onboarding_complete')
+          .eq('id', session.user.id)
+          .single();
+        if (cancelled) return;
+        if (error) {
+          console.warn('[boot] profile lookup failed:', error.message);
+        }
+
+        const next = profile?.onboarding_complete ? 'library' : 'onboardingIntent';
+        setStage((prev) => (prev === 'splash' ? next : prev));
+      } catch (err) {
+        console.warn('[boot] session restore threw:', err);
+      }
+    })();
     return () => {
       cancelled = true;
     };
@@ -231,16 +345,14 @@ export default function App() {
             <SignInScreen
               onBack={goToWelcome}
               onSwitchVariant={goToSignUp}
-              onComplete={goToAuthCallback}
-              onGoogleSignIn={onGoogleSignIn}
+              onComplete={handleSignInComplete}
             />
           )}
           {stage === 'signup' && (
             <SignUpScreen
               onBack={goToWelcome}
               onSignIn={goToSignIn}
-              onComplete={goToAuthCallback}
-              onGoogleSignIn={onGoogleSignIn}
+              onComplete={handleSignUpComplete}
             />
           )}
           {stage === 'authCallback' && (
@@ -260,20 +372,14 @@ export default function App() {
           )}
           {stage === 'onboardingIntent' && (
             <OnboardingIntentScreen
-              onContinue={(_intent) => {
-                // TODO: persist `onboarding_intent` to profile + emit `signup_intent_picked` to PostHog
-                goToOnboardingFirstBook();
-              }}
-              onSkip={goToOnboardingFirstBook}
+              onContinue={handleOnboardingIntentContinue}
+              onSkip={handleOnboardingIntentSkip}
             />
           )}
           {stage === 'onboardingFirstBook' && (
             <OnboardingFirstBookScreen
-              onContinue={(_selection) => {
-                // TODO: copy curated book into user_books + emit `signup_first_book_picked`
-                goToLibrary();
-              }}
-              onSkip={goToLibrary}
+              onContinue={handleOnboardingFirstBookContinue}
+              onSkip={handleOnboardingFirstBookSkip}
             />
           )}
           {stage === 'library' && (
@@ -281,13 +387,13 @@ export default function App() {
               {activeTab === 'library' && (
                 <LibraryScreen
                   onTabChange={setActiveTab}
-                  userName={MOCK_PROFILE.name}
+                  userName={signupName || 'Ama Mensah'}
                   onUpgrade={() => setPaywallVisible(true)}
                 />
               )}
               {activeTab === 'you' && (
                 <YouScreen
-                  profile={MOCK_PROFILE}
+                  profile={{ name: signupName || 'Ama Mensah', email: 'ama.mensah@gmail.com' }}
                   plan={MOCK_PLAN}
                   onTabChange={setActiveTab}
                   onSignOut={handleSignOut}
@@ -297,7 +403,37 @@ export default function App() {
                 <DiscoverScreen onTabChange={setActiveTab} />
               )}
               {activeTab === 'listen' && (
-                <ComingSoonScreen tab="listen" onTabChange={setActiveTab} />
+                <ListenHomeScreen
+                  // No audio engine yet — Listen tab renders its empty state
+                  // until M2. Mock now-playing data stays plumbed so flipping
+                  // isPlaying=true at any point lights up the hero card for
+                  // visual review.
+                  isPlaying={false}
+                  nowPlaying={{
+                    state: listenState,
+                    bookTitle: 'Atomic Habits',
+                    author: 'James Clear',
+                    chapterLabel: 'Ch. 18 · The Goldilocks Rule',
+                    progressPercent: 42,
+                    elapsed: '4:12',
+                    remaining: '-6:56',
+                    speed: 1,
+                    voice: 'Sarah',
+                    recentlyListened: MOCK_RECENT,
+                    activeRecentId: 'r1',
+                    monthStats: MOCK_MONTH,
+                    onPlayPause: () =>
+                      setListenState((s) => (s === 'playing' ? 'paused' : 'playing')),
+                    onSkipBack: () => {},
+                    onSkipForward: () => {},
+                    onOpenSpeedSheet: () => {},
+                    onOpenVoiceSheet: () => {},
+                    onOpenChaptersSheet: () => {},
+                    onOpenRecent: () => {},
+                    onSeeAllRecent: () => {},
+                  }}
+                  onTabChange={setActiveTab}
+                />
               )}
             </>
           )}

@@ -14,6 +14,7 @@ export const mockBooks: Book[] = [
     lastReadAt: new Date('2026-04-28T08:42:00'),
     addedAt: new Date('2026-04-20T12:00:00'),
     coverColor: '#1B4332',
+    downloaded: true,
   },
   {
     id: '2',

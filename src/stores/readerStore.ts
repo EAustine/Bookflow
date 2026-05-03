@@ -9,6 +9,7 @@ export type ReaderSettings = {
   fontSize: number;
   fontFamily: ReaderFontFamily;
   theme: ReaderTheme;
+  autoHide: boolean;
 };
 
 const PRESET_CONFIGS: Record<ReaderPreset, Pick<ReaderSettings, 'fontSize' | 'fontFamily'>> = {
@@ -22,6 +23,7 @@ const DEFAULT: ReaderSettings = {
   fontSize: 20,
   fontFamily: 'serif',
   theme: 'light',
+  autoHide: false,
 };
 
 type ReaderStore = ReaderSettings & {
@@ -29,6 +31,7 @@ type ReaderStore = ReaderSettings & {
   setFontSize: (size: number) => void;
   setFontFamily: (family: ReaderFontFamily) => void;
   setTheme: (theme: ReaderTheme) => void;
+  setAutoHide: (v: boolean) => void;
   reset: () => void;
 };
 
@@ -38,5 +41,6 @@ export const useReaderStore = create<ReaderStore>((set) => ({
   setFontSize: (fontSize) => set({ fontSize }),
   setFontFamily: (fontFamily) => set({ fontFamily }),
   setTheme: (theme) => set({ theme }),
+  setAutoHide: (autoHide) => set({ autoHide }),
   reset: () => set(DEFAULT),
 }));

@@ -19,6 +19,8 @@
 
 import { useCallback, useRef, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { AccountScreen } from '~/screens/AccountScreen';
+import { SettingsScreen } from '~/screens/SettingsScreen';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   BottomSheet,
@@ -107,6 +109,7 @@ export function YouScreen({
 }: YouScreenProps) {
   const sheetRef = useRef<BottomSheetRef>(null);
   const [signingOut, setSigningOut] = useState(false);
+  const [view, setView] = useState<'home' | 'account' | 'settings'>('home');
 
   const presentSignOutSheet = useCallback(() => {
     sheetRef.current?.present();
@@ -130,6 +133,22 @@ export function YouScreen({
     }
   }, [onSignOut, signingOut]);
 
+  if (view === 'settings') {
+    return <SettingsScreen onBack={() => setView('home')} />;
+  }
+
+  if (view === 'account') {
+    return (
+      <AccountScreen
+        profile={profile}
+        plan={plan}
+        onBack={() => setView('home')}
+        onSignOut={onSignOut}
+        onUpgrade={onUpgrade ?? (() => {})}
+      />
+    );
+  }
+
   return (
     <>
       <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
@@ -141,7 +160,7 @@ export function YouScreen({
           <PageHeader />
           <ProfileHeader
             profile={profile}
-            onPress={onAccountAndSubscription ?? (() => {})}
+            onPress={() => setView('account')}
           />
           <PlanCard plan={plan} onUpgrade={onUpgrade ?? (() => {})} />
 
@@ -176,14 +195,14 @@ export function YouScreen({
               leadingIcon="User"
               label="Account & subscription"
               drillsInto
-              onPress={onAccountAndSubscription ?? (() => {})}
+              onPress={() => setView('account')}
             />
             <Divider />
             <ListRow
               leadingIcon="Settings"
               label="Settings"
               drillsInto
-              onPress={onSettings ?? (() => {})}
+              onPress={() => setView('settings')}
             />
             <Divider />
             <ListRow

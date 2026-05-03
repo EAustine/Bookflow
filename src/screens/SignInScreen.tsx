@@ -1,15 +1,15 @@
 /**
- * SignInScreen / SignUpScreen — magic-link primary, OAuth secondary, no passwords.
+ * SignInScreen / SignUpScreen — magic-link auth, no passwords.
  *
  * Single component, two variants. Per /Users/completefarmer/Downloads/03_signin.html
  * and /Users/completefarmer/Downloads/03b_signup.html.
  *
  * Two states (each variant):
- *   - 'form'    · email field, Send magic link, divider, Google + Apple, footer
+ *   - 'form'    · (signup: full name field), email field, Send magic link, footer
  *   - 'success' · mail icon, "Check your email", Open email app, Resend (30s)
  *
- * Sign-up adds: marketing consent checkbox (default unchecked, GDPR), legal
- * microcopy, footer link reversed to "Already have an account? Sign in".
+ * Sign-up adds: full name field, marketing consent checkbox (default unchecked, GDPR),
+ * legal microcopy, footer link reversed to "Already have an account? Sign in".
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -30,7 +30,6 @@ import { Input } from '~/components/Input';
 import { Text } from '~/components/Text';
 import { tokens } from '~/design/tokens';
 import { sendMagicLink, type SendMagicLinkResult } from '~/lib/auth';
-import { useGoogleSignIn } from '~/lib/google-auth';
 
 const RESEND_COOLDOWN_S = 30;
 
@@ -41,9 +40,8 @@ export type SignInScreenProps = {
   onBack: () => void;
   /** Pressed when user taps the inverse footer link (e.g. "Sign up" on signin, "Sign in" on signup). */
   onSwitchVariant: () => void;
-  onComplete: () => void;
-  /** Called when Google OAuth succeeds — caller handles routing. */
-  onGoogleSignIn: () => void;
+  /** Called when user taps "Open email app" in the success state. Passes full name for signup variant. */
+  onComplete: (fullName?: string) => void;
 };
 
 export function SignInScreen({
@@ -51,26 +49,15 @@ export function SignInScreen({
   onBack,
   onSwitchVariant,
   onComplete,
-  onGoogleSignIn,
 }: SignInScreenProps) {
   const [stage, setStage] = useState<'form' | 'success'>('form');
   const [email, setEmail] = useState('');
+  const [fullName, setFullName] = useState('');
   const [marketingConsent, setMarketingConsent] = useState(false);
 
-  const { promptAsync: promptGoogle, loading: googleLoading, ready: googleReady } = useGoogleSignIn(
-    useCallback((result) => {
-      if (result.ok) onGoogleSignIn();
-    }, [onGoogleSignIn]),
-  );
-
-  /**
-   * Single source of truth for sending. Called from the form's primary CTA
-   * and from the success-state Resend button. Returns the typed result so
-   * each caller decides how to render success/error.
-   */
   const submit = useCallback(
-    () => sendMagicLink({ email, variant, marketingConsent }),
-    [email, variant, marketingConsent],
+    () => sendMagicLink({ email, variant, marketingConsent, fullName }),
+    [email, variant, marketingConsent, fullName],
   );
 
   return (
@@ -78,6 +65,8 @@ export function SignInScreen({
       {stage === 'form' ? (
         <SignInForm
           variant={variant}
+          fullName={fullName}
+          onFullNameChange={setFullName}
           email={email}
           onEmailChange={setEmail}
           marketingConsent={marketingConsent}
@@ -86,14 +75,12 @@ export function SignInScreen({
           onSwitchVariant={onSwitchVariant}
           onSubmit={submit}
           onSent={() => setStage('success')}
-          onGooglePress={promptGoogle}
-          googleLoading={googleLoading}
-          googleReady={googleReady}
         />
       ) : (
         <SignInSuccess
           variant={variant}
           email={email}
+          fullName={fullName}
           onBack={onBack}
           onComplete={onComplete}
           onResend={submit}
@@ -109,6 +96,8 @@ export function SignInScreen({
 
 type SignInFormProps = {
   variant: AuthVariant;
+  fullName: string;
+  onFullNameChange: (value: string) => void;
   email: string;
   onEmailChange: (value: string) => void;
   marketingConsent: boolean;
@@ -117,13 +106,12 @@ type SignInFormProps = {
   onSwitchVariant: () => void;
   onSubmit: () => Promise<SendMagicLinkResult>;
   onSent: () => void;
-  onGooglePress: () => void;
-  googleLoading: boolean;
-  googleReady: boolean;
 };
 
 function SignInForm({
   variant,
+  fullName,
+  onFullNameChange,
   email,
   onEmailChange,
   marketingConsent,
@@ -132,34 +120,41 @@ function SignInForm({
   onSwitchVariant,
   onSubmit,
   onSent,
-  onGooglePress,
-  googleLoading,
-  googleReady,
 }: SignInFormProps) {
-  const inputRef = useRef<TextInput>(null);
+  const nameInputRef = useRef<TextInput>(null);
+  const emailInputRef = useRef<TextInput>(null);
   const [submitting, setSubmitting] = useState(false);
-  const [errorText, setErrorText] = useState<string | undefined>();
-
-  useEffect(() => {
-    const t = setTimeout(() => inputRef.current?.focus(), 200);
-    return () => clearTimeout(t);
-  }, []);
+  const [nameError, setNameError] = useState<string | undefined>();
+  const [emailError, setEmailError] = useState<string | undefined>();
 
   const isSignup = variant === 'signup';
 
+  useEffect(() => {
+    const ref = isSignup ? nameInputRef : emailInputRef;
+    const t = setTimeout(() => ref.current?.focus(), 200);
+    return () => clearTimeout(t);
+  }, [isSignup]);
+
   const handleSend = async () => {
-    if (!isValidEmail(email)) {
-      setErrorText('Enter a valid email address.');
-      return;
+    let hasError = false;
+    if (isSignup && !fullName.trim()) {
+      setNameError('Enter your full name.');
+      hasError = true;
     }
-    setErrorText(undefined);
+    if (!isValidEmail(email)) {
+      setEmailError('Enter a valid email address.');
+      hasError = true;
+    }
+    if (hasError) return;
+    setNameError(undefined);
+    setEmailError(undefined);
     setSubmitting(true);
     try {
       const result = await onSubmit();
       if (result.ok) {
         onSent();
       } else {
-        setErrorText(result.message);
+        setEmailError(result.message);
       }
     } finally {
       setSubmitting(false);
@@ -182,22 +177,47 @@ function SignInForm({
       </View>
 
       <View style={styles.form}>
+        {isSignup && (
+          <Input
+            ref={nameInputRef}
+            size="large"
+            label="Full name"
+            placeholder="Your full name"
+            value={fullName}
+            onChangeText={(v) => {
+              onFullNameChange(v);
+              if (nameError) setNameError(undefined);
+            }}
+            onBlur={() => {
+              if (isSignup && fullName && !fullName.trim()) {
+                setNameError('Enter your full name.');
+              }
+            }}
+            errorText={nameError}
+            autoCapitalize="words"
+            autoComplete="name"
+            textContentType="name"
+            returnKeyType="next"
+            onSubmitEditing={() => emailInputRef.current?.focus()}
+          />
+        )}
+
         <Input
-          ref={inputRef}
+          ref={emailInputRef}
           size="large"
           label="Email"
           placeholder="you@example.com"
           value={email}
           onChangeText={(v) => {
             onEmailChange(v);
-            if (errorText) setErrorText(undefined);
+            if (emailError) setEmailError(undefined);
           }}
           onBlur={() => {
             if (email && !isValidEmail(email)) {
-              setErrorText('Enter a valid email address.');
+              setEmailError('Enter a valid email address.');
             }
           }}
-          errorText={errorText}
+          errorText={emailError}
           keyboardType="email-address"
           autoCapitalize="none"
           autoComplete="email"
@@ -221,23 +241,6 @@ function SignInForm({
           fullWidth
           loading={submitting}
           onPress={handleSend}
-        />
-      </View>
-
-      <Divider />
-
-      <View style={styles.oauthList}>
-        <OAuthButton
-          label={isSignup ? 'Sign up with Google' : 'Continue with Google'}
-          logo={<GoogleLogo />}
-          onPress={onGooglePress}
-          loading={googleLoading}
-          disabled={!googleReady || googleLoading}
-        />
-        <OAuthButton
-          label={isSignup ? 'Sign up with Apple' : 'Continue with Apple'}
-          logo={<Icon name="Apple" size={18} color={tokens.colors.ink[900]} />}
-          onPress={() => {}}
         />
       </View>
 
@@ -280,12 +283,13 @@ function SignInForm({
 type SignInSuccessProps = {
   variant: AuthVariant;
   email: string;
+  fullName: string;
   onBack: () => void;
-  onComplete: () => void;
+  onComplete: (fullName?: string) => void;
   onResend: () => Promise<SendMagicLinkResult>;
 };
 
-function SignInSuccess({ variant, email, onBack, onComplete, onResend }: SignInSuccessProps) {
+function SignInSuccess({ variant, email, fullName, onBack, onComplete, onResend }: SignInSuccessProps) {
   const [secondsLeft, setSecondsLeft] = useState(RESEND_COOLDOWN_S);
   const [resending, setResending] = useState(false);
   const [resendError, setResendError] = useState<string | undefined>();
@@ -315,7 +319,7 @@ function SignInSuccess({ variant, email, onBack, onComplete, onResend }: SignInS
   const handleOpenEmail = () => {
     if (Platform.OS === 'ios') Linking.openURL('message://');
     else Linking.openURL('mailto:');
-    onComplete();
+    onComplete(variant === 'signup' ? fullName : undefined);
   };
 
   return (
@@ -391,16 +395,6 @@ function Header({ onBack }: { onBack: () => void }) {
   );
 }
 
-function Divider() {
-  return (
-    <View style={styles.divider}>
-      <View style={styles.dividerLine} />
-      <RNText style={styles.dividerText}>or</RNText>
-      <View style={styles.dividerLine} />
-    </View>
-  );
-}
-
 function ConsentRow({
   checked,
   onChange,
@@ -436,64 +430,6 @@ function ConsentRow({
     </Pressable>
   );
 }
-
-function OAuthButton({
-  label,
-  logo,
-  onPress,
-  loading = false,
-  disabled = false,
-}: {
-  label: string;
-  logo: React.ReactNode;
-  onPress: () => void;
-  loading?: boolean;
-  disabled?: boolean;
-}) {
-  return (
-    <Pressable
-      onPress={onPress}
-      disabled={disabled}
-      accessibilityRole="button"
-      style={({ pressed }) => [
-        styles.oauthBtn,
-        pressed && !disabled && { backgroundColor: tokens.colors.cream[100] },
-        disabled && { opacity: 0.5 },
-      ]}
-    >
-      {loading ? (
-        <Icon name="Loader" size={18} color={tokens.colors.ink[500]} />
-      ) : (
-        logo
-      )}
-      <RNText style={styles.oauthLabel}>{label}</RNText>
-    </Pressable>
-  );
-}
-
-function GoogleLogo() {
-  return (
-    <Svg width={18} height={18} viewBox="0 0 18 18">
-      <Path
-        d="M16.51 8.18c0-.55-.04-1.07-.13-1.57H9v3.04h4.2c-.18 1.05-.86 1.94-1.83 2.55v2.13h2.97c1.74-1.6 2.74-3.94 2.74-6.15z"
-        fill="#4285F4"
-      />
-      <Path
-        d="M9 17c2.48 0 4.55-.83 6.07-2.23l-2.97-2.13c-.82.55-1.86.88-3.1.88-2.39 0-4.41-1.61-5.13-3.78H.81v2.2C2.32 14.73 5.42 17 9 17z"
-        fill="#34A853"
-      />
-      <Path
-        d="M3.87 9.74c-.18-.55-.29-1.13-.29-1.74s.11-1.19.29-1.74V4.06H.81C.21 5.21 0 6.55 0 8s.21 2.79.81 3.94l3.06-2.2z"
-        fill="#FBBC05"
-      />
-      <Path
-        d="M9 3.48c1.34 0 2.55.46 3.5 1.36l2.62-2.62C13.55.86 11.48 0 9 0 5.42 0 2.32 2.27.81 5.56l3.06 2.2C4.59 5.09 6.61 3.48 9 3.48z"
-        fill="#EA4335"
-      />
-    </Svg>
-  );
-}
-
 
 function MailSparkleIcon() {
   return (
@@ -633,50 +569,6 @@ const styles = StyleSheet.create({
   legalLink: {
     color: tokens.textColors.muted,
     textDecorationLine: 'underline',
-  },
-
-  // Divider
-  divider: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: tokens.space.md,
-    marginVertical: tokens.space.sm,
-  },
-  dividerLine: {
-    flex: 1,
-    height: 1,
-    backgroundColor: tokens.colors.ink[200],
-  },
-  dividerText: {
-    fontFamily: tokens.fonts.uiMedium,
-    fontSize: 11,
-    fontWeight: '500',
-    color: tokens.textColors.muted,
-    textTransform: 'uppercase',
-    letterSpacing: 0.88,
-  },
-
-  // OAuth
-  oauthList: {
-    gap: tokens.space.sm,
-    marginTop: tokens.space.sm,
-  },
-  oauthBtn: {
-    height: 48,
-    borderWidth: 1.5,
-    borderColor: tokens.colors.ink[200],
-    borderRadius: 10,
-    backgroundColor: tokens.bgColors.canvas,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 10,
-  },
-  oauthLabel: {
-    fontFamily: tokens.fonts.uiMedium,
-    fontSize: 14,
-    fontWeight: '500',
-    color: tokens.textColors.primary,
   },
 
   // Footer
