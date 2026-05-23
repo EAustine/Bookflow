@@ -96,7 +96,7 @@ export type HelpFAQScreenProps = {
 export function HelpFAQScreen({
   onBack,
   onContactSupport,
-  supportEmail = 'help@bookflow.app',
+  supportEmail = 'support@getbookflow.co',
 }: HelpFAQScreenProps) {
   const [query, setQuery] = useState('');
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
