@@ -1,12 +1,22 @@
-import { useRef, useState } from 'react';
-import { Linking, Pressable, ScrollView, StyleSheet, Switch, View } from 'react-native';
+import { useCallback, useRef, useState } from 'react';
+import { Alert, Linking, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { BottomSheet, type BottomSheetRef, Icon, type IconName, Text } from '~/components';
 import { tokens } from '~/design/tokens';
+import { useReaderStore, TRANSLATION_LANGUAGE_LABELS } from '~/stores/readerStore';
+import { VOICE_OPTIONS } from '~/lib/aiAudio';
+import {
+  DefaultVoiceScreen,
+  PlaybackSpeedScreen,
+  ReadingDisplayScreen,
+  TranslationLanguageScreen,
+} from '~/screens/YouDrillScreens';
+import { useBackHandler } from '~/lib/useBackHandler';
 
-const WARN = '#A0692A';
-const WARN_BG = '#FDF3E3';
-const WARN_BORDER = tokens.colors.amber[200];
+const WARN = tokens.colors.warn;
+const WARN_BG = tokens.colors.warnBg;
+const WARN_BORDER = tokens.colors.warnBorder;
 
 // ─── Props ────────────────────────────────────────────────────────────────────
 
@@ -19,12 +29,39 @@ export type SettingsScreenProps = {
 export function SettingsScreen({ onBack }: SettingsScreenProps) {
   // Simulate OS notification permission state. True = granted, false = denied.
   const [osNotifGranted] = useState(true);
+  const [view, setView] = useState<
+    'home' | 'reading' | 'voice' | 'speed' | 'language'
+  >('home');
 
-  // Per-preference toggles
-  const [reminderOn, setReminderOn] = useState(true);
-  const [warningsOn, setWarningsOn] = useState(true);
-  const [updatesOn, setUpdatesOn] = useState(false);
-  const [resumeAfterCalls, setResumeAfterCalls] = useState(true);
+  // All preference state lives in the reader store so it persists
+  // across screens (Settings, You → Default voice, etc) and survives
+  // re-renders. Subscribing per-field keeps the re-render scope tight.
+  const fontFamily = useReaderStore((s) => s.fontFamily);
+  const fontSize = useReaderStore((s) => s.fontSize);
+  const defaultVoiceId = useReaderStore((s) => s.defaultVoiceId);
+  const defaultPlaybackSpeed = useReaderStore((s) => s.defaultPlaybackSpeed);
+  const translationLanguage = useReaderStore((s) => s.translationLanguage);
+  const resumeAfterCalls = useReaderStore((s) => s.resumeAfterCalls);
+  const setResumeAfterCalls = useReaderStore((s) => s.setResumeAfterCalls);
+  const reminderOn = useReaderStore((s) => s.notifReminderOn);
+  const setReminderOn = useReaderStore((s) => s.setNotifReminderOn);
+  const warningsOn = useReaderStore((s) => s.notifWarningsOn);
+  const setWarningsOn = useReaderStore((s) => s.setNotifWarningsOn);
+  const updatesOn = useReaderStore((s) => s.notifUpdatesOn);
+  const setUpdatesOn = useReaderStore((s) => s.setNotifUpdatesOn);
+
+  // Live trailing-hint labels for the drill-in rows.
+  const readingHint = `${
+    fontFamily === 'serif'
+      ? 'Literata'
+      : fontFamily === 'lexend'
+        ? 'Lexend'
+        : 'Sans'
+  } · ${fontSize}px`;
+  const voiceHint =
+    VOICE_OPTIONS.find((v) => v.id === defaultVoiceId)?.label ?? 'Rachel';
+  const speedHint = `${defaultPlaybackSpeed}×`;
+  const translationHint = TRANSLATION_LANGUAGE_LABELS[translationLanguage];
 
   const notifSheetRef = useRef<BottomSheetRef>(null);
 
@@ -34,6 +71,62 @@ export function SettingsScreen({ onBack }: SettingsScreenProps) {
       return;
     }
     setter(newValue);
+  }
+
+  // Clear cache — drop AsyncStorage entries we know we own. We don't
+  // call AsyncStorage.clear() blindly because that would also wipe
+  // the Supabase auth session (also stored there) and sign the user
+  // out. Selective removal preserves auth + zustand-persisted state
+  // while clearing the Library / Discover / audio-session caches.
+  const [clearingCache, setClearingCache] = useState(false);
+  const handleClearCache = useCallback(() => {
+    Alert.alert(
+      'Clear cache?',
+      'Clears cached library + Discover lists and the last-listened pointer. Your books and progress stay put — only the local cache is dropped.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Clear',
+          style: 'destructive',
+          onPress: async () => {
+            setClearingCache(true);
+            try {
+              const allKeys = await AsyncStorage.getAllKeys();
+              const ours = allKeys.filter(
+                (k) =>
+                  k.startsWith('@bookflow/library/') ||
+                  k.startsWith('bookflow:discover:') ||
+                  k === '@bookflow/audio/last-listened-book-id',
+              );
+              if (ours.length > 0) {
+                await AsyncStorage.multiRemove(ours);
+              }
+              Alert.alert('Cache cleared', `Removed ${ours.length} cached item(s).`);
+            } catch (err) {
+              Alert.alert(
+                'Cache clear failed',
+                err instanceof Error ? err.message : 'Unknown error',
+              );
+            } finally {
+              setClearingCache(false);
+            }
+          },
+        },
+      ],
+    );
+  }, []);
+
+  if (view === 'reading') {
+    return <ReadingDisplayScreen onBack={() => setView('home')} />;
+  }
+  if (view === 'voice') {
+    return <DefaultVoiceScreen onBack={() => setView('home')} />;
+  }
+  if (view === 'speed') {
+    return <PlaybackSpeedScreen onBack={() => setView('home')} />;
+  }
+  if (view === 'language') {
+    return <TranslationLanguageScreen onBack={() => setView('home')} />;
   }
 
   return (
@@ -50,22 +143,22 @@ export function SettingsScreen({ onBack }: SettingsScreenProps) {
             <SettingsRow
               iconName="TextSize"
               label="Reading display"
-              hint="Literata · M"
-              onPress={() => {}}
+              hint={readingHint}
+              onPress={() => setView('reading')}
             />
             <RowDivider />
             <SettingsRow
               iconName="Microphone"
               label="Default voice"
-              hint="Sarah"
-              onPress={() => {}}
+              hint={voiceHint}
+              onPress={() => setView('voice')}
             />
             <RowDivider />
             <SettingsRow
               iconName="Clock"
               label="Default playback speed"
-              hint="1×"
-              onPress={() => {}}
+              hint={speedHint}
+              onPress={() => setView('speed')}
             />
             <RowDivider />
             <SettingsRow
@@ -86,16 +179,16 @@ export function SettingsScreen({ onBack }: SettingsScreenProps) {
             <SettingsRow
               iconName="Globe"
               label="App language"
+              sublabel="Only English is supported for now"
               hint="English"
-              onPress={() => {}}
             />
             <RowDivider />
             <SettingsRow
               iconName="Globe"
               label="Translation target"
               sublabel="Language used for word/sentence translations"
-              hint="Twi"
-              onPress={() => {}}
+              hint={translationHint}
+              onPress={() => setView('language')}
             />
           </SectionBlock>
 
@@ -163,8 +256,9 @@ export function SettingsScreen({ onBack }: SettingsScreenProps) {
             <RowDivider />
             <SettingsRow
               iconName="Trash"
-              label="Clear cache"
-              hint="62 MB"
+              label={clearingCache ? 'Clearing…' : 'Clear cache'}
+              sublabel="Resets cached library + Discover lists. Books and progress stay."
+              onPress={clearingCache ? undefined : handleClearCache}
             />
           </SectionBlock>
         </ScrollView>
@@ -180,6 +274,15 @@ export function SettingsScreen({ onBack }: SettingsScreenProps) {
 // ─── Sub-header ───────────────────────────────────────────────────────────────
 
 function SubHeader({ onBack }: { onBack: () => void }) {
+  // Hardware-back on the main Settings screen pops back to the You
+  // tab home. Sub-drill-ins (ReadingDisplay, DefaultVoice, etc.)
+  // render their own DrillHeader, which subscribes LIFO above this
+  // one — so when a sub-drill-in is mounted, ITS back handler fires
+  // first and routes back to the Settings home, not skipping past it.
+  useBackHandler(() => {
+    onBack();
+    return true;
+  });
   return (
     <View style={styles.subHeader}>
       <Pressable
@@ -293,12 +396,11 @@ function StorageRow() {
   const TOTAL = 360;
   const pct = Math.round((USED / TOTAL) * 100);
 
+  // Read-only row — there's no "downloaded audio" management surface
+  // to drill into yet, so the wrapper is a plain View instead of a
+  // tap target. The progress bar + total is informational.
   return (
-    <Pressable
-      accessibilityRole="button"
-      onPress={() => {}}
-      style={({ pressed }) => [styles.settingsRow, pressed && { backgroundColor: tokens.bgColors.raised }]}
-    >
+    <View style={styles.settingsRow}>
       <View style={styles.rowIconBg}>
         <Icon name="Music" size={14} color={tokens.textColors.secondary} />
       </View>
@@ -311,8 +413,9 @@ function StorageRow() {
           <Text style={styles.storageMeta}>{USED} MB of {TOTAL} MB</Text>
         </View>
       </View>
-      <Icon name="ChevronRight" size={13} color={tokens.colors.ink[300]} />
-    </Pressable>
+      {/* Chevron removed alongside the Pressable — the row isn't
+          drillable until there's a downloads management screen. */}
+    </View>
   );
 }
 
@@ -373,9 +476,8 @@ function NotifPermissionSheet({
           </Text>
           <View style={styles.notifPreviewTimeRow}>
             <Text style={styles.notifPreviewTime}>Every day at 8:00 PM</Text>
-            <Pressable accessibilityRole="button" onPress={() => {}}>
-              <Text style={styles.notifChangeBtn}>Change</Text>
-            </Pressable>
+            {/* "Change" button removed — until we ship the time
+                picker the reminder time is locked at 8 PM. */}
           </View>
         </View>
       </View>

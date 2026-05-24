@@ -17,6 +17,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Icon, Text } from '~/components';
 import { tokens } from '~/design/tokens';
+import { useBackHandler } from '~/lib/useBackHandler';
 
 type FAQ = { id: string; q: string; a: string };
 type FAQSection = { id: string; title: string; faqs: FAQ[] };
@@ -98,6 +99,12 @@ export function HelpFAQScreen({
   onContactSupport,
   supportEmail = 'support@getbookflow.co',
 }: HelpFAQScreenProps) {
+  // Route Android hardware-back to the in-screen back affordance so
+  // pressing back doesn't skip past this screen and exit the app.
+  useBackHandler(() => {
+    onBack();
+    return true;
+  });
   const [query, setQuery] = useState('');
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
 
