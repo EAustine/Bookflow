@@ -203,6 +203,30 @@ export function useAudio(args: {
   onLoaded?: () => void;
   /** Playback rate (0.5–2.0). Applied to the player on each load + when changed. */
   playbackRate?: number;
+  /**
+   * Lock-screen / notification-tray metadata. When provided, the
+   * player calls `setActiveForLockScreen(true, metadata)` after
+   * creation so the system renders a media notification on Android
+   * and Now Playing info on iOS — book title, author, page, and
+   * cover art with play/pause/skip controls.
+   *
+   * Without this, audio plays in the background but no notification
+   * appears, and on newer Android versions the OS will kill the
+   * playback after ~3 minutes (the foreground service alone isn't
+   * enough; the system needs an active MediaSession to keep the
+   * process alive longer).
+   *
+   * `artworkUrl` is optional — title + artist are sufficient for the
+   * notification to render. Pass undefined if the cover URL hasn't
+   * resolved yet and update it later via a re-render; the metadata
+   * effect handles late-arriving artwork without re-creating the
+   * player.
+   */
+  metadata?: {
+    title: string;
+    artist: string;
+    artworkUrl?: string;
+  };
 }): {
   status: PlaybackStatus;
   play: () => void;
@@ -224,6 +248,13 @@ export function useAudio(args: {
   const onCompleteRef = useRef(args.onComplete);
   const onLoadedRef = useRef(args.onLoaded);
   const playbackRateRef = useRef(args.playbackRate ?? 1);
+  // Metadata mirror — read inside the load effect at player-create
+  // time. NOT a dependency, otherwise an artwork URL resolving a
+  // beat after the player loads would tear down + recreate the
+  // player mid-playback. Late metadata changes are picked up by
+  // the dedicated `updateLockScreenMetadata` effect below.
+  const metadataRef = useRef(args.metadata);
+  metadataRef.current = args.metadata;
   useEffect(() => {
     onCompleteRef.current = args.onComplete;
     onLoadedRef.current = args.onLoaded;
@@ -251,9 +282,21 @@ export function useAudio(args: {
 
     // Always release the previous player. expo-audio allocates per
     // instance; we never reuse one across files.
+    //
+    // Order matters: pause() synchronously stops audio output BEFORE
+    // remove() frees the native resources. Without the pause(), the
+    // audio buffer can continue draining for ~100–300ms even after
+    // remove() returns — and if the user has already started a new
+    // book in that window, BOTH audios play at once until the old
+    // buffer empties.
     const prev = playerRef.current;
     playerRef.current = null;
     if (prev) {
+      try {
+        prev.pause();
+      } catch {
+        // already paused or released
+      }
       try {
         prev.remove();
       } catch {
@@ -312,7 +355,16 @@ export function useAudio(args: {
         return;
       }
       if (token !== loadTokenRef.current) {
-        // Race: page changed while createAudioPlayer was running.
+        // Race: page or book changed while createAudioPlayer was
+        // running. Pause first so the freshly-created player doesn't
+        // briefly start outputting audio that runs in parallel with
+        // the next session — same dueling-audio bug as the main
+        // cleanup path, just on a tighter race window.
+        try {
+          player.pause();
+        } catch {
+          // not yet started
+        }
         try {
           player.remove();
         } catch {
@@ -372,6 +424,38 @@ export function useAudio(args: {
         // ignore — value re-applies on the next setPlaybackRate effect
       }
 
+      // Wire the player into the system MediaSession (Android: media
+      // notification in the tray + lock-screen controls; iOS: Now
+      // Playing info + control center). expo-audio's
+      // `AudioControlsService` is already in the manifest because the
+      // plugin's `enableBackgroundPlayback` defaults to true — what we
+      // need here is to feed it metadata so it has something to display
+      // and to KEEP the foreground service alive past the ~3-minute
+      // Android cap that applies when no MediaSession is active.
+      //
+      // Failure here is non-fatal: audio continues to play, just
+      // without a notification. We log so the device-logs trail
+      // makes it diagnosable.
+      const md = metadataRef.current;
+      if (md) {
+        try {
+          player.setActiveForLockScreen(
+            true,
+            {
+              title: md.title,
+              artist: md.artist,
+              artworkUrl: md.artworkUrl,
+            },
+            {
+              showSeekForward: true,
+              showSeekBackward: true,
+            },
+          );
+        } catch (err) {
+          console.warn('[audio] setActiveForLockScreen failed:', err);
+        }
+      }
+
       // Seed status with the duration estimate from the function
       // immediately so the progress bar has something even before the
       // first playbackStatusUpdate fires. Also stash the alignment
@@ -400,6 +484,26 @@ export function useAudio(args: {
         | null;
       playerRef.current = null;
       if (p) {
+        // Halt audio output BEFORE releasing the player — see the
+        // comment in the previous-player cleanup at the top of this
+        // effect for why. Without an explicit pause(), remove() lets
+        // the audio decoder drain its buffer in the background, which
+        // means starting a new book while the old one is still playing
+        // produces a window of dueling audio.
+        try {
+          p.pause();
+        } catch {
+          // already paused or released
+        }
+        try {
+          // Drop the MediaSession before releasing the player so the
+          // system notification disappears cleanly. Without this, the
+          // notification can briefly orphan and the next session's
+          // notification might attach with stale title/artist.
+          p.clearLockScreenControls();
+        } catch {
+          // never registered for lock-screen, or already cleared
+        }
         try {
           p._bookflowCleanup?.();
           p.remove();
@@ -409,6 +513,27 @@ export function useAudio(args: {
       }
     };
   }, [bookId, pageIndex, voiceId, enabled]);
+
+  // Late-binding metadata effect: if the artwork URL resolves after
+  // the player is already created (cover-cache miss → ~100ms network
+  // round-trip), push the updated metadata to the live MediaSession
+  // without tearing down the player. No-op when the player isn't
+  // currently registered for lock-screen controls, so it's safe to
+  // call before setActiveForLockScreen has run.
+  useEffect(() => {
+    const p = playerRef.current;
+    const md = args.metadata;
+    if (!p || !md) return;
+    try {
+      p.updateLockScreenMetadata({
+        title: md.title,
+        artist: md.artist,
+        artworkUrl: md.artworkUrl,
+      });
+    } catch (err) {
+      console.warn('[audio] updateLockScreenMetadata failed:', err);
+    }
+  }, [args.metadata?.title, args.metadata?.artist, args.metadata?.artworkUrl]);
 
   const play = useCallback(() => {
     const p = playerRef.current;

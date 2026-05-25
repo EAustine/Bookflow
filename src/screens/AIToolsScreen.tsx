@@ -1,20 +1,18 @@
-import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from 'react';
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import {
   KeyboardAvoidingView,
   Platform,
   Pressable,
   ScrollView,
+  Share,
   StyleSheet,
   TextInput,
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import * as Clipboard from 'expo-clipboard';
+import * as Speech from 'expo-speech';
 import { useNetworkState } from '~/hooks/useNetworkState';
-
-// Offline colour constants (slate palette)
-const OFFLINE_COLOR = '#4A5568';
-const OFFLINE_BG = '#F0F2F5';
-const OFFLINE_BORDER = '#CBD5E0';
 import {
   BottomSheetBackdrop,
   type BottomSheetBackdropProps,
@@ -23,7 +21,6 @@ import {
 } from '@gorhom/bottom-sheet';
 import { Icon, Skeleton, Text } from '~/components';
 import Animated, {
-  Easing,
   interpolate,
   useAnimatedStyle,
   useSharedValue,
@@ -34,49 +31,31 @@ import Animated, {
 import { tokens } from '~/design/tokens';
 import type { Book } from '~/types/book';
 import type { BottomSheetRef } from '~/components/BottomSheet';
+import { useSummary } from '~/lib/aiSummary';
+import { useChat, type ChatRecord } from '~/lib/aiChat';
+import { FALLBACK_STARTERS, useStarterQuestions } from '~/lib/aiStarters';
+import { presentPaywall, ENTITLEMENT_PRO } from '~/lib/revenuecat';
 
-// ─── Dev flags ────────────────────────────────────────────────────────────────
-
-/**
- * Flip to `true` to preview the summary generation failed state.
- */
-const MOCK_SUMMARY_FAILED = false;
-
-/**
- * Flip to `true` to preview mid-stream generation (pulsing dots + partial text + cursor).
- * Takes priority over MOCK_SUMMARY_FAILED.
- */
-const MOCK_SUMMARY_STREAMING = false;
+// Offline colour aliases — defer to tokens so the slate palette
+// stays consistent with LibraryScreen's offline banner.
+const OFFLINE_COLOR = tokens.colors.offline;
+const OFFLINE_BG = tokens.colors.offlineBg;
+const OFFLINE_BORDER = tokens.colors.offlineBorder;
 
 /**
- * Flip to `true` to make the next AI response in Q&A render as an error bubble.
+ * Open the native RevenueCat paywall to upgrade to Pro. Wrapped in a
+ * helper so the dozen+ upsell entry points across this screen all
+ * trigger the same flow with the same error swallowing — when
+ * RevenueCat isn't configured (dev builds without an API key),
+ * `presentPaywall` throws and we silently no-op so the buttons
+ * still feel responsive rather than blowing up.
  */
-const MOCK_AI_ERROR = false;
+function openUpgradePaywall() {
+  void presentPaywall({ requiredEntitlement: ENTITLEMENT_PRO }).catch(() => {
+    // Configured-but-no-offering or disabled — swallow.
+  });
+}
 
-/**
- * Flip to `true` to seed the chat with an off-topic redirect bubble preview.
- */
-const MOCK_OFFTOPIC = false;
-
-/**
- * Flip to `true` to render the low-credits warning banner in the Q&A screen.
- */
-const MOCK_LOW_CREDITS = false;
-
-// ─── Mock data ────────────────────────────────────────────────────────────────
-
-const CREDITS_REMAINING = 32000;
-const CREDITS_TOTAL = 50000;
-const CREDITS_PCT = Math.round((CREDITS_REMAINING / CREDITS_TOTAL) * 100);
-
-const MOCK_SUMMARY = [
-  "Chapter 4 opens with Nick cataloguing the many guests who attended Gatsby's lavish parties — a parade of names, professions, and vague misfortunes that underscores how little Gatsby's guests actually know about him.",
-  'Gatsby takes Nick to lunch in his ostentatious car, presenting an almost rehearsed version of his past: educated at Oxford, war hero, the son of "wealthy people." He produces a medal from Montenegro and a photograph as proof, though the performance feels strained.',
-  'At the restaurant, Nick meets Meyer Wolfsheim — a criminal figure who claims credit for fixing the 1919 World Series — hinting at the corrupt foundations beneath Gatsby\'s wealth.',
-  "Jordan then reveals the crucial backstory: Gatsby and Daisy had a romance in Louisville before the war. Daisy almost didn't marry Tom when she received a letter from Gatsby; she eventually went through with it. Gatsby bought his West Egg mansion specifically to be across the bay from her.",
-];
-
-const MOCK_SOURCES = ['p. 44', 'p. 48', 'p. 52', 'p. 57'];
 
 type ChatMessage = {
   id: string;
@@ -85,66 +64,48 @@ type ChatMessage = {
   sources?: string[];
   pivot?: string;
   suggestions?: string[];
+  /** When true, the user bubble shows in failed/faded state. */
+  failed?: boolean;
 };
 
-const BASE_MESSAGES: ChatMessage[] = [
-  {
-    id: '1',
-    role: 'ai',
-    text: "What would you like to know about the book? I'll ground every answer in the text and show you where I'm pulling from.",
-  },
-  {
-    id: '2',
-    role: 'user',
-    text: 'Who is Meyer Wolfsheim and what does he represent?',
-  },
-  {
-    id: '3',
-    role: 'ai',
-    text: "Meyer Wolfsheim is a business associate of Gatsby's — a shady New York gambler who claims to have fixed the 1919 World Series.¹ He represents the criminal underworld that funded Gatsby's rise, suggesting that the American Dream Gatsby embodies was built on corruption rather than honest work.²",
-    sources: ['p. 48', 'p. 51'],
-  },
-];
-
-const OFFTOPIC_PREVIEW: ChatMessage[] = [
-  {
-    id: 'ot-u',
-    role: 'user',
-    text: 'Who invented the Jazz Age? And what was the stock market like in the 1920s?',
-  },
-  {
-    id: 'ot-a',
-    role: 'ai-offtopic',
-    text: "Those topics aren't covered in The Great Gatsby itself — they're historical context outside the text. I can only answer questions grounded in the book.",
-    pivot: 'Something from the book you might want instead:',
-    suggestions: [
-      'How does Fitzgerald depict the excess and wealth of the 1920s in the novel?',
-      "What does Gatsby's parties say about the era's social culture?",
-    ],
-  },
-];
-
-const INITIAL_MESSAGES: ChatMessage[] = MOCK_OFFTOPIC
-  ? [BASE_MESSAGES[0]!, ...OFFTOPIC_PREVIEW]
-  : BASE_MESSAGES;
-
-const STARTER_QUESTIONS = [
-  "Why does Gatsby have so many parties if he never seems to enjoy them?",
-  "What does the green light at the end of Daisy's dock symbolize?",
-  "How does Nick's narration shape our view of Gatsby?",
-];
+/**
+ * Adapter from the persisted ChatRecord shape (used by the lib) into
+ * the legacy ChatMessage shape consumed by the existing bubble + error
+ * components. Failed user rows render via the `failed` flag; we don't
+ * synthesise a separate ai-error row from the DB because the assistant
+ * message either persisted or it didn't.
+ */
+function recordToMessage(r: ChatRecord): ChatMessage {
+  return {
+    id: r.id,
+    role: r.role === 'assistant' ? 'ai' : 'user',
+    text: r.content,
+    failed: r.failed,
+  };
+}
 
 // ─── AI Tools Sheet ───────────────────────────────────────────────────────────
 
 export type AIToolsSheetProps = {
   book: Book;
+  /**
+   * Live page index the user is currently looking at. Drives the
+   * "Page N · {title}" subtitle and is the page the AI tools target
+   * by default. Defaults to `book.last_read_page` when omitted —
+   * fine for callers that haven't wired the live value yet.
+   */
+  pageIndex?: number;
   onSummarize: () => void;
   onPractice: () => void;
   onAsk: () => void;
+  onTranslate: () => void;
 };
 
 export const AIToolsSheet = forwardRef<BottomSheetRef, AIToolsSheetProps>(
-  function AIToolsSheet({ book, onSummarize, onPractice, onAsk }, ref) {
+  function AIToolsSheet(
+    { book, pageIndex, onSummarize, onPractice, onAsk, onTranslate },
+    ref,
+  ) {
     const modalRef = useRef<BottomSheetModal>(null);
 
     useImperativeHandle(
@@ -169,14 +130,23 @@ export const AIToolsSheet = forwardRef<BottomSheetRef, AIToolsSheetProps>(
       [],
     );
 
-    const chNum = book.currentChapter?.match(/\d+/)?.[0] ?? '1';
+    // Live page > persisted last_read_page > 0. Reading
+    // `book.currentChapter` (the previous behaviour) showed a stale
+    // page label whenever the user had scrolled past the persisted
+    // position — so the sheet would say "Page 1" even when the user
+    // was deep in the book.
+    const livePageIndex =
+      pageIndex ??
+      (book as { last_read_page?: number }).last_read_page ??
+      0;
+    const chNum = String(livePageIndex + 1);
     const dismiss = () => modalRef.current?.dismiss();
 
     const TOOLS: { icon: 'Notebook' | 'HelpCircle' | 'MessageCircle' | 'Globe'; label: string; cost: string; onPress: () => void }[] = [
-      { icon: 'Notebook',      label: 'Summarize chapter',         cost: '~2K AI credits',              onPress: () => { dismiss(); onSummarize(); } },
+      { icon: 'Notebook',      label: 'Summarize page',            cost: '~2K AI credits',              onPress: () => { dismiss(); onSummarize(); } },
       { icon: 'HelpCircle',    label: 'Practice questions',        cost: '~3K AI credits',              onPress: () => { dismiss(); onPractice(); } },
       { icon: 'MessageCircle', label: 'Ask about the book',        cost: '~1K AI credits per message',  onPress: () => { dismiss(); onAsk(); } },
-      { icon: 'Globe',         label: 'Translate chapter',         cost: '~5K AI credits · Twi',        onPress: () => { dismiss(); } },
+      { icon: 'Globe',         label: 'Translate page',            cost: '~5K AI credits',              onPress: () => { dismiss(); onTranslate(); } },
     ];
 
     return (
@@ -193,7 +163,7 @@ export const AIToolsSheet = forwardRef<BottomSheetRef, AIToolsSheetProps>(
           <View style={sheetStyles.header}>
             <Text style={sheetStyles.title}>AI tools</Text>
             <Text style={sheetStyles.subtitle}>
-              Chapter {chNum} · {book.title}
+              Page {chNum} · {book.title}
             </Text>
           </View>
 
@@ -221,23 +191,12 @@ export const AIToolsSheet = forwardRef<BottomSheetRef, AIToolsSheetProps>(
             ))}
           </View>
 
-          {/* Credits footer */}
-          <View style={sheetStyles.creditsFooter}>
-            <View style={sheetStyles.creditsBarWrap}>
-              <Text style={sheetStyles.creditsLabel}>
-                {CREDITS_REMAINING / 1000}K of {CREDITS_TOTAL / 1000}K AI credits remaining this month
-              </Text>
-              <View style={sheetStyles.creditsTrack}>
-                <View
-                  style={[
-                    sheetStyles.creditsFill,
-                    { width: `${CREDITS_PCT}%` as `${number}%` },
-                  ]}
-                />
-              </View>
-            </View>
-            <Text style={sheetStyles.creditsCount}>{CREDITS_PCT}%</Text>
-          </View>
+          {/* Credits footer removed — the real metering pipeline
+              (RevenueCat entitlement + per-user credit balance in
+              Supabase) isn't wired yet. Showing a hardcoded
+              "32K of 50K remaining" gauge that never moved was
+              misleading. Bring this back as a real component when
+              credit accounting lands. */}
         </BottomSheetView>
       </BottomSheetModal>
     );
@@ -254,18 +213,93 @@ const LENGTH_LABELS: Record<SummaryLength, string> = {
   detailed: 'Detailed',
 };
 
+/**
+ * Map structured error codes from the generate-summary edge function
+ * into user-readable copy. The edge function may also return a
+ * `message` (the LLM error string) which the UI prefers when present;
+ * this fallback keeps codes that don't carry a message readable.
+ */
+function errorCodeToMessage(code: string): string {
+  switch (code) {
+    case 'page_not_found':
+      return "Couldn't find the page in this book. Try re-processing the book.";
+    case 'page_too_short':
+      return "This page doesn't have enough text to summarize.";
+    case 'server_misconfigured':
+      return 'The summary service is temporarily unavailable.';
+    case 'llm_failed':
+      return 'The model couldn\'t produce a summary. Try again in a moment.';
+    case 'request_failed':
+    case 'function_failed':
+      return 'Network issue talking to the summary service.';
+    default:
+      return 'Something went wrong generating the summary.';
+  }
+}
+
 export function SummaryScreen({
   book,
   onBack,
+  pageIndex,
 }: {
   book: Book;
   onBack: () => void;
+  /**
+   * 0-based DB page to summarize. Defaults to whatever the book's
+   * persisted reading position is — close enough for the EPUB text
+   * reader (writes per-page). PDF / EPUB-full callers thread their
+   * current page directly so the summary matches what's on screen.
+   */
+  pageIndex?: number;
 }) {
   const [length, setLength] = useState<SummaryLength>('standard');
   const [scope, setScope] = useState<'chapter' | 'whole-book'>('chapter');
-  const [failed] = useState(MOCK_SUMMARY_FAILED);
+  // The whole-book scope is gated on an explicit confirm (credit cost
+  // is meaningfully higher). Until the user confirms, useSummary stays
+  // idle and we don't burn tokens.
+  const [wholeBookConfirmed, setWholeBookConfirmed] = useState(false);
   const wholeBookSheetRef = useRef<BottomSheetModal>(null);
-  const chNum = book.currentChapter?.match(/\d+/)?.[0] ?? '1';
+  const resolvedPageIndex =
+    pageIndex ?? (book as { last_read_page?: number }).last_read_page ?? 0;
+
+  // Real summary fetch. Single page when scope='chapter'; full-book
+  // page index list when scope='whole-book' and the user has confirmed
+  // through the credit sheet. The hook re-runs on any of these change.
+  //
+  // Memoised so the array identity is stable across re-renders — the
+  // useSummary hook's dep key includes the indices, and a new array
+  // reference every render forced a wasted recompute even when the
+  // scope was 'chapter' (the wholeBookIndices wasn't even used). The
+  // memo dep is `book.totalPages` since that's the only input.
+  const wholeBookIndices = useMemo(
+    () =>
+      book.totalPages > 0
+        ? Array.from({ length: book.totalPages }, (_, i) => i)
+        : [0],
+    [book.totalPages],
+  );
+  const summaryState = useSummary(
+    scope === 'whole-book'
+      ? {
+          bookId: book.id,
+          pageIndices: wholeBookIndices,
+          length,
+          enabled: wholeBookConfirmed,
+        }
+      : {
+          bookId: book.id,
+          pageIndex: resolvedPageIndex,
+          length,
+          enabled: true,
+        },
+  );
+  const failed = summaryState.status === 'error';
+  const loading = summaryState.status === 'loading';
+  const summary = summaryState.status === 'success' ? summaryState.summary : null;
+  const errorMessage =
+    summaryState.status === 'error'
+      ? summaryState.errorMessage ?? errorCodeToMessage(summaryState.errorCode)
+      : null;
 
   return (
     <SafeAreaView style={sumStyles.safe} edges={['top', 'left', 'right', 'bottom']}>
@@ -280,16 +314,37 @@ export function SummaryScreen({
           <Icon name="ArrowLeft" size={18} color={tokens.textColors.secondary} />
         </Pressable>
         <View style={sumStyles.headerCenter}>
-          <Text style={sumStyles.headerTitle}>Chapter summary</Text>
+          <Text style={sumStyles.headerTitle}>
+            {scope === 'whole-book' ? 'Whole-book summary' : 'Page summary'}
+          </Text>
           <Text style={sumStyles.headerSub}>
-            {book.title} · Ch. {chNum}
+            {scope === 'whole-book'
+              ? `${book.title} · all ${book.totalPages || ''} pages`
+              : `${book.title} · Page ${resolvedPageIndex + 1}`}
           </Text>
         </View>
         <Pressable
-          onPress={() => {}}
-          style={sumStyles.headerBtn}
+          // Header Share — only meaningful once a summary has
+          // landed. Disabled until then so the icon doesn't tease an
+          // empty share sheet during loading / errors.
+          onPress={
+            summary
+              ? () => {
+                  void Share.share({
+                    title: `Summary: ${book.title}`,
+                    message: summary,
+                  });
+                }
+              : undefined
+          }
+          disabled={!summary}
+          style={({ pressed }) => [
+            sumStyles.headerBtn,
+            !summary && { opacity: 0.4 },
+            pressed && { opacity: 0.6 },
+          ]}
           hitSlop={8}
-          accessibilityLabel="Share"
+          accessibilityLabel="Share summary"
         >
           <Icon name="Upload" size={17} color={tokens.textColors.secondary} />
         </Pressable>
@@ -315,7 +370,7 @@ export function SummaryScreen({
         ))}
       </View>
 
-      {/* Scope toggle — chapter vs whole book */}
+      {/* Scope toggle — page vs whole book */}
       {!failed && (
         <View style={sumStyles.scopeRow}>
           <Pressable
@@ -323,7 +378,7 @@ export function SummaryScreen({
             onPress={() => setScope('chapter')}
           >
             <Text style={[sumStyles.scopeChipText, scope === 'chapter' && sumStyles.scopeChipTextActive]}>
-              Chapter
+              Page
             </Text>
           </Pressable>
           <Pressable
@@ -337,8 +392,12 @@ export function SummaryScreen({
         </View>
       )}
 
-      {/* Streaming state */}
-      {MOCK_SUMMARY_STREAMING ? (
+      {/* Body — three states drive what shows: loading (skeleton),
+          error (recovery card), or success (real summary text + source
+          chip + quality rating). The same SummaryStreamingBody design
+          serves the loading state since the visual is essentially the
+          same: pulsing dots + skeleton lines while we await Anthropic. */}
+      {loading ? (
         <SummaryStreamingBody />
       ) : failed ? (
         <View style={sumStyles.errorBody}>
@@ -347,20 +406,13 @@ export function SummaryScreen({
           </View>
           <Text style={sumStyles.errorTitle}>Summary generation failed</Text>
           <Text style={sumStyles.errorSub}>
-            Claude couldn't generate a summary for this chapter. This is usually a temporary issue
-            — your credits have been refunded.
+            {errorMessage ??
+              "Claude couldn't generate a summary for this page. This is usually a temporary issue — try again in a moment."}
           </Text>
-          <View style={sumStyles.refundCard}>
-            <Icon name="CheckCircle" size={16} color={tokens.colors.success} strokeWidth={1.5} />
-            <View style={sumStyles.refundText}>
-              <Text style={sumStyles.refundTitle}>2,100 AI credits refunded</Text>
-              <Text style={sumStyles.refundSub}>Back in your account immediately</Text>
-            </View>
-          </View>
           <View style={sumStyles.errorActions}>
             <Pressable
               style={({ pressed }) => [sumStyles.retryBtn, pressed && { opacity: 0.85 }]}
-              onPress={() => {}}
+              onPress={() => setLength((l) => l)}
               accessibilityRole="button"
             >
               <Icon name="Refresh" size={16} color={tokens.colors.cream[50]} />
@@ -371,48 +423,73 @@ export function SummaryScreen({
               onPress={onBack}
               accessibilityRole="button"
             >
-              <Text style={sumStyles.goBackBtnLabel}>Go back to chapter</Text>
+              <Text style={sumStyles.goBackBtnLabel}>Go back to page</Text>
             </Pressable>
           </View>
         </View>
-      ) : (
-        /* Scrollable body */
+      ) : summary ? (
         <ScrollView
           style={sumStyles.scroll}
           contentContainerStyle={sumStyles.scrollContent}
           showsVerticalScrollIndicator={false}
         >
-          {/* Summary text */}
-          {MOCK_SUMMARY.map((para, i) => (
-            <Text key={i} style={sumStyles.bodyPara}>
-              {para}
-            </Text>
-          ))}
-
-          {/* Source chips */}
-          <Text style={sumStyles.sourceLabel}>Sources from this chapter</Text>
-          <View style={sumStyles.sourceChips}>
-            {MOCK_SOURCES.map((src) => (
-              <Pressable key={src} style={sumStyles.sourceChip} onPress={() => {}}>
-                <Icon name="Book" size={10} color={tokens.textColors.muted} />
-                <Text style={sumStyles.sourceChipLabel}>{src}</Text>
-              </Pressable>
+          {/* Summary text — split on blank lines into paragraphs so the
+              spacing reads naturally regardless of how the model
+              decided to format. */}
+          {summary
+            .split(/\n{2,}/)
+            .map((para) => para.trim())
+            .filter(Boolean)
+            .map((para, i) => (
+              <Text key={i} style={sumStyles.bodyPara}>
+                {para}
+              </Text>
             ))}
+
+          {/* Source chip — single page for now; multi-page selection
+              (Step 5) will fan this out into multiple chips. */}
+          <Text style={sumStyles.sourceLabel}>Source</Text>
+          <View style={sumStyles.sourceChips}>
+            <View style={sumStyles.sourceChip}>
+              <Icon name="Book" size={10} color={tokens.textColors.muted} />
+              <Text style={sumStyles.sourceChipLabel}>
+                Page {resolvedPageIndex + 1}
+              </Text>
+            </View>
           </View>
 
-          {/* Quality rating */}
-          <QualityRatingCard />
+          {/* Quality rating — `onRegenerate` triggers a forced refetch
+              via useSummary.refresh which bypasses both the local
+              memory cache and the server-side `summaries` row. */}
+          <QualityRatingCard onRegenerate={summaryState.refresh} />
         </ScrollView>
-      )}
+      ) : null}
 
-      {/* Action bar — Listen / Regenerate / Share */}
-      {!MOCK_SUMMARY_STREAMING && !failed && <SummaryActionBar />}
+      {/* Action bar — Listen / Copy. Hidden while loading or in the
+          error state because none of those actions make sense before
+          there's a summary on screen. */}
+      {!loading && !failed && summary ? (
+        <SummaryActionBar
+          summary={summary}
+          bookTitle={book.title}
+        />
+      ) : null}
 
       {/* Whole-book credit confirmation sheet */}
       <WholeBookCreditSheet
         ref={wholeBookSheetRef}
-        onConfirm={() => wholeBookSheetRef.current?.dismiss()}
-        onCancel={() => { setScope('chapter'); wholeBookSheetRef.current?.dismiss(); }}
+        onConfirm={() => {
+          // Flip the gate: useSummary will now fan out the whole-book
+          // request. The sheet dismisses; the body shows the loading
+          // skeleton until the LLM responds.
+          setWholeBookConfirmed(true);
+          wholeBookSheetRef.current?.dismiss();
+        }}
+        onCancel={() => {
+          setScope('chapter');
+          setWholeBookConfirmed(false);
+          wholeBookSheetRef.current?.dismiss();
+        }}
       />
     </SafeAreaView>
   );
@@ -432,7 +509,13 @@ const REASON_LABELS: Record<NegativeReason, string> = {
   other: 'Other',
 };
 
-function QualityRatingCard() {
+function QualityRatingCard({
+  onRegenerate,
+}: {
+  /** Called when the user taps "Submit & regenerate" on the negative
+   *  feedback flow. Triggers a forced refetch via useSummary. */
+  onRegenerate?: () => void;
+}) {
   const [rating, setRating] = useState<QualityRating>(null);
   const [selectedReasons, setSelectedReasons] = useState<Set<NegativeReason>>(new Set());
 
@@ -480,14 +563,28 @@ function QualityRatingCard() {
         <View style={sumStyles.qualityNegActions}>
           <Pressable
             style={({ pressed }) => [sumStyles.negBtnRegen, pressed && { opacity: 0.85 }]}
-            onPress={() => {}}
+            // Trigger a forced regenerate. The hook bumps its refresh
+            // counter → re-runs the load with `force: true`, which
+            // tells the edge function to delete the cached row and
+            // produce a fresh summary. The user immediately sees the
+            // loading skeleton, then the new output appears.
+            //
+            // TODO: also persist the selected reasons to a
+            // `summary_ratings` table so we can learn what kinds of
+            // outputs users reject. For now, in-memory only.
+            onPress={() => {
+              onRegenerate?.();
+              setRating(null);
+            }}
           >
             <Icon name="Refresh" size={11} color={tokens.colors.cream[50]} strokeWidth={2} />
             <Text style={sumStyles.negBtnRegenLabel}>Submit &amp; regenerate</Text>
           </Pressable>
           <Pressable
             style={({ pressed }) => [sumStyles.negBtnSubmit, pressed && { opacity: 0.7 }]}
-            onPress={() => {}}
+            // Submit-only: acknowledge feedback without regenerating.
+            // TODO: persist to `summary_ratings` once the table exists.
+            onPress={() => setRating('positive')}
           >
             <Text style={sumStyles.negBtnSubmitLabel}>Submit only</Text>
           </Pressable>
@@ -501,11 +598,29 @@ function QualityRatingCard() {
       <View style={sumStyles.qualityCardRow}>
         <Text style={sumStyles.qualityLabel}>Was this summary helpful?</Text>
         <View style={sumStyles.qualityBtns}>
-          <Pressable style={sumStyles.qualityBtn} onPress={() => setRating('positive')}>
-            <Text style={sumStyles.qualityEmoji}>👍</Text>
+          <Pressable
+            style={sumStyles.qualityBtn}
+            onPress={() => setRating('positive')}
+            accessibilityLabel="Mark summary as helpful"
+          >
+            <Icon
+              name="ThumbUp"
+              size={16}
+              color={tokens.colors.forest[800]}
+              strokeWidth={0}
+            />
           </Pressable>
-          <Pressable style={sumStyles.qualityBtn} onPress={() => setRating('negative')}>
-            <Text style={sumStyles.qualityEmoji}>👎</Text>
+          <Pressable
+            style={sumStyles.qualityBtn}
+            onPress={() => setRating('negative')}
+            accessibilityLabel="Mark summary as not helpful"
+          >
+            <Icon
+              name="ThumbDown"
+              size={16}
+              color={tokens.textColors.muted}
+              strokeWidth={0}
+            />
           </Pressable>
         </View>
       </View>
@@ -515,33 +630,91 @@ function QualityRatingCard() {
 
 // ─── Summary action bar ───────────────────────────────────────────────────────
 
-function SummaryActionBar() {
+function SummaryActionBar({
+  summary,
+  bookTitle: _bookTitle,
+}: {
+  summary: string;
+  bookTitle: string;
+}) {
+  // Read aloud — native TTS, instant, no API roundtrip. Tracks
+  // isSpeaking so the Listen button can toggle between "Listen" and
+  // "Stop" instead of stacking utterances on rapid taps.
+  const [isSpeaking, setIsSpeaking] = useState(false);
+  // Copy → 1.5s "Copied" confirmation so the user knows the tap took
+  // effect (the clipboard write itself is invisible).
+  const [copied, setCopied] = useState(false);
+  useEffect(() => {
+    return () => {
+      // Stop any in-flight speech when leaving the summary screen.
+      void Speech.stop();
+    };
+  }, []);
+  const handleListen = useCallback(() => {
+    if (isSpeaking) {
+      void Speech.stop();
+      setIsSpeaking(false);
+      return;
+    }
+    setIsSpeaking(true);
+    Speech.speak(summary, {
+      rate: 0.95,
+      onDone: () => setIsSpeaking(false),
+      onStopped: () => setIsSpeaking(false),
+      onError: () => setIsSpeaking(false),
+    });
+  }, [isSpeaking, summary]);
+
+  const handleCopy = useCallback(async () => {
+    try {
+      await Clipboard.setStringAsync(summary);
+      setCopied(true);
+      // Reset after a moment so the next tap feels live again. Short
+      // enough that no one stares at the chip waiting for it to revert.
+      setTimeout(() => setCopied(false), 1500);
+    } catch (err) {
+      // Clipboard failures are basically unheard of, but guard
+      // anyway so we never crash on a user tap.
+      console.warn('[summary-copy] failed:', err);
+    }
+  }, [summary]);
+
   return (
     <View style={sumStyles.actionBar}>
       <Pressable
         style={({ pressed }) => [sumStyles.listenBtn, pressed && { opacity: 0.85 }]}
-        onPress={() => {}}
+        onPress={handleListen}
         accessibilityRole="button"
-        accessibilityLabel="Listen to summary"
+        accessibilityLabel={isSpeaking ? 'Stop summary audio' : 'Listen to summary'}
       >
-        <Icon name="Headphones" size={13} color={tokens.colors.cream[50]} strokeWidth={1.5} />
-        <Text style={sumStyles.listenBtnLabel}>Listen to summary</Text>
+        <Icon
+          name={isSpeaking ? 'Pause' : 'Headphones'}
+          size={13}
+          color={tokens.colors.cream[50]}
+          strokeWidth={1.5}
+        />
+        <Text style={sumStyles.listenBtnLabel}>
+          {isSpeaking ? 'Stop' : 'Listen to summary'}
+        </Text>
       </Pressable>
       <Pressable
-        style={({ pressed }) => [sumStyles.actionIconBtn, pressed && { opacity: 0.7 }]}
-        onPress={() => {}}
+        style={({ pressed }) => [
+          sumStyles.actionIconBtn,
+          copied && sumStyles.actionIconBtnCopied,
+          pressed && { opacity: 0.7 },
+        ]}
+        onPress={() => void handleCopy()}
         accessibilityRole="button"
-        accessibilityLabel="Regenerate summary"
+        accessibilityLabel={copied ? 'Summary copied' : 'Copy summary'}
       >
-        <Icon name="Refresh" size={15} color={tokens.textColors.secondary} strokeWidth={1.5} />
-      </Pressable>
-      <Pressable
-        style={({ pressed }) => [sumStyles.actionIconBtn, pressed && { opacity: 0.7 }]}
-        onPress={() => {}}
-        accessibilityRole="button"
-        accessibilityLabel="Share"
-      >
-        <Icon name="Upload" size={15} color={tokens.textColors.secondary} strokeWidth={1.5} />
+        <Icon
+          name={copied ? 'Check' : 'Copy'}
+          size={15}
+          color={
+            copied ? tokens.colors.forest[800] : tokens.textColors.secondary
+          }
+          strokeWidth={1.5}
+        />
       </Pressable>
     </View>
   );
@@ -549,8 +722,8 @@ function SummaryActionBar() {
 
 // ─── Whole-book credit confirmation sheet ─────────────────────────────────────
 
-const WARN_COLOR = '#A0692A';
-const WARN_BG = '#FDF3E3';
+const WARN_COLOR = tokens.colors.warn;
+const WARN_BG = tokens.colors.warnBg;
 
 const WholeBookCreditSheet = forwardRef<BottomSheetModal, {
   onConfirm: () => void;
@@ -585,7 +758,7 @@ const WholeBookCreditSheet = forwardRef<BottomSheetModal, {
         <Text style={wbStyles.eyebrow}>High credit use</Text>
         <Text style={wbStyles.title}>This will use about 30% of your monthly credits</Text>
         <Text style={wbStyles.sub}>
-          A whole-book summary reads all 9 chapters and weaves them into a single narrative. It uses significantly more AI credits than a chapter summary.
+          A whole-book summary reads every page and weaves them into a single narrative. It uses significantly more AI credits than a page summary.
         </Text>
 
         {/* Cost breakdown card */}
@@ -615,7 +788,7 @@ const WholeBookCreditSheet = forwardRef<BottomSheetModal, {
           <Text style={wbStyles.upsellText}>
             Standard plan gives you 500K credits / month — enough for summaries every day.
           </Text>
-          <Pressable style={wbStyles.upsellBtn} onPress={() => {}}>
+          <Pressable style={wbStyles.upsellBtn} onPress={openUpgradePaywall}>
             <Text style={wbStyles.upsellBtnLabel}>Upgrade</Text>
           </Pressable>
         </View>
@@ -643,31 +816,26 @@ const WholeBookCreditSheet = forwardRef<BottomSheetModal, {
   );
 });
 
-// ─── Summary streaming body ───────────────────────────────────────────────────
+// ─── Summary loading body ─────────────────────────────────────────────────────
 
-const STREAMED_PARTIAL = [
-  "Chapter 4 opens with Nick cataloguing the many guests who attended Gatsby's lavish parties — a parade of names, professions, and vague misfortunes that underscores how little Gatsby's guests actually know about him.",
-  'Gatsby takes Nick to lunch in his ostentatious car, presenting an almost rehearsed version of his past: educated at Oxford, war hero, the son of "wealthy people." He produces a medal from Montenegro and a',
-];
-
+/**
+ * Loading state shown while `generate-summary` is in flight. The edge
+ * function returns the full summary in a single response (we don't
+ * stream tokens), so a faux mid-stream cursor would be misleading. The
+ * pill + skeleton lines tell the user "we're working on it" without
+ * pretending content is already arriving.
+ */
 function SummaryStreamingBody() {
-  const cursorOpacity = useSharedValue(1);
   const dot1 = useSharedValue(0.3);
   const dot2 = useSharedValue(0.3);
   const dot3 = useSharedValue(0.3);
 
   useEffect(() => {
-    cursorOpacity.value = withRepeat(
-      withTiming(0, { duration: 450, easing: Easing.steps(1) }),
-      -1,
-      true,
-    );
     dot1.value = withRepeat(withTiming(1, { duration: 600 }), -1, true);
     dot2.value = withDelay(200, withRepeat(withTiming(1, { duration: 600 }), -1, true));
     dot3.value = withDelay(400, withRepeat(withTiming(1, { duration: 600 }), -1, true));
-  }, [cursorOpacity, dot1, dot2, dot3]);
+  }, [dot1, dot2, dot3]);
 
-  const cursorStyle = useAnimatedStyle(() => ({ opacity: cursorOpacity.value }));
   const dot1Style = useAnimatedStyle(() => ({ opacity: interpolate(dot1.value, [0, 1], [0.3, 1]) }));
   const dot2Style = useAnimatedStyle(() => ({ opacity: interpolate(dot2.value, [0, 1], [0.3, 1]) }));
   const dot3Style = useAnimatedStyle(() => ({ opacity: interpolate(dot3.value, [0, 1], [0.3, 1]) }));
@@ -688,28 +856,25 @@ function SummaryStreamingBody() {
         <Text style={sumStyles.streamingLabel}>Generating…</Text>
       </View>
 
-      {/* Already-streamed paragraphs */}
-      {STREAMED_PARTIAL.map((para, i) => {
-        const isLast = i === STREAMED_PARTIAL.length - 1;
-        return (
-          <Text key={i} style={sumStyles.bodyPara}>
-            {para}
-            {isLast && <Animated.View style={[sumStyles.streamCursor, cursorStyle]} />}
-          </Text>
-        );
-      })}
-
-      {/* Skeleton lines for upcoming paragraphs */}
+      {/* Skeleton lines stand in for the paragraphs that will land once
+          the response resolves. Three blocks reads as "a few paragraphs
+          of body copy" without prescribing a specific length. */}
+      <View style={sumStyles.streamSkelPara}>
+        <Skeleton width="100%" height={13} borderRadius={4} />
+        <Skeleton width="92%" height={13} borderRadius={4} />
+        <Skeleton width="100%" height={13} borderRadius={4} />
+        <Skeleton width="78%" height={13} borderRadius={4} />
+      </View>
       <View style={sumStyles.streamSkelPara}>
         <Skeleton width="100%" height={13} borderRadius={4} />
         <Skeleton width="88%" height={13} borderRadius={4} />
         <Skeleton width="100%" height={13} borderRadius={4} />
-        <Skeleton width="72%" height={13} borderRadius={4} />
+        <Skeleton width="64%" height={13} borderRadius={4} />
       </View>
       <View style={sumStyles.streamSkelPara}>
+        <Skeleton width="96%" height={13} borderRadius={4} />
         <Skeleton width="100%" height={13} borderRadius={4} />
-        <Skeleton width="94%" height={13} borderRadius={4} />
-        <Skeleton width="65%" height={13} borderRadius={4} />
+        <Skeleton width="72%" height={13} borderRadius={4} />
       </View>
     </ScrollView>
   );
@@ -729,66 +894,62 @@ export function ChatScreen({
   const { isConnected } = useNetworkState();
   const isOffline = !isConnected;
 
-  const [messages, setMessages] = useState<ChatMessage[]>(INITIAL_MESSAGES);
+  // Real chat — useChat handles conversation lookup, history load,
+  // optimistic appends, retries, and error mapping. The local state
+  // here is just the input field.
+  const { messages: chatMessages, loading, sending, errorMessage, send, retry } = useChat(book.id);
   const [inputText, setInputText] = useState('');
-  const [failedMessage, setFailedMessage] = useState<FailedMessage | null>(null);
-  const [lowCreditsDismissed, setLowCreditsDismissed] = useState(false);
   const scrollRef = useRef<ScrollView>(null);
-  const hasUserMessage = messages.some((m) => m.role === 'user');
+  const hasUserMessage = chatMessages.some((m) => m.role === 'user');
+
+  // Suggested questions (rendered before the user has typed anything).
+  // Server-cached on books.suggested_questions so this is a single
+  // round-trip per book lifetime; loading state is the skeleton row.
+  const startersState = useStarterQuestions(book.id);
+
+  // Adapt the hook's persisted ChatRecord shape to the legacy
+  // ChatMessage shape the existing bubble components expect. The
+  // failed/pending flags map to ai-error / muted user styling.
+  const messages: ChatMessage[] = chatMessages.map(recordToMessage);
+
+  // Auto-scroll on new messages. We watch length + content of the
+  // last message so streaming-appended content also keeps the view
+  // pinned to the bottom (no streaming yet, but cheap to wire now).
+  const lastSig = messages.length + ':' + (messages[messages.length - 1]?.text.length ?? 0);
+  useEffect(() => {
+    const id = setTimeout(
+      () => scrollRef.current?.scrollToEnd({ animated: true }),
+      80,
+    );
+    return () => clearTimeout(id);
+  }, [lastSig]);
 
   const sendMessage = useCallback(() => {
     const text = inputText.trim();
     if (!text) return;
     setInputText('');
+    void send(text);
+  }, [inputText, send]);
 
-    if (isOffline) {
-      // Queue as failed — don't add to messages yet
-      setFailedMessage({ id: String(Date.now()), text });
-      setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100);
-      return;
-    }
+  const retryAiError = useCallback(
+    (id: string) => {
+      // The "ai-error" bubble in the legacy shape maps to a failed
+      // user message in the persisted shape. Find the user message
+      // immediately before this error and re-send it.
+      const idx = chatMessages.findIndex((m) => m.id === id);
+      if (idx <= 0) return;
+      const prevUser = chatMessages[idx - 1];
+      if (prevUser.role === 'user' && prevUser.failed) {
+        void retry(prevUser.id);
+      }
+    },
+    [chatMessages, retry],
+  );
 
-    const userMsg: ChatMessage = { id: String(Date.now()), role: 'user', text };
-    const aiMsg: ChatMessage = MOCK_AI_ERROR
-      ? { id: String(Date.now() + 1), role: 'ai-error', text: '' }
-      : {
-          id: String(Date.now() + 1),
-          role: 'ai',
-          text: "I'm looking through the text for you — this is a mock response. In the real app, every answer is grounded in the book's content with cited pages.",
-        };
-    setMessages((prev) => [...prev, userMsg, aiMsg]);
-    setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100);
-  }, [inputText, isOffline]);
-
-  const retryFailed = useCallback(() => {
-    if (!failedMessage || isOffline) return;
-    const userMsg: ChatMessage = { id: failedMessage.id, role: 'user', text: failedMessage.text };
-    const aiMsg: ChatMessage = {
-      id: String(Date.now()),
-      role: 'ai',
-      text: "I'm looking through the text for you — this is a mock response.",
-    };
-    setMessages((prev) => [...prev, userMsg, aiMsg]);
-    setFailedMessage(null);
-    setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100);
-  }, [failedMessage, isOffline]);
-
-  const retryAiError = useCallback((id: string) => {
-    setMessages((prev) =>
-      prev.map((m) =>
-        m.id === id
-          ? {
-              ...m,
-              role: 'ai' as const,
-              text: "I'm looking through the text for you — this is a mock response.",
-            }
-          : m,
-      ),
-    );
-  }, []);
-
-  const skipAiError = useCallback((id: string) => {
-    setMessages((prev) => prev.filter((m) => m.id !== id));
+  const skipAiError = useCallback(() => {
+    // No-op for now: the failed user message lives until the user
+    // either retries or sends a new question. We could add a "delete
+    // failed message" action later if the UX feels noisy.
   }, []);
 
   return (
@@ -807,14 +968,11 @@ export function ChatScreen({
           <Text style={chatStyles.headerTitle}>Ask about the book</Text>
           <Text style={chatStyles.headerSub}>{book.title}</Text>
         </View>
-        <Pressable
-          onPress={() => {}}
-          style={chatStyles.headerBtn}
-          hitSlop={8}
-          accessibilityLabel="Info"
-        >
-          <Icon name="Info" size={17} color={tokens.textColors.muted} />
-        </Pressable>
+        {/* Right slot intentionally empty — there's no chat-level
+            settings or help surface yet. Keep a width-matched
+            spacer so the title stays optically centred between the
+            back arrow and the right edge. */}
+        <View style={chatStyles.headerBtn} />
       </View>
 
       {/* Offline bar — replaces scope banner when offline */}
@@ -827,17 +985,15 @@ export function ChatScreen({
         <View style={chatStyles.scopeBanner}>
           <Icon name="Info" size={14} color={tokens.colors.forest[700]} />
           <Text style={chatStyles.scopeText}>
-            Answers come only from{' '}
-            <Text style={chatStyles.scopeBookTitle}>{book.title}</Text>. I'll cite
-            the pages I pull from.
+            Answers come only from {book.title}. I'll cite the pages I pull from.
           </Text>
         </View>
       )}
 
-      {/* Low credits banner — fires at <20% remaining */}
-      {!isOffline && MOCK_LOW_CREDITS && !lowCreditsDismissed && (
-        <LowCreditsBanner onDismiss={() => setLowCreditsDismissed(true)} onUpgrade={() => {}} />
-      )}
+      {/* Low credits banner removed alongside the AI Tools sheet's
+          credits footer — the metering pipeline isn't wired yet, so
+          the banner could never fire on a real signal. Re-add when
+          per-user credit balance lands. */}
 
       <KeyboardAvoidingView
         style={{ flex: 1 }}
@@ -856,44 +1012,52 @@ export function ChatScreen({
               message={msg}
               onRetryAiError={retryAiError}
               onSkipAiError={skipAiError}
+              onSuggestionTap={(q) => {
+                // Treat the suggested follow-up exactly like the
+                // user typed it themselves: fires `send`, optimistic
+                // append happens inside useChat.
+                void send(q);
+              }}
             />
           ))}
 
-          {/* Failed message + error card */}
-          {failedMessage && (
-            <>
-              <View style={[chatStyles.bubbleWrap, chatStyles.bubbleWrapUser, { opacity: 0.45 }]}>
-                <View style={[chatStyles.bubble, chatStyles.bubbleUser]}>
-                  <Text style={[chatStyles.bubbleText, chatStyles.bubbleTextUser]}>
-                    {failedMessage.text}
-                  </Text>
-                </View>
-              </View>
-              <ChatErrorCard
-                isOffline={isOffline}
-                onRetry={retryFailed}
-                onDiscard={() => setFailedMessage(null)}
-              />
-            </>
+          {/* Thinking indicator while we wait on Claude. Renders as
+              an empty AI bubble with three pulsing dots, so the user
+              has visible feedback that their question landed and the
+              app is working — instead of staring at a static screen
+              for 2-4 seconds until the response arrives. The actual
+              latency is bounded by the LLM round-trip, but perceived
+              speed is significantly better with this. */}
+          {sending && <ChatThinkingBubble />}
+
+          {/* Send-error banner. The failed user message is rendered
+              inline with .failed=true (faded + retry tap target on
+              the bubble itself); this card is the supplementary
+              "what went wrong" affordance. */}
+          {errorMessage && (
+            <ChatErrorCard
+              isOffline={isOffline}
+              onRetry={() => {
+                const lastFailed = [...chatMessages]
+                  .reverse()
+                  .find((m) => m.failed);
+                if (lastFailed) void retry(lastFailed.id);
+              }}
+              onDiscard={() => undefined}
+            />
           )}
         </ScrollView>
 
-        {/* Starter questions — only when online and no messages */}
-        {!isOffline && !hasUserMessage && !failedMessage && (
-          <>
-            <Text style={chatStyles.starterLabel}>Suggested questions</Text>
-            <View style={chatStyles.starterChips}>
-              {STARTER_QUESTIONS.map((q) => (
-                <Pressable
-                  key={q}
-                  style={chatStyles.starterChip}
-                  onPress={() => setInputText(q)}
-                >
-                  <Text style={chatStyles.starterChipText}>{q}</Text>
-                </Pressable>
-              ))}
-            </View>
-          </>
+        {/* Starter questions — only when online and no messages.
+            Loading state shows three skeleton rows; success renders the
+            book-specific questions returned by `generate-starters`.
+            Errors silently hide the section — starters are an
+            enhancement, not a blocker for chatting. */}
+        {!isOffline && !hasUserMessage && !loading && (
+          <StarterQuestions
+            state={startersState}
+            onPick={(q) => setInputText(q)}
+          />
         )}
 
         {/* Input bar */}
@@ -933,6 +1097,79 @@ export function ChatScreen({
         </View>
       </KeyboardAvoidingView>
     </SafeAreaView>
+  );
+}
+
+// ─── Starter questions ────────────────────────────────────────────────────────
+
+/**
+ * Renders the "Suggested questions" block that seeds the chat. Three
+ * states map to three layouts:
+ *   - loading → three skeleton rows so layout doesn't shift in
+ *   - success → tappable chips, one per question, that pre-fill the input
+ *   - error   → fall back to generic book-agnostic prompts so the user
+ *               always has something to tap; the real per-book questions
+ *               take over the moment generate-starters succeeds
+ */
+function StarterQuestions({
+  state,
+  onPick,
+}: {
+  state: import('~/lib/aiStarters').StarterQuestionsState;
+  onPick: (q: string) => void;
+}) {
+  // Surface the underlying failure to the dev console — silent error
+  // states make it impossible to tell whether the migration or edge
+  // function is missing without reaching for the network panel.
+  useEffect(() => {
+    if (state.status === 'error') {
+      console.warn(
+        '[chat] starter questions failed:',
+        state.errorCode,
+        state.errorMessage ?? '',
+      );
+    }
+  }, [state]);
+
+  const questions =
+    state.status === 'success' && state.questions.length > 0
+      ? state.questions
+      : state.status === 'error'
+        ? FALLBACK_STARTERS
+        : null;
+
+  return (
+    <>
+      <Text style={chatStyles.starterLabel}>Suggested questions</Text>
+      <View style={chatStyles.starterChips}>
+        {state.status === 'loading' ? (
+          <>
+            <StarterSkeleton widthPct="92%" />
+            <StarterSkeleton widthPct="78%" />
+            <StarterSkeleton widthPct="84%" />
+          </>
+        ) : questions ? (
+          questions.map((q) => (
+            <Pressable
+              key={q}
+              style={chatStyles.starterChip}
+              onPress={() => onPick(q)}
+              accessibilityRole="button"
+            >
+              <Text style={chatStyles.starterChipText}>{q}</Text>
+            </Pressable>
+          ))
+        ) : null}
+      </View>
+    </>
+  );
+}
+
+function StarterSkeleton({ widthPct }: { widthPct: `${number}%` }) {
+  return (
+    <View style={chatStyles.starterChip}>
+      <Skeleton width={widthPct} height={14} borderRadius={4} />
+    </View>
   );
 }
 
@@ -989,13 +1226,16 @@ function ChatBubble({
   message,
   onRetryAiError,
   onSkipAiError,
+  onSuggestionTap,
 }: {
   message: ChatMessage;
   onRetryAiError?: (id: string) => void;
   onSkipAiError?: (id: string) => void;
+  /** Tap an off-topic suggested follow-up — should send it as a
+   * new user message. Wired by the parent so this bubble doesn't
+   * have to reach into the chat hook. */
+  onSuggestionTap?: (q: string) => void;
 }) {
-  const [thumbed, setThumbed] = useState<'up' | 'down' | null>(null);
-
   if (message.role === 'ai-error') {
     return (
       <AiErrorBubble
@@ -1006,7 +1246,9 @@ function ChatBubble({
   }
 
   if (message.role === 'ai-offtopic') {
-    return <OffTopicBubble message={message} />;
+    return (
+      <OffTopicBubble message={message} onSuggestionTap={onSuggestionTap} />
+    );
   }
 
   const isAI = message.role === 'ai';
@@ -1028,37 +1270,121 @@ function ChatBubble({
           <Icon name="Book" size={10} color={tokens.textColors.disabled} />
           <Text style={chatStyles.sourcesLabel}>Sources:</Text>
           {message.sources.map((src) => (
-            <Pressable key={src} style={chatStyles.sourceChip} onPress={() => {}}>
+            // Source chips are read-only for now — jumping to the
+            // citing page would need the chat backend to return
+            // page indices alongside source labels. Today's payload
+            // only carries the human-readable label, so we render
+            // it as a non-interactive tag.
+            <View key={src} style={chatStyles.sourceChip}>
               <Text style={chatStyles.sourceChipLabel}>{src}</Text>
-            </Pressable>
+            </View>
           ))}
         </View>
       )}
-      {isAI && (
-        <View style={chatStyles.feedbackRow}>
-          <Pressable
-            style={[chatStyles.feedbackBtn, thumbed === 'up' && chatStyles.feedbackBtnActive]}
-            onPress={() => setThumbed((p) => (p === 'up' ? null : 'up'))}
-          >
-            <Text>👍</Text>
-          </Pressable>
-          <Pressable
-            style={[chatStyles.feedbackBtn, thumbed === 'down' && chatStyles.feedbackBtnActive]}
-            onPress={() => setThumbed((p) => (p === 'down' ? null : 'down'))}
-          >
-            <Text>👎</Text>
-          </Pressable>
-        </View>
-      )}
+      {isAI && <FeedbackRow />}
+    </View>
+  );
+}
+
+/**
+ * Thumbs-up / thumbs-down rating control rendered under AI responses.
+ *
+ * Self-contained state — each bubble owns its own rating. Real
+ * persistence (writing to a `chat_message_ratings` table) lands when
+ * we have the metering pipeline in place; until then this is a
+ * client-only signal that lets the user feel heard.
+ *
+ * Iconography: the Tabler `ThumbUp` / `ThumbDown` glyphs (mapped in
+ * Icon.tsx to the *Filled* variants) replace the previous emoji
+ * `👍 👎`. The filled glyph reads as "this is a tappable button"
+ * better than an emoji does, and the colour shifts on selection to
+ * mirror the existing `feedbackBtnActive` background highlight.
+ */
+function FeedbackRow() {
+  const [thumbed, setThumbed] = useState<'up' | 'down' | null>(null);
+  const colorFor = (which: 'up' | 'down') =>
+    thumbed === which ? tokens.colors.forest[800] : tokens.textColors.muted;
+  return (
+    <View style={chatStyles.feedbackRow}>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="Mark response as helpful"
+        accessibilityState={{ selected: thumbed === 'up' }}
+        style={[
+          chatStyles.feedbackBtn,
+          thumbed === 'up' && chatStyles.feedbackBtnActive,
+        ]}
+        onPress={() => setThumbed((p) => (p === 'up' ? null : 'up'))}
+      >
+        <Icon name="ThumbUp" size={14} color={colorFor('up')} strokeWidth={0} />
+      </Pressable>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="Mark response as not helpful"
+        accessibilityState={{ selected: thumbed === 'down' }}
+        style={[
+          chatStyles.feedbackBtn,
+          thumbed === 'down' && chatStyles.feedbackBtnActive,
+        ]}
+        onPress={() => setThumbed((p) => (p === 'down' ? null : 'down'))}
+      >
+        <Icon name="ThumbDown" size={14} color={colorFor('down')} strokeWidth={0} />
+      </Pressable>
     </View>
   );
 }
 
 // ─── AI error bubble ──────────────────────────────────────────────────────────
 
-function AiErrorBubble({ onRetry, onSkip }: { onRetry: () => void; onSkip: () => void }) {
-  const [thumbed, setThumbed] = useState<'up' | 'down' | null>(null);
+/**
+ * "Thinking…" placeholder bubble shown between when the user sends a
+ * question and when Claude's response lands. Visual feedback that the
+ * app is doing something — perceived latency drops sharply even
+ * though the actual LLM round-trip (~2-4s) is unchanged.
+ *
+ * Three dots pulse with staggered timing, reusing the same animation
+ * pattern as `SummaryStreamingBody` (Reanimated shared values +
+ * withRepeat). Wrapped in the standard AI bubble chrome so it sits
+ * in the conversation flow naturally — looks like an AI message
+ * that's mid-typing, not a separate spinner.
+ */
+function ChatThinkingBubble() {
+  const dot1 = useSharedValue(0.3);
+  const dot2 = useSharedValue(0.3);
+  const dot3 = useSharedValue(0.3);
 
+  useEffect(() => {
+    dot1.value = withRepeat(withTiming(1, { duration: 600 }), -1, true);
+    dot2.value = withDelay(200, withRepeat(withTiming(1, { duration: 600 }), -1, true));
+    dot3.value = withDelay(400, withRepeat(withTiming(1, { duration: 600 }), -1, true));
+  }, [dot1, dot2, dot3]);
+
+  const dot1Style = useAnimatedStyle(() => ({
+    opacity: interpolate(dot1.value, [0, 1], [0.3, 1]),
+  }));
+  const dot2Style = useAnimatedStyle(() => ({
+    opacity: interpolate(dot2.value, [0, 1], [0.3, 1]),
+  }));
+  const dot3Style = useAnimatedStyle(() => ({
+    opacity: interpolate(dot3.value, [0, 1], [0.3, 1]),
+  }));
+
+  return (
+    <View style={[chatStyles.bubbleWrap, chatStyles.bubbleWrapAI]}>
+      <View
+        style={[chatStyles.bubble, chatStyles.bubbleAI, chatStyles.thinkingBubble]}
+        accessibilityLabel="Thinking"
+        accessibilityLiveRegion="polite"
+      >
+        <Animated.View style={[chatStyles.thinkingDot, dot1Style]} />
+        <Animated.View style={[chatStyles.thinkingDot, dot2Style]} />
+        <Animated.View style={[chatStyles.thinkingDot, dot3Style]} />
+      </View>
+    </View>
+  );
+}
+
+function AiErrorBubble({ onRetry, onSkip }: { onRetry: () => void; onSkip: () => void }) {
   return (
     <View style={chatStyles.bubbleWrapAI}>
       <View style={chatStyles.aiErrorBubble}>
@@ -1101,27 +1427,20 @@ function AiErrorBubble({ onRetry, onSkip }: { onRetry: () => void; onSkip: () =>
         </View>
       </View>
       {/* Feedback row — even errors deserve quality signal */}
-      <View style={chatStyles.feedbackRow}>
-        <Pressable
-          style={[chatStyles.feedbackBtn, thumbed === 'up' && chatStyles.feedbackBtnActive]}
-          onPress={() => setThumbed((p) => (p === 'up' ? null : 'up'))}
-        >
-          <Text>👍</Text>
-        </Pressable>
-        <Pressable
-          style={[chatStyles.feedbackBtn, thumbed === 'down' && chatStyles.feedbackBtnActive]}
-          onPress={() => setThumbed((p) => (p === 'down' ? null : 'down'))}
-        >
-          <Text>👎</Text>
-        </Pressable>
-      </View>
+      <FeedbackRow />
     </View>
   );
 }
 
 // ─── Off-topic bubble ─────────────────────────────────────────────────────────
 
-function OffTopicBubble({ message }: { message: ChatMessage }) {
+function OffTopicBubble({
+  message,
+  onSuggestionTap,
+}: {
+  message: ChatMessage;
+  onSuggestionTap?: (q: string) => void;
+}) {
   return (
     <View style={chatStyles.bubbleWrapAI}>
       <View style={chatStyles.offtopicBubble}>
@@ -1134,45 +1453,17 @@ function OffTopicBubble({ message }: { message: ChatMessage }) {
         {message.suggestions && message.suggestions.length > 0 && (
           <View style={chatStyles.offtopicSuggestions}>
             {message.suggestions.map((q) => (
-              <Pressable key={q} style={chatStyles.offtopicSuggestion} onPress={() => {}}>
+              <Pressable
+                key={q}
+                style={chatStyles.offtopicSuggestion}
+                onPress={() => onSuggestionTap?.(q)}
+              >
                 <Text style={chatStyles.offtopicSuggestionText}>{q}</Text>
               </Pressable>
             ))}
           </View>
         )}
       </View>
-    </View>
-  );
-}
-
-// ─── Low credits banner ───────────────────────────────────────────────────────
-
-function LowCreditsBanner({
-  onDismiss,
-  onUpgrade,
-}: {
-  onDismiss: () => void;
-  onUpgrade: () => void;
-}) {
-  return (
-    <View style={chatStyles.lowCreditsBanner}>
-      <Icon name="AlertTriangle" size={13} color={WARN_COLOR} strokeWidth={1.5} />
-      <Text style={chatStyles.lowCreditsText}>~9,800 AI credits left — about 12 questions</Text>
-      <Pressable
-        style={({ pressed }) => [chatStyles.lowCreditsUpgrade, pressed && { opacity: 0.85 }]}
-        onPress={onUpgrade}
-        accessibilityRole="button"
-      >
-        <Text style={chatStyles.lowCreditsUpgradeLabel}>Upgrade</Text>
-      </Pressable>
-      <Pressable
-        style={({ pressed }) => [chatStyles.lowCreditsDismiss, pressed && { opacity: 0.7 }]}
-        onPress={onDismiss}
-        hitSlop={8}
-        accessibilityLabel="Dismiss"
-      >
-        <Icon name="X" size={9} color={WARN_COLOR} strokeWidth={2.5} />
-      </Pressable>
     </View>
   );
 }
@@ -1566,10 +1857,9 @@ const sumStyles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  qualityEmoji: {
-    fontSize: 16,
-    lineHeight: 20,
-  },
+  // qualityEmoji removed — replaced with Icon name="ThumbUp" /
+  // "ThumbDown" filled glyphs from the Tabler set. Padding now lives
+  // on `qualityBtn` itself (the icon centers naturally).
 
   // Summary action bar
   actionBar: {
@@ -1607,6 +1897,12 @@ const sumStyles = StyleSheet.create({
     borderColor: tokens.borderColors.subtle,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  // Subtle confirmation styling when the user just copied. Brand
+  // tint pulses for ~1.5s, then the chip resets to its default.
+  actionIconBtnCopied: {
+    backgroundColor: tokens.colors.forest[50],
+    borderColor: tokens.colors.forest[200],
   },
 
   // Failed state
@@ -1726,13 +2022,6 @@ const sumStyles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '500',
     color: tokens.colors.forest[800],
-  },
-  streamCursor: {
-    width: 2,
-    height: 16,
-    backgroundColor: tokens.colors.forest[800],
-    marginLeft: 1,
-    borderRadius: 1,
   },
   streamSkelPara: {
     gap: 8,
@@ -1948,10 +2237,6 @@ const chatStyles = StyleSheet.create({
     color: tokens.colors.forest[800],
     lineHeight: 16,
   },
-  scopeBookTitle: {
-    fontFamily: tokens.fonts.uiMedium,
-    fontWeight: '500',
-  },
   messages: { flex: 1 },
   messagesContent: {
     padding: 16,
@@ -2104,6 +2389,22 @@ const chatStyles = StyleSheet.create({
   feedbackBtnActive: {
     backgroundColor: tokens.colors.forest[50],
     borderColor: tokens.colors.forest[200],
+  },
+
+  // Thinking bubble — three pulsing dots arranged horizontally
+  // inside the standard AI bubble shape. Overrides the default
+  // padding so the dot row looks intentional, not text-with-no-text.
+  thinkingBubble: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingVertical: 12,
+  },
+  thinkingDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: tokens.colors.forest[800],
   },
 
   // Offline bar

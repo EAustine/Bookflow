@@ -1,60 +1,56 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Animated,
-  GestureResponderEvent,
+  Dimensions,
+  PanResponder,
   Pressable,
   ScrollView,
   StyleSheet,
   Text as RNText,
   View,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BottomSheet, ChapterSheet, type BottomSheetRef, Icon, Text } from '~/components';
 import { tokens } from '~/design/tokens';
 import type { Book } from '~/types/book';
-
-// ─── Mock content ─────────────────────────────────────────────────────────────
-
-const PARAGRAPHS: string[][] = [
-  [
-    "Once I wrote down on the empty spaces of a time-table the names of those who came to Gatsby's house that summer.",
-    'It is an old time-table now, disintegrating at its folds.',
-  ],
-  [
-    'From East Egg, then, came the Chester Beckers and the Leeches, and a man named Bunsen whom I knew at Yale.',
-    'And Doctor Webster Civet, who was drowned last summer up in Maine.',
-    'And the Hornbeams and the Willie Voltaires, and a whole clan named Blackbuck who always gathered in a corner and flipped up their noses like goats at whosoever came near.',
-  ],
-  [
-    'From farther out on the Island came the Cheadles and the O. R. P. Schraeders, and the Stonewall Jackson Abrams of Georgia.',
-    'Snell was there three days before he went to the penitentiary, so drunk out on the gravel drive that Mrs. Swett\'s automobile ran over his right hand.',
-  ],
-];
-
-const ACTIVE_PARA = 1;
-const ACTIVE_SENTENCE = 2;
+import { type AudioVoice, DEFAULT_VOICE } from '~/lib/aiAudio';
+import { useAudioSession } from '~/lib/audioSession';
+import { useBackHandler } from '~/lib/useBackHandler';
+import { presentPaywall, ENTITLEMENT_PRO } from '~/lib/revenuecat';
+import { usePage, usePageList } from '~/lib/useBookChapters';
+import { BookSearchScreen } from '~/screens/BookSearchScreen';
+import {
+  getActivePreviewVoiceId,
+  playVoicePreview,
+  stopVoicePreview,
+  subscribeVoicePreview,
+} from '~/lib/voicePreview';
 
 const SPEEDS = [0.75, 1, 1.25, 1.5, 2] as const;
 type Speed = (typeof SPEEDS)[number];
-
-const TOTAL_SECS = 11 * 60 + 8;
 
 // ─── Voices ───────────────────────────────────────────────────────────────────
 
 type VoiceTier = 'free' | 'pro';
 
+// Voices are ElevenLabs default IDs (22-char alphanumeric). 'free'
+// tier exposes Rachel; the rest are gated as 'pro' for paywall
+// framing — they cost the same on our side, the gating is product
+// UX, not technical.
 const VOICES: {
-  id: string;
+  id: AudioVoice;
   name: string;
   desc: string;
   tier: VoiceTier;
   bg: string;
   fg: string;
 }[] = [
-  { id: 'sarah', name: 'Sarah', desc: 'Warm · American English', tier: 'free', bg: tokens.colors.forest[100], fg: tokens.colors.forest[800] },
-  { id: 'james', name: 'James', desc: 'Deep · British English',   tier: 'pro',  bg: tokens.colors.cream[200],  fg: tokens.colors.ink[700] },
-  { id: 'aria',  name: 'Aria',  desc: 'Bright · American English', tier: 'pro', bg: tokens.colors.amber[200],  fg: tokens.colors.ink[700] },
-  { id: 'marcus',name: 'Marcus',desc: 'Calm · Australian English',  tier: 'pro', bg: tokens.colors.forest[50],  fg: tokens.colors.forest[700] },
+  { id: '21m00Tcm4TlvDq8ikWAM', name: 'Rachel', desc: 'Calm · American English',       tier: 'free', bg: tokens.colors.forest[100], fg: tokens.colors.forest[800] },
+  { id: 'AZnzlk1XvdvUeBnXmlld', name: 'Domi',   desc: 'Confident · American English',  tier: 'pro',  bg: tokens.colors.amber[200],  fg: tokens.colors.ink[700] },
+  { id: 'EXAVITQu4vr4xnSDxMaL', name: 'Bella',  desc: 'Soft · American English',       tier: 'pro',  bg: tokens.colors.cream[200],  fg: tokens.colors.ink[700] },
+  { id: 'ErXwobaYiN019PkySvjV', name: 'Antoni', desc: 'Well-rounded · American Eng.', tier: 'pro',  bg: tokens.colors.forest[50],  fg: tokens.colors.forest[700] },
+  { id: 'pNInz6obpgDQGcFmaJgb', name: 'Adam',   desc: 'Deep · American English',       tier: 'pro',  bg: tokens.colors.ink[100],    fg: tokens.colors.ink[700] },
+  { id: 'yoZ06aMxZJJ28mfd3POQ', name: 'Sam',    desc: 'Raspy · American English',      tier: 'pro',  bg: tokens.colors.cream[50],   fg: tokens.colors.ink[700] },
 ];
 
 // ─── Props ────────────────────────────────────────────────────────────────────
@@ -63,74 +59,194 @@ export type ListenScreenProps = {
   book: Book;
   onBack: () => void;
   onMinimize: () => void;
+  /** 0-based DB page to play. Defaults to book.last_read_page. */
+  pageIndex?: number;
 };
 
 // ─── Screen ───────────────────────────────────────────────────────────────────
 
-export function ListenScreen({ book, onBack, onMinimize }: ListenScreenProps) {
-  const [isPlaying, setIsPlaying] = useState(true);
-  const [speedIdx, setSpeedIdx] = useState(1);
-  const [scrubPos, setScrubPos] = useState(0.38);
-  const [trackWidth, setTrackWidth] = useState(0);
-  const [currentWordIdx, setCurrentWordIdx] = useState(0);
-  const [selectedVoiceId, setSelectedVoiceId] = useState('sarah');
+export function ListenScreen({ book, onBack, onMinimize, pageIndex }: ListenScreenProps) {
+  // The audio session is owned globally (App.tsx wraps everything in
+  // AudioSessionProvider). This screen is a controller/view — it never
+  // mounts its own useAudio, so navigating away keeps audio playing.
+  const audio = useAudioSession();
+
+  // Resolve which page index this screen should display. Caller may
+  // override (e.g. when invoked from a specific reader page); otherwise
+  // fall back to whatever the session is currently playing, then to the
+  // book's persisted last-read.
+  const resolvedPageIndex =
+    pageIndex ??
+    (audio.book?.id === book.id ? audio.pageIndex : undefined) ??
+    (book as { last_read_page?: number }).last_read_page ??
+    0;
+  const selectedVoiceId: AudioVoice =
+    audio.book?.id === book.id ? audio.voiceId : DEFAULT_VOICE;
+  const setSelectedVoiceId = (v: AudioVoice) => audio.setVoiceId(v);
+  const status = {
+    isPlaying: audio.isPlaying,
+    loading: audio.loading,
+    ready: audio.ready,
+    positionSeconds: audio.positionSeconds,
+    durationSeconds: audio.durationSeconds,
+    errorMessage: audio.errorMessage,
+  };
+  const { play, pause, seekTo } = audio;
+
+  // Page content text — shown while audio plays so the user can
+  // follow along visually. We're NOT highlighting the current word
+  // (OpenAI tts-1 doesn't expose word timestamps); the original
+  // bimodal-paragraph design assumed that and is removed for now.
+  const { data: dbPage } = usePage(book.id, resolvedPageIndex);
+  // Page list for the picker sheet — small payload (no content), so
+  // pulling the full list per book is fine. Empty for mock books.
+  const { pages: pageList } = usePageList(book.id);
+
   const voiceSheetRef = useRef<BottomSheetRef>(null);
   const chapterSheetRef = useRef<BottomSheetRef>(null);
+  const sleepSheetRef = useRef<BottomSheetRef>(null);
+  // Top-right of the listen header opens a full-text search of the
+  // book. Picking a result jumps the audio session to that page (the
+  // user's intent is "skip ahead to where this passage is read").
+  const [showSearch, setShowSearch] = useState(false);
 
-  const activeSentenceWords = useMemo(
-    () => PARAGRAPHS[ACTIVE_PARA][ACTIVE_SENTENCE].split(/\s+/),
-    [],
-  );
+  // Scrub geometry — captured in screen coordinates (pageX) so the
+  // PanResponder math is independent of the responder's own padding.
+  // The earlier responder used nativeEvent.locationX which is reported
+  // relative to whichever sub-view caught the event; that drifted by
+  // exactly the padding amount and made the thumb track inaccurate.
+  const trackRef = useRef<View>(null);
+  const trackGeomRef = useRef<{ pageX: number; width: number }>({
+    pageX: 0,
+    width: 0,
+  });
+  const measureTrack = () => {
+    trackRef.current?.measure((_x, _y, width, _height, pageX) => {
+      if (width > 0) trackGeomRef.current = { pageX, width };
+    });
+  };
 
-  const speed: Speed = SPEEDS[speedIdx];
-
-  useEffect(() => {
-    if (!isPlaying) return;
-    const id = setInterval(() => {
-      setCurrentWordIdx((p) => (p + 1) % activeSentenceWords.length);
-    }, Math.round(750 / speed));
-    return () => clearInterval(id);
-  }, [isPlaying, activeSentenceWords.length, speed]);
-
-  // Advance scrub position 1 tick per second while playing
-  useEffect(() => {
-    if (!isPlaying) return;
-    const id = setInterval(() => {
-      setScrubPos((p) => Math.min(1, p + 1 / TOTAL_SECS));
-    }, 1000);
-    return () => clearInterval(id);
-  }, [isPlaying]);
-
-  const chNum = book.currentChapter?.match(/\d+/)?.[0] ?? '1';
-  const elapsedSecs = Math.round(scrubPos * TOTAL_SECS);
+  const isPlaying = status.isPlaying;
+  const positionSec = status.positionSeconds;
+  const durationSec = status.durationSeconds || 1;
+  const scrubPos = Math.max(0, Math.min(1, positionSec / durationSec));
+  const elapsedSecs = Math.round(positionSec);
+  const totalSecs = Math.round(durationSec);
+  const chNum = String(resolvedPageIndex + 1);
   const selectedVoice = VOICES.find((v) => v.id === selectedVoiceId) ?? VOICES[0];
 
+  // Speed control — cycles through audiobook-typical rates. The audio
+  // session owns the rate so it persists across page advances and
+  // is shared with the MiniPlayer / now-playing card. Find the closest
+  // SPEEDS entry to the current rate so the cycle still works if a
+  // future picker sets an off-grid value.
+  const speed = (SPEEDS.find((s) => Math.abs(s - audio.playbackRate) < 0.01) ?? 1) as Speed;
   const cycleSpeed = useCallback(() => {
-    setSpeedIdx((p) => (p + 1) % SPEEDS.length);
-  }, []);
+    const idx = SPEEDS.indexOf(speed);
+    const next = SPEEDS[(idx + 1) % SPEEDS.length];
+    audio.setPlaybackRate(next);
+  }, [audio, speed]);
 
+  const togglePlay = useCallback(() => {
+    if (status.isPlaying) void pause();
+    else void play();
+  }, [status.isPlaying, play, pause]);
+
+  // Back always minimises — never stops the session. Stopping cleared
+  // the global audio state which made the Listen tab fall back to its
+  // empty/resume state instead of keeping the now-playing card
+  // visible. The session stays loaded (just paused) and the Listen
+  // tab keeps showing the rich UI until the user explicitly clears it.
   const handleBack = useCallback(() => {
-    if (isPlaying) onMinimize();
-    else onBack();
-  }, [isPlaying, onMinimize, onBack]);
+    onMinimize();
+  }, [onMinimize]);
 
-  const scrubFromX = useCallback(
-    (x: number) => {
-      if (!trackWidth) return;
-      setScrubPos(Math.max(0, Math.min(1, x / trackWidth)));
-    },
-    [trackWidth],
-  );
+  // Drag-time override (0..1). When non-null, the track + thumb render
+  // from this fraction so the bar tracks the finger smoothly. We commit
+  // the seek to audio on release.
+  const [dragFraction, setDragFraction] = useState<number | null>(null);
 
-  const skipBack = useCallback(() => {
-    setScrubPos((p) => Math.max(0, p - 15 / TOTAL_SECS));
-    setCurrentWordIdx((p) => Math.max(0, p - 5));
+  const fractionFromScreenX = useCallback((screenX: number) => {
+    const { pageX, width } = trackGeomRef.current;
+    if (width <= 0) return 0;
+    return Math.max(0, Math.min(1, (screenX - pageX) / width));
   }, []);
 
-  const skipForward = useCallback(() => {
-    setScrubPos((p) => Math.min(1, p + 15 / TOTAL_SECS));
-    setCurrentWordIdx((p) => Math.min(activeSentenceWords.length - 1, p + 5));
-  }, [activeSentenceWords.length]);
+  const scrubPanResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: () => true,
+      onPanResponderTerminationRequest: () => false,
+      onPanResponderGrant: (e) => {
+        // Re-measure right before the gesture starts; the layout might
+        // have shifted (e.g. user opened/closed a sheet earlier).
+        measureTrack();
+        setDragFraction(fractionFromScreenX(e.nativeEvent.pageX));
+      },
+      onPanResponderMove: (_e, gestureState) => {
+        setDragFraction(fractionFromScreenX(gestureState.moveX));
+      },
+      onPanResponderRelease: (_e, gestureState) => {
+        const final = fractionFromScreenX(gestureState.moveX);
+        setDragFraction(null);
+        if (durationSecRef.current > 0) {
+          void seekTo(final * durationSecRef.current);
+        }
+      },
+      onPanResponderTerminate: () => {
+        setDragFraction(null);
+      },
+    }),
+  ).current;
+
+  // Mirror durationSec into a ref so the (stable) PanResponder closure
+  // reads the latest duration when committing the seek.
+  const durationSecRef = useRef(durationSec);
+  durationSecRef.current = durationSec;
+
+  // Page navigation. The transport row's outer buttons (formerly
+  // "−15s" / "+15s" seek-within-page) now operate at the page level
+  // — rewind goes to the previous page, fast-forward to the next.
+  // Pages are the meaningful unit in Bookflow (one page = one TTS
+  // track), and per-page navigation matches how users actually
+  // think about moving through a book. The 15-second nudge was
+  // confusing alongside the page-skip controls and rarely used.
+  const totalPages = book.totalPages || 0;
+  const canGoPrev = audio.pageIndex > 0;
+  const canGoNext = totalPages > 0 && audio.pageIndex < totalPages - 1;
+  const goPrevPage = useCallback(() => {
+    if (!canGoPrev) return;
+    audio.setPageIndex(audio.pageIndex - 1);
+  }, [audio, canGoPrev]);
+  const goNextPage = useCallback(() => {
+    if (!canGoNext) return;
+    audio.setPageIndex(audio.pageIndex + 1);
+  }, [audio, canGoNext]);
+
+  // Route Android hardware-back through the same path as the
+  // in-screen chevron — closes the foreground listening overlay
+  // and returns the user to the Library tab (handled by the
+  // parent's onBack closure in App.tsx).
+  useBackHandler(() => {
+    onBack();
+    return true;
+  });
+
+  // Search overlay — full-text search across the book. Tapping a
+  // result calls `audio.setPageIndex` so the listening session jumps
+  // to the page the user found, then dismisses.
+  if (showSearch) {
+    return (
+      <BookSearchScreen
+        book={book}
+        onClose={() => setShowSearch(false)}
+        onJumpToPage={(idx) => {
+          audio.setPageIndex(idx);
+          setShowSearch(false);
+        }}
+      />
+    );
+  }
 
   return (
     <SafeAreaView
@@ -158,12 +274,12 @@ export function ListenScreen({ book, onBack, onMinimize }: ListenScreenProps) {
 
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel="Chapters"
-          onPress={() => chapterSheetRef.current?.present()}
+          accessibilityLabel="Search this book"
+          onPress={() => setShowSearch(true)}
           hitSlop={8}
           style={styles.headerBtn}
         >
-          <Icon name="ListDetails" size={17} color={tokens.textColors.secondary} />
+          <Icon name="Search" size={17} color={tokens.textColors.secondary} />
         </Pressable>
       </View>
 
@@ -173,47 +289,59 @@ export function ListenScreen({ book, onBack, onMinimize }: ListenScreenProps) {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        <Text style={styles.chapterLabel}>Chapter four</Text>
+        <Text style={styles.chapterLabel}>Page {chNum}</Text>
 
-        {PARAGRAPHS.map((sentences, pIdx) => (
-          <BimodalParagraph
-            key={pIdx}
-            sentences={sentences}
-            isActive={pIdx === ACTIVE_PARA}
-            activeSentenceIdx={ACTIVE_SENTENCE}
-            currentWordIdx={currentWordIdx}
-          />
-        ))}
+        {/* Bimodal page text. When we have ElevenLabs alignment, the
+            currently-spoken word renders with an amber background;
+            other paragraphs dim. Without alignment (older cached
+            audio), we fall back to plain static text. */}
+        <BimodalText
+          content={dbPage?.content ?? ''}
+          alignment={audio.alignment}
+          currentCharIndex={audio.currentCharIndex}
+        />
       </ScrollView>
 
       {/* Audio player */}
       <View style={styles.player}>
-        {/* Scrub bar */}
+        {/* Scrub bar — drag the thumb (or tap anywhere on the track)
+            to seek. Position math runs in screen coordinates against
+            the measured track geometry; padding around the track no
+            longer offsets the calculation. */}
         <View style={styles.scrubRow}>
-          <Text style={styles.scrubTime}>{formatTime(elapsedSecs)}</Text>
-          <View
-            style={styles.scrubTrack}
-            onLayout={(e) => setTrackWidth(e.nativeEvent.layout.width)}
-            onStartShouldSetResponder={() => true}
-            onMoveShouldSetResponder={() => true}
-            onResponderGrant={(e: GestureResponderEvent) =>
-              scrubFromX(e.nativeEvent.locationX)
-            }
-            onResponderMove={(e: GestureResponderEvent) =>
-              scrubFromX(e.nativeEvent.locationX)
-            }
-          >
+          <Text style={styles.scrubTime}>
+            {formatTime(
+              dragFraction !== null
+                ? Math.round(dragFraction * durationSec)
+                : elapsedSecs,
+            )}
+          </Text>
+          <View style={styles.scrubHitArea} {...scrubPanResponder.panHandlers}>
             <View
-              style={[styles.scrubFill, { width: `${scrubPos * 100}%` as `${number}%` }]}
-            />
-            <View
-              style={[
-                styles.scrubThumb,
-                { left: `${scrubPos * 100}%` as `${number}%` },
-              ]}
-            />
+              ref={trackRef}
+              style={styles.scrubTrack}
+              onLayout={measureTrack}
+            >
+              <View
+                style={[
+                  styles.scrubFill,
+                  {
+                    width: `${(dragFraction ?? scrubPos) * 100}%` as `${number}%`,
+                  },
+                ]}
+              />
+              <View
+                style={[
+                  styles.scrubThumb,
+                  {
+                    left: `${(dragFraction ?? scrubPos) * 100}%` as `${number}%`,
+                  },
+                  dragFraction !== null && styles.scrubThumbActive,
+                ]}
+              />
+            </View>
           </View>
-          <Text style={styles.scrubTime}>{formatTime(TOTAL_SECS)}</Text>
+          <Text style={styles.scrubTime}>{formatTime(totalSecs)}</Text>
         </View>
 
         {/* Transport */}
@@ -224,21 +352,26 @@ export function ListenScreen({ book, onBack, onMinimize }: ListenScreenProps) {
             </Text>
           </Pressable>
 
-          <View style={styles.skipWrap}>
-            <Pressable
-              accessibilityRole="button"
-              onPress={skipBack}
-              style={styles.transportBtn}
-            >
-              <Icon name="PlayerTrackPrev" size={24} color={tokens.textColors.secondary} />
-            </Pressable>
-            <Text style={styles.skipLabel}>−15s</Text>
-          </View>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Previous page"
+            onPress={goPrevPage}
+            disabled={!canGoPrev}
+            style={[styles.transportBtn, !canGoPrev && { opacity: 0.35 }]}
+          >
+            {/* PlayerSkipBack is the |< (bar-then-triangle) glyph,
+                matching the page-prev affordance used elsewhere
+                (ListenNowPlayingScreen). PlayerTrackPrev was the
+                double-triangle "previous track" glyph, which read
+                as "skip to start" rather than "previous page". */}
+            <Icon name="PlayerSkipBack" size={24} color={tokens.textColors.secondary} />
+          </Pressable>
 
           <Pressable
             style={styles.playBtn}
-            onPress={() => setIsPlaying((p) => !p)}
+            onPress={togglePlay}
             accessibilityLabel={isPlaying ? 'Pause' : 'Play'}
+            disabled={status.loading || !!status.errorMessage}
           >
             <Icon
               name={isPlaying ? 'Pause' : 'Play'}
@@ -247,24 +380,42 @@ export function ListenScreen({ book, onBack, onMinimize }: ListenScreenProps) {
             />
           </Pressable>
 
-          <View style={styles.skipWrap}>
-            <Pressable
-              accessibilityRole="button"
-              onPress={skipForward}
-              style={styles.transportBtn}
-            >
-              <Icon name="PlayerTrackNext" size={24} color={tokens.textColors.secondary} />
-            </Pressable>
-            <Text style={styles.skipLabel}>+15s</Text>
-          </View>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Next page"
+            onPress={goNextPage}
+            disabled={!canGoNext}
+            style={[styles.transportBtn, !canGoNext && { opacity: 0.35 }]}
+          >
+            {/* PlayerSkipForward is the >| (triangle-then-bar) glyph
+                — see the Previous button comment above. */}
+            <Icon name="PlayerSkipForward" size={24} color={tokens.textColors.secondary} />
+          </Pressable>
 
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel="Sleep timer"
-            onPress={() => {}}
+            accessibilityLabel={
+              audio.sleepTimer ? 'Sleep timer (active)' : 'Sleep timer'
+            }
+            onPress={() => sleepSheetRef.current?.present()}
             style={styles.transportBtn}
           >
-            <Icon name="Moon" size={20} color={tokens.textColors.disabled} />
+            {/* When no sleep timer is active, the icon previously rendered
+                in the "disabled" text colour, which made it look greyed-
+                out and unavailable. The button is fully usable in both
+                states — off OR active — so the off state now uses the
+                same `secondary` tone as the other transport icons, and
+                the active state remains the forest accent so it reads
+                as "currently engaged". */}
+            <Icon
+              name="Moon"
+              size={20}
+              color={
+                audio.sleepTimer
+                  ? tokens.colors.forest[800]
+                  : tokens.textColors.secondary
+              }
+            />
           </Pressable>
         </View>
 
@@ -279,18 +430,26 @@ export function ListenScreen({ book, onBack, onMinimize }: ListenScreenProps) {
           </Pressable>
           <Pressable style={styles.pill} onPress={() => chapterSheetRef.current?.present()}>
             <Icon name="ListDetails" size={12} color={tokens.textColors.muted} />
-            <Text style={styles.pillLabel}>Ch. {chNum}</Text>
+            <Text style={styles.pillLabel}>Page {chNum}</Text>
           </Pressable>
         </View>
       </View>
 
-      {/* Chapter list sheet */}
+      {/* Page list sheet — switches the audio session to the selected
+          page index when the user taps a row. ChapterSheet is named for
+          the legacy chapter UX but operates on page rows now. */}
       <ChapterSheet
         ref={chapterSheetRef}
         book={book}
         mode="listen"
-        totalSecs={TOTAL_SECS}
+        totalSecs={totalSecs}
         scrubPos={scrubPos}
+        chapters={pageList}
+        currentChapterIndex={resolvedPageIndex}
+        onSelectChapter={(idx) => {
+          audio.setPageIndex(idx);
+          chapterSheetRef.current?.dismiss();
+        }}
       />
 
       {/* Voice picker sheet */}
@@ -302,6 +461,17 @@ export function ListenScreen({ book, onBack, onMinimize }: ListenScreenProps) {
             voiceSheetRef.current?.dismiss();
           }}
           onClose={() => voiceSheetRef.current?.dismiss()}
+        />
+      </BottomSheet>
+
+      {/* Sleep timer sheet */}
+      <BottomSheet ref={sleepSheetRef} title="Sleep timer">
+        <SleepSheet
+          current={audio.sleepTimer}
+          onPick={(picked) => {
+            audio.setSleepTimer(picked);
+            sleepSheetRef.current?.dismiss();
+          }}
         />
       </BottomSheet>
     </SafeAreaView>
@@ -346,71 +516,151 @@ function ListeningPill({
     <View style={styles.listeningPill}>
       <Animated.View style={[styles.listeningDot, { opacity }]} />
       <Text style={styles.listeningLabel}>
-        {isPlaying ? `Listening · Ch. ${chNum}` : `Paused · Ch. ${chNum}`}
+        {isPlaying ? `Listening · Page ${chNum}` : `Paused · Page ${chNum}`}
       </Text>
     </View>
   );
 }
 
-// ─── Bimodal paragraph ────────────────────────────────────────────────────────
+// ─── Bimodal text (audio-synced page render) ─────────────────────────────────
 
-function BimodalParagraph({
-  sentences,
-  isActive,
-  activeSentenceIdx,
-  currentWordIdx,
+type WordSpan = { text: string; start: number; end: number };
+type Paragraph = { words: WordSpan[]; paragraphStart: number };
+
+/**
+ * Build a paragraph + word layout from the raw page content. Each word
+ * carries its absolute character offset in the joined text, which we
+ * compare against ElevenLabs' character alignment to identify the
+ * currently-spoken word. Built once per page (memoised in the parent).
+ */
+function buildLayout(content: string): Paragraph[] {
+  const out: Paragraph[] = [];
+  // Track the absolute offset as we walk through the text. We use the
+  // raw content (not a pre-normalised version) because alignment data
+  // is keyed against the same string we pass to ElevenLabs, which is
+  // page.content.trim(). Trimming front whitespace is captured below.
+  let cursor = 0;
+  const trimmed = content;
+  // Split on blank-line boundaries — same paragraph rule the reader
+  // uses everywhere else, keeps "ch4 ¶1 / ¶2" visually separable.
+  const paragraphs = trimmed.split(/\n{2,}/);
+  for (const para of paragraphs) {
+    if (!para.trim()) {
+      cursor += para.length + 2; // account for the consumed \n\n
+      continue;
+    }
+    // Locate this paragraph's start in the raw text (cursor may
+    // include leading whitespace; .indexOf finds the first non-space
+    // character so word offsets line up with what ElevenLabs spoke).
+    const localStart = trimmed.indexOf(para, cursor);
+    const paragraphStart = localStart >= 0 ? localStart : cursor;
+
+    // Tokenise into words. Match contiguous non-whitespace runs so
+    // punctuation glues to its word ("world." stays one token —
+    // ElevenLabs' alignment character index will fall within
+    // somewhere in this span and we still highlight correctly).
+    const words: WordSpan[] = [];
+    const wordRe = /\S+/g;
+    let m: RegExpExecArray | null;
+    while ((m = wordRe.exec(para)) !== null) {
+      const start = paragraphStart + m.index;
+      words.push({
+        text: m[0],
+        start,
+        end: start + m[0].length,
+      });
+    }
+    out.push({ words, paragraphStart });
+    cursor = paragraphStart + para.length;
+  }
+  return out;
+}
+
+/**
+ * Find the word that contains the given character offset. Returns
+ * `{ paragraphIdx, wordIdx }` or null when no word matches. We use
+ * "largest word whose start <= offset" semantics so inter-word
+ * spaces (gaps) keep the previous word highlighted instead of
+ * flickering off.
+ */
+function findActiveWord(
+  layout: Paragraph[],
+  charIndex: number,
+): { paragraphIdx: number; wordIdx: number } | null {
+  if (charIndex < 0) return null;
+  let last: { paragraphIdx: number; wordIdx: number } | null = null;
+  for (let p = 0; p < layout.length; p++) {
+    const para = layout[p]!;
+    for (let w = 0; w < para.words.length; w++) {
+      const word = para.words[w]!;
+      if (word.start <= charIndex) {
+        last = { paragraphIdx: p, wordIdx: w };
+      } else {
+        // words are in offset-ascending order; once we pass the index
+        // there are no more candidates
+        return last;
+      }
+    }
+  }
+  return last;
+}
+
+function BimodalText({
+  content,
+  alignment,
+  currentCharIndex,
 }: {
-  sentences: string[];
-  isActive: boolean;
-  activeSentenceIdx: number;
-  currentWordIdx: number;
+  content: string;
+  alignment: import('~/lib/aiAudio').AudioAlignment | null;
+  currentCharIndex: number;
 }) {
-  if (!isActive) {
-    return (
-      <RNText style={[styles.para, styles.paraDim]}>
-        {sentences.join(' ')}
-      </RNText>
-    );
+  const layout = useMemo(() => buildLayout(content), [content]);
+  // Active word is null when alignment is missing (older cached audio)
+  // or before audio has started — fall through to plain rendering then.
+  const active = useMemo(
+    () =>
+      alignment && currentCharIndex >= 0
+        ? findActiveWord(layout, currentCharIndex)
+        : null,
+    [alignment, currentCharIndex, layout],
+  );
+
+  if (layout.length === 0) {
+    return null;
   }
 
   return (
-    <RNText style={[styles.para, styles.paraActive]}>
-      {sentences.map((sentence, sIdx) => {
-        if (sIdx < activeSentenceIdx) {
-          return (
-            <RNText key={sIdx} style={styles.priorSentence}>
-              {sentence}{' '}
-            </RNText>
-          );
-        }
-
-        if (sIdx === activeSentenceIdx) {
-          const words = sentence.split(/\s+/);
-          return (
-            <RNText key={sIdx} style={styles.activeSentence}>
-              {words.map((word, wIdx) => {
-                const isCurrentWord = wIdx === currentWordIdx;
-                return (
-                  <RNText
-                    key={wIdx}
-                    style={isCurrentWord ? styles.activeWord : undefined}
-                  >
-                    {wIdx > 0 ? ' ' : ''}
-                    {word}
-                  </RNText>
-                );
-              })}
-            </RNText>
-          );
-        }
-
+    <View>
+      {layout.map((para, pIdx) => {
+        const isActiveParagraph = active?.paragraphIdx === pIdx;
+        // No alignment yet → render plain (no dimming, no highlight).
+        // With alignment → dim non-active paragraphs, highlight word.
+        const dim = active !== null && !isActiveParagraph;
         return (
-          <RNText key={sIdx} style={{ opacity: 0.55 }}>
-            {' '}{sentence}
+          <RNText
+            key={pIdx}
+            style={[
+              styles.paragraph,
+              dim && styles.paragraphDim,
+            ]}
+          >
+            {para.words.map((word, wIdx) => {
+              const isCurrentWord =
+                isActiveParagraph && active?.wordIdx === wIdx;
+              return (
+                <RNText
+                  key={wIdx}
+                  style={isCurrentWord ? styles.activeWord : undefined}
+                >
+                  {wIdx > 0 ? ' ' : ''}
+                  {word.text}
+                </RNText>
+              );
+            })}
           </RNText>
         );
       })}
-    </RNText>
+    </View>
   );
 }
 
@@ -428,12 +678,79 @@ function VoiceSheet({
   const freeVoices = VOICES.filter((v) => v.tier === 'free');
   const proVoices = VOICES.filter((v) => v.tier === 'pro');
 
+  // We pause any currently-playing book audio before starting a
+  // preview — otherwise two voices overlap. We DON'T auto-resume
+  // afterwards; the user is in voice-picking mode and likely about
+  // to switch voices anyway, so leaving the session paused is the
+  // least surprising default.
+  const audio = useAudioSession();
+
+  // Voice-preview lifecycle. Subscribed to the module-scope singleton
+  // in voicePreview.ts so any preview started here also reflects in
+  // other VoiceRows (only one preview plays at a time across the app).
+  // `pendingId` covers the brief moment between the user tapping
+  // Preview and audio actually starting — without it the button would
+  // look frozen during the URL fetch.
+  const [activeVoiceId, setActiveVoiceId] = useState<string | null>(
+    getActivePreviewVoiceId(),
+  );
+  const [pendingVoiceId, setPendingVoiceId] = useState<string | null>(null);
+  useEffect(() => {
+    const unsub = subscribeVoicePreview(() => {
+      setActiveVoiceId(getActivePreviewVoiceId());
+    });
+    // Always stop preview when the sheet unmounts — otherwise a
+    // half-played sample keeps playing under the closed sheet.
+    return () => {
+      unsub();
+      stopVoicePreview();
+    };
+  }, []);
+  const handlePreview = useCallback(
+    async (voiceId: string) => {
+      // Tap again to stop (matches user expectation; Preview button
+      // becomes a toggle once playback is live).
+      if (getActivePreviewVoiceId() === voiceId) {
+        stopVoicePreview();
+        return;
+      }
+      // Yield the audio focus by pausing the book session first.
+      if (audio.isPlaying) {
+        try {
+          audio.pause();
+        } catch {
+          // Audio session may not be loaded yet — that's fine,
+          // there's nothing to silence.
+        }
+      }
+      setPendingVoiceId(voiceId);
+      try {
+        await playVoicePreview(voiceId);
+      } catch (err) {
+        // Surface enough info for the user to know it failed — the
+        // sheet's existing layout doesn't have a toast slot, so we
+        // just bail; the button will return to idle and the user can
+        // retry. The error is logged for debug.
+        console.warn(
+          '[voice-preview] play failed:',
+          err instanceof Error ? err.message : err,
+        );
+      } finally {
+        setPendingVoiceId(null);
+      }
+    },
+    [audio],
+  );
+
   return (
     <View>
       <View style={styles.sheetTitleRow}>
         <Text style={styles.sheetTitle}>Choose a voice</Text>
         <Pressable
-          onPress={onClose}
+          onPress={() => {
+            stopVoicePreview();
+            onClose();
+          }}
           style={styles.sheetClose}
           hitSlop={8}
           accessibilityLabel="Close"
@@ -451,6 +768,14 @@ function VoiceSheet({
             voice={voice}
             isSelected={voice.id === selectedVoiceId}
             isLast={idx === freeVoices.length - 1}
+            previewState={
+              pendingVoiceId === voice.id
+                ? 'loading'
+                : activeVoiceId === voice.id
+                  ? 'playing'
+                  : 'idle'
+            }
+            onPreview={() => void handlePreview(voice.id)}
             onPress={() => onSelect(voice.id)}
           />
         ))}
@@ -466,7 +791,16 @@ function VoiceSheet({
             isSelected={false}
             isLast={idx === proVoices.length - 1}
             locked
-            onPress={() => {}}
+            previewState="idle"
+            // Tapping a locked Pro voice opens the paywall — same
+            // surface the Upgrade button below this list uses. Better
+            // UX than a silent reject; users frequently try the
+            // voice they want first, then find the Upgrade button.
+            onPress={() => {
+              void presentPaywall({
+                requiredEntitlement: ENTITLEMENT_PRO,
+              }).catch(() => {});
+            }}
           />
         ))}
       </View>
@@ -479,7 +813,17 @@ function VoiceSheet({
             4 premium voices + faster audio on Standard
           </Text>
         </View>
-        <Pressable style={styles.upsellBtn} onPress={() => {}}>
+        <Pressable
+          style={styles.upsellBtn}
+          onPress={() => {
+            void presentPaywall({
+              requiredEntitlement: ENTITLEMENT_PRO,
+            }).catch(() => {
+              // Swallow when RevenueCat isn't configured — the
+              // button still feels responsive instead of crashing.
+            });
+          }}
+        >
           <Text style={styles.upsellBtnLabel}>Upgrade</Text>
         </Pressable>
       </View>
@@ -492,14 +836,32 @@ function VoiceRow({
   isSelected,
   isLast,
   locked,
+  previewState,
+  onPreview,
   onPress,
 }: {
   voice: (typeof VOICES)[number];
   isSelected: boolean;
   isLast: boolean;
   locked?: boolean;
+  /**
+   * Current state of the inline Preview button. `loading` covers the
+   * brief window between tap and audio starting (URL fetch); `playing`
+   * means the sample is currently audible; `idle` is the default.
+   * Pro/locked rows always pass 'idle' since they don't preview.
+   */
+  previewState: 'idle' | 'loading' | 'playing';
+  onPreview?: () => void;
   onPress: () => void;
 }) {
+  const isPlaying = previewState === 'playing';
+  const isLoading = previewState === 'loading';
+  // Pause icon → tappable to stop. Play icon → tappable to start.
+  // Loading state shows the play icon with reduced opacity so the
+  // tap target stays the same width and doesn't jitter.
+  const previewIcon = isPlaying ? 'Pause' : 'Play';
+  const previewLabel = isPlaying ? 'Stop' : 'Preview';
+
   return (
     <Pressable
       onPress={onPress}
@@ -537,12 +899,38 @@ function VoiceRow({
         ) : (
           <>
             <Pressable
-              onPress={(e) => { e.stopPropagation(); }}
-              style={styles.previewBtn}
+              onPress={(e) => {
+                e.stopPropagation();
+                onPreview?.();
+              }}
+              style={[
+                styles.previewBtn,
+                isPlaying && styles.previewBtnActive,
+                isLoading && { opacity: 0.6 },
+              ]}
               hitSlop={4}
+              disabled={isLoading}
+              accessibilityLabel={
+                isPlaying ? `Stop ${voice.name} preview` : `Preview ${voice.name}`
+              }
             >
-              <Icon name="Play" size={9} color={tokens.textColors.muted} />
-              <Text style={styles.previewBtnLabel}>Preview</Text>
+              <Icon
+                name={previewIcon}
+                size={9}
+                color={
+                  isPlaying
+                    ? tokens.colors.forest[800]
+                    : tokens.textColors.muted
+                }
+              />
+              <Text
+                style={[
+                  styles.previewBtnLabel,
+                  isPlaying && styles.previewBtnLabelActive,
+                ]}
+              >
+                {previewLabel}
+              </Text>
             </Pressable>
             {isSelected && (
               <Icon name="Check" size={16} color={tokens.colors.forest[800]} strokeWidth={2} />
@@ -554,85 +942,348 @@ function VoiceRow({
   );
 }
 
+// ─── Sleep timer sheet ────────────────────────────────────────────────────────
+
+type SleepPick =
+  | null
+  | { kind: 'end-of-page' }
+  | { kind: 'minutes'; minutes: number };
+
+/**
+ * Sleep timer options. Five common audiobook intervals + "End of page"
+ * (same idea as Apple Books' "End of chapter" — pause when the current
+ * audio page finishes naturally). The active row gets a forest dot;
+ * tapping the active row again clears the timer.
+ */
+function SleepSheet({
+  current,
+  onPick,
+}: {
+  current:
+    | null
+    | { kind: 'end-of-page' }
+    | { kind: 'minutes'; remainingSeconds: number };
+  onPick: (next: SleepPick) => void;
+}) {
+  const options: Array<{ key: string; label: string; pick: SleepPick }> = [
+    { key: 'off', label: 'Off', pick: null },
+    { key: '5', label: '5 minutes', pick: { kind: 'minutes', minutes: 5 } },
+    { key: '15', label: '15 minutes', pick: { kind: 'minutes', minutes: 15 } },
+    { key: '30', label: '30 minutes', pick: { kind: 'minutes', minutes: 30 } },
+    { key: '60', label: '1 hour', pick: { kind: 'minutes', minutes: 60 } },
+    { key: 'eop', label: 'End of page', pick: { kind: 'end-of-page' } },
+  ];
+
+  const isActive = (pick: SleepPick): boolean => {
+    if (pick === null) return current === null;
+    if (!current) return false;
+    if (pick.kind === 'end-of-page') return current.kind === 'end-of-page';
+    if (pick.kind === 'minutes') {
+      // Approximate match — consider it active if remaining time is
+      // within 60s of the picked total (covers natural drift right
+      // after pick).
+      if (current.kind !== 'minutes') return false;
+      const total = pick.minutes * 60;
+      return Math.abs(current.remainingSeconds - total) < 60;
+    }
+    return false;
+  };
+
+  return (
+    <View style={sleepStyles.list}>
+      {options.map((opt) => {
+        const active = isActive(opt.pick);
+        const subtitle =
+          opt.key === '5' ||
+          opt.key === '15' ||
+          opt.key === '30' ||
+          opt.key === '60'
+            ? active && current?.kind === 'minutes'
+              ? `${formatRemaining(current.remainingSeconds)} left`
+              : null
+            : null;
+        return (
+          <Pressable
+            key={opt.key}
+            onPress={() => onPick(active ? null : opt.pick)}
+            style={({ pressed }) => [
+              sleepStyles.row,
+              pressed && { backgroundColor: tokens.bgColors.raised },
+            ]}
+            accessibilityRole="button"
+            accessibilityState={{ selected: active }}
+          >
+            <Text style={[sleepStyles.label, active && sleepStyles.labelActive]}>
+              {opt.label}
+            </Text>
+            <View style={sleepStyles.trailing}>
+              {subtitle && (
+                <Text style={sleepStyles.subtitle}>{subtitle}</Text>
+              )}
+              {active && (
+                <Icon
+                  name="Check"
+                  size={16}
+                  color={tokens.colors.forest[800]}
+                  strokeWidth={2}
+                />
+              )}
+            </View>
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}
+
+function formatRemaining(seconds: number): string {
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  if (m === 0) return `${s}s`;
+  if (s === 0) return `${m} min`;
+  return `${m}:${String(s).padStart(2, '0')}`;
+}
+
+const sleepStyles = StyleSheet.create({
+  list: {
+    paddingHorizontal: 4,
+    paddingBottom: 4,
+  },
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    height: 48,
+    paddingHorizontal: 12,
+    borderRadius: 10,
+  },
+  label: {
+    fontFamily: tokens.fonts.ui,
+    fontSize: 15,
+    color: tokens.textColors.primary,
+  },
+  labelActive: {
+    fontFamily: tokens.fonts.uiMedium,
+    fontWeight: '500',
+    color: tokens.colors.forest[800],
+  },
+  trailing: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  subtitle: {
+    fontFamily: tokens.fonts.ui,
+    fontSize: 12,
+    color: tokens.textColors.muted,
+  },
+});
+
 // ─── Mini player (rendered in LibraryScreen above tab bar) ───────────────────
 
 export type MiniPlayerProps = {
-  book: Book;
+  /** Tap the mini bar to open the full ListenScreen (route to Listen tab). */
   onExpand: () => void;
 };
 
-export function MiniPlayer({ book, onExpand }: MiniPlayerProps) {
-  const [isPlaying, setIsPlaying] = useState(true);
-  const [scrubPos, setScrubPos] = useState(book.progressPercent / 100);
+/**
+ * Compact playback bar shown above the TabBar on Library/Discover/You
+ * tabs whenever a session is active. Reads from `useAudioSession` so it
+ * shares state with the full ListenScreen — there's exactly one audio
+ * source in the app.
+ *
+ * Returns `null` when no session is active so callers can render
+ * unconditionally without writing the gate themselves.
+ */
+export function MiniPlayer({ onExpand }: MiniPlayerProps) {
+  const audio = useAudioSession();
+  const insets = useSafeAreaInsets();
+  // Swipe-to-dismiss state. translateX drives the bar's horizontal
+  // offset; opacity fades it as it leaves the screen. Both are
+  // Animated.Values so the gesture stays on the UI thread via
+  // useNativeDriver. Refs so we don't re-create them on every render.
+  const translateX = useRef(new Animated.Value(0)).current;
+  const opacity = useRef(new Animated.Value(1)).current;
+  // Captures the dismiss decision inside the PanResponder closure so
+  // we can call dismissMiniPlayer() after the slide-off animation
+  // finishes. Without this, calling dismissMiniPlayer() unmounts
+  // MiniPlayer mid-anim and the slide-off never plays out.
+  const dismissingRef = useRef(false);
 
+  // PanResponder captures clear horizontal drags (right OR left) and
+  // dismisses the mini player when the user has dragged either far
+  // enough or with enough velocity. A simple tap bubbles past the
+  // responder and reaches the Pressable below, so `onExpand` still
+  // fires normally on tap.
+  const panResponder = useRef(
+    PanResponder.create({
+      // Don't fight scrolling. We only become the responder once the
+      // gesture is clearly horizontal AND moved past a few px.
+      onMoveShouldSetPanResponder: (_, g) =>
+        Math.abs(g.dx) > 6 && Math.abs(g.dx) > Math.abs(g.dy) * 1.5,
+      onPanResponderGrant: () => {
+        translateX.stopAnimation();
+        opacity.stopAnimation();
+      },
+      onPanResponderMove: (_, g) => {
+        translateX.setValue(g.dx);
+        // Fade as the bar exits — starts at 1, hits ~0.3 by the time
+        // it's halfway off-screen. Keeps the gesture feeling reactive.
+        const screenW = Dimensions.get('window').width || 375;
+        const dist = Math.min(1, Math.abs(g.dx) / screenW);
+        opacity.setValue(Math.max(0.35, 1 - dist));
+      },
+      onPanResponderRelease: (_, g) => {
+        const screenW = Dimensions.get('window').width || 375;
+        // Dismiss if dragged past 35% of screen width OR with enough
+        // velocity (matches iOS standard swipe-to-dismiss thresholds).
+        const past = Math.abs(g.dx) > screenW * 0.35 || Math.abs(g.vx) > 0.5;
+        if (past) {
+          dismissingRef.current = true;
+          const direction = g.dx >= 0 ? 1 : -1;
+          Animated.parallel([
+            Animated.timing(translateX, {
+              toValue: direction * screenW * 1.1,
+              duration: 180,
+              useNativeDriver: true,
+            }),
+            Animated.timing(opacity, {
+              toValue: 0,
+              duration: 180,
+              useNativeDriver: true,
+            }),
+          ]).start(({ finished }) => {
+            if (finished && dismissingRef.current) {
+              // Hide the overlay but keep the audio session alive
+              // so the Listen tab still shows the now-playing card.
+              // The user can resume from there or tap a different
+              // book to start a new session (which un-hides the
+              // overlay automatically).
+              audio.dismissMiniPlayer();
+            }
+          });
+        } else {
+          // Snap back to center.
+          Animated.parallel([
+            Animated.spring(translateX, {
+              toValue: 0,
+              useNativeDriver: true,
+              bounciness: 0,
+            }),
+            Animated.spring(opacity, {
+              toValue: 1,
+              useNativeDriver: true,
+              bounciness: 0,
+            }),
+          ]).start();
+        }
+      },
+      onPanResponderTerminate: () => {
+        Animated.parallel([
+          Animated.spring(translateX, {
+            toValue: 0,
+            useNativeDriver: true,
+            bounciness: 0,
+          }),
+          Animated.spring(opacity, {
+            toValue: 1,
+            useNativeDriver: true,
+            bounciness: 0,
+          }),
+        ]).start();
+      },
+    }),
+  ).current;
+
+  // When a new session un-hides the overlay (book change resets
+  // `miniPlayerHidden`), the Animated values still hold the off-screen
+  // state from the previous dismiss. Snap them back to center so the
+  // bar reappears in-place rather than animating in from nowhere.
   useEffect(() => {
-    if (!isPlaying) return;
-    const id = setInterval(() => {
-      setScrubPos((p) => Math.min(1, p + 1 / TOTAL_SECS));
-    }, 1000);
-    return () => clearInterval(id);
-  }, [isPlaying]);
+    if (!audio.miniPlayerHidden) {
+      translateX.setValue(0);
+      opacity.setValue(1);
+      dismissingRef.current = false;
+    }
+  }, [audio.miniPlayerHidden, translateX, opacity]);
 
-  const handleSkipBack = useCallback((e: { stopPropagation: () => void }) => {
-    e.stopPropagation();
-    setScrubPos((p) => Math.max(0, p - 15 / TOTAL_SECS));
-  }, []);
+  // Early return AFTER hooks (refs + effects above) to keep hook
+  // order stable across mounts.
+  const book = audio.book;
+  if (!book) return null;
+  // The user explicitly swiped the overlay away. Audio session is
+  // still alive (Listen tab will render the now-playing card); we
+  // just hide the floating preview strip on other tabs.
+  if (audio.miniPlayerHidden) return null;
 
-  const handlePlayPause = useCallback((e: { stopPropagation: () => void }) => {
+  // The mini bar floats absolutely from App.tsx and needs to sit above
+  // the TabBar. TabBar = paddingTop(8) + content(~40) + paddingBottom
+  // (max(safeInset, 8)). 56 covers the inner content; safeInset covers
+  // the home-indicator area on notched devices.
+  const tabBarOffset = 56 + Math.max(insets.bottom, 8);
+
+  const isPlaying = audio.isPlaying;
+  const pageIndex = audio.pageIndex;
+  const scrubPos =
+    audio.durationSeconds > 0
+      ? Math.max(0, Math.min(1, audio.positionSeconds / audio.durationSeconds))
+      : 0;
+
+  const handlePlayPause = (e: { stopPropagation: () => void }) => {
     e.stopPropagation();
-    setIsPlaying((p) => !p);
-  }, []);
+    if (audio.isPlaying) audio.pause();
+    else audio.play();
+  };
+
+  // The session can still be torn down via swipe-to-dismiss (left or
+  // right). When dismissed we call `audio.stop()` so the cold-start
+  // auto-restore doesn't immediately revive the bar — closing means
+  // closing, not hiding.
 
   return (
-    <Pressable
-      style={styles.mini}
-      onPress={onExpand}
-      accessibilityLabel="Expand player"
-    >
-      {/* Cover initial */}
-      <View style={styles.miniCover}>
-        <Text style={styles.miniCoverText} numberOfLines={2}>
-          {book.title}
-        </Text>
-      </View>
-
-      {/* Info */}
-      <View style={styles.miniInfo}>
-        <Text style={styles.miniTitle} numberOfLines={1}>
-          {book.title} · Ch. {book.currentChapter?.match(/\d+/)?.[0] ?? '1'}
-        </Text>
-        <View style={styles.miniProgressTrack}>
-          <View
-            style={[
-              styles.miniProgressFill,
-              { width: `${scrubPos * 100}%` as `${number}%` },
-            ]}
-          />
-        </View>
-      </View>
-
-      {/* Controls */}
-      <View style={styles.miniControls}>
+    <View style={{ marginBottom: tabBarOffset }} pointerEvents="box-none">
+      <Animated.View
+        style={{ transform: [{ translateX }], opacity }}
+        {...panResponder.panHandlers}
+      >
         <Pressable
-          onPress={handleSkipBack}
-          style={styles.miniBtn}
-          hitSlop={8}
+          style={styles.mini}
+          onPress={onExpand}
+          accessibilityLabel="Expand player"
+          accessibilityHint="Swipe left or right to close"
         >
-          <Icon name="PlayerTrackPrev" size={18} color={tokens.colors.cream[50]} />
+          <View style={styles.miniCover}>
+            <Text style={styles.miniCoverText} numberOfLines={2}>
+              {book.title}
+            </Text>
+          </View>
+
+          <View style={styles.miniInfo}>
+            <Text style={styles.miniTitle} numberOfLines={1}>
+              {book.title} · Page {pageIndex + 1}
+            </Text>
+            <View style={styles.miniProgressTrack}>
+              <View
+                style={[
+                  styles.miniProgressFill,
+                  { width: `${scrubPos * 100}%` as `${number}%` },
+                ]}
+              />
+            </View>
+          </View>
+
+          <View style={styles.miniControls}>
+            <Pressable onPress={handlePlayPause} style={styles.miniPlayBtn} hitSlop={4}>
+              <Icon
+                name={isPlaying ? 'Pause' : 'Play'}
+                size={14}
+                color={tokens.colors.cream[50]}
+              />
+            </Pressable>
+          </View>
         </Pressable>
-        <Pressable
-          onPress={handlePlayPause}
-          style={styles.miniPlayBtn}
-          hitSlop={4}
-        >
-          <Icon
-            name={isPlaying ? 'Pause' : 'Play'}
-            size={14}
-            color={tokens.colors.cream[50]}
-          />
-        </Pressable>
-      </View>
-    </Pressable>
+      </Animated.View>
+    </View>
   );
 }
 
@@ -720,6 +1371,18 @@ const styles = StyleSheet.create({
     color: tokens.colors.ink[300],
     marginBottom: tokens.space.lg,
   },
+  paragraph: {
+    fontFamily: 'Literata_400Regular',
+    fontSize: 16,
+    lineHeight: 16 * 1.7,
+    color: tokens.textColors.primary,
+    marginBottom: 16,
+  },
+  // Bimodal mode: paragraphs not currently being narrated dim to ink-300.
+  // Same dim treatment as the original design spec (10_listen.html).
+  paragraphDim: {
+    color: tokens.colors.ink[300],
+  },
 
   // Paragraphs
   para: {
@@ -771,8 +1434,16 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     flexShrink: 0,
   },
-  scrubTrack: {
+  // Larger transparent hit area around the 4px track so the gesture
+  // is comfortable to grab. The track itself is what we measure for
+  // the percent calculation — padding here doesn't factor in.
+  scrubHitArea: {
     flex: 1,
+    paddingVertical: 12,
+    marginVertical: -12,
+    justifyContent: 'center',
+  },
+  scrubTrack: {
     height: 4,
     backgroundColor: tokens.colors.cream[200],
     borderRadius: 2,
@@ -803,6 +1474,11 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.2,
     shadowRadius: 3,
     elevation: 2,
+  },
+  // Slight scale-up while the user is dragging for tactile feedback.
+  scrubThumbActive: {
+    transform: [{ scale: 1.3 }],
+    shadowOpacity: 0.35,
   },
 
   // Transport
@@ -982,11 +1658,21 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 4,
   },
+  previewBtnActive: {
+    // While playing, swap the chip into the brand accent so the user
+    // can spot which voice is the source of the audio at a glance
+    // even when scrolling through other rows.
+    backgroundColor: tokens.colors.forest[50],
+    borderColor: tokens.colors.forest[200],
+  },
   previewBtnLabel: {
     fontFamily: tokens.fonts.uiMedium,
     fontSize: 11,
     fontWeight: '500',
     color: tokens.textColors.muted,
+  },
+  previewBtnLabelActive: {
+    color: tokens.colors.forest[800],
   },
   proBadge: {
     backgroundColor: tokens.colors.amber[200],

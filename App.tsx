@@ -214,23 +214,33 @@ export default function App() {
 
   const handleOnboardingFirstBookContinue = useCallback(
     (selection: FirstBookSelection) => {
-      // Library selection: kick off a real import from Project
-      // Gutenberg using the curated book's gutenbergId. Fire-and-
-      // forget — the import-from-url edge function returns the
-      // book_id within ~400ms (download + processing run in the
+      // Library selection: kick off real imports from Project
+      // Gutenberg for every book the user picked (1..N). Fire-and-
+      // forget for each — the import-from-url edge function returns
+      // the book_id within ~400ms (download + processing run in the
       // background), and the user lands on the library where
-      // realtime delivers the row when processing flips it to
-      // ready. Failures are non-fatal: we still complete onboarding
-      // and route to library so a user without a stable connection
-      // isn't stuck on this screen.
-      if (selection.source === 'library' && selection.book.gutenbergId) {
-        const gutenbergId = selection.book.gutenbergId;
-        void importDiscoverBook({
-          title: selection.book.title,
-          author: selection.book.author,
-          epubUrl: `https://www.gutenberg.org/ebooks/${gutenbergId}.epub.images`,
-          source: 'gutenberg',
-        });
+      // realtime delivers the rows as each processes. Failures are
+      // non-fatal: we still complete onboarding and route to library
+      // so a user without a stable connection isn't stuck on this
+      // screen, and any books that did import successfully will
+      // surface as they're ready.
+      //
+      // We launch all imports in parallel (not awaited, not chained)
+      // because Gutenberg is the bottleneck — sequencing would mean
+      // the second book waits ~400ms for the first import-from-url
+      // call to round-trip before its own background download even
+      // starts.
+      if (selection.source === 'library' && selection.books.length > 0) {
+        for (const book of selection.books) {
+          if (!book.gutenbergId) continue;
+          const gutenbergId = book.gutenbergId;
+          void importDiscoverBook({
+            title: book.title,
+            author: book.author,
+            epubUrl: `https://www.gutenberg.org/ebooks/${gutenbergId}.epub.images`,
+            source: 'gutenberg',
+          });
+        }
       }
       void persistOnboardingComplete();
       goToLibrary();
@@ -932,11 +942,24 @@ function LibraryStage({
     return (
       <ListenScreen
         book={audio.book}
-        // We no longer expose an explicit "stop session" path — back
-        // and minimise both just dismiss the foreground overlay and
-        // leave the session loaded (possibly paused). The Listen tab
-        // keeps showing the rich now-playing UI as a result.
-        onBack={() => setListenForeground(false)}
+        // Back: dismiss the foreground listening overlay AND switch
+        // the active tab to Library so the user lands on their book
+        // shelf instead of whatever screen launched the session
+        // (often the Reader, which would just feel like "going
+        // backward" rather than "exiting playback"). The audio
+        // session itself stays alive — playback continues, the
+        // MiniPlayer surfaces over Library, and tapping it expands
+        // back into ListenScreen.
+        //
+        // Minimize: same dismiss without the tab swap — used for
+        // the in-screen chevron-down that says "shrink to mini
+        // player but stay where I am". (Currently same closure as
+        // onBack at the parent, but kept distinct so we can diverge
+        // if minimize ever needs different behaviour.)
+        onBack={() => {
+          setListenForeground(false);
+          setActiveTab('library');
+        }}
         onMinimize={() => setListenForeground(false)}
       />
     );

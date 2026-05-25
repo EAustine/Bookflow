@@ -21,7 +21,7 @@
  */
 
 import { useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text as RNText, View } from 'react-native';
+import { Image, Pressable, ScrollView, StyleSheet, Text as RNText, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
 import { Button } from '~/components/Button';
@@ -33,7 +33,7 @@ import { tokens } from '~/design/tokens';
 type Tab = 'library' | 'upload';
 
 export type FirstBookSelection =
-  | { source: 'library'; book: CuratedBook }
+  | { source: 'library'; books: CuratedBook[] }
   | { source: 'upload' }; // M2 will carry the parsed file metadata
 
 export type OnboardingFirstBookScreenProps = {
@@ -55,16 +55,45 @@ export function OnboardingFirstBookScreen({
   onPickFile,
 }: OnboardingFirstBookScreenProps) {
   const [tab, setTab] = useState<Tab>('library');
-  const [selectedId, setSelectedId] = useState<CuratedBookId | null>(null);
+  // Multi-select: the picker now accepts any number of books from the
+  // curated grid (1..N), not just one. Activation data showed that
+  // users who add 2-3 books in onboarding return at substantially
+  // higher rates than 1-book users — they have a backlog instead of
+  // a single "did I finish it?" obligation. Using a Set keeps
+  // toggle / membership checks O(1) across the 6-card grid.
+  const [selectedIds, setSelectedIds] = useState<Set<CuratedBookId>>(
+    () => new Set(),
+  );
+  const selectedCount = selectedIds.size;
 
-  const canContinue = tab === 'library' && selectedId !== null;
-  const ctaLabel = 'Add to library';
+  const toggleSelect = (id: CuratedBookId) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const canContinue = tab === 'library' && selectedCount > 0;
+  // Singular/plural in the CTA so the button confirms what it'll do.
+  // Even a single-book user sees the same affordance as before — the
+  // multi-book flow doesn't penalise the simple case with awkward
+  // copy like "Add 1 book(s)".
+  const ctaLabel =
+    selectedCount > 1
+      ? `Add ${selectedCount} books to library`
+      : 'Add to library';
 
   const handleContinue = () => {
-    if (tab !== 'library' || !selectedId) return;
-    const book = CURATED_LIBRARY.find((b) => b.id === selectedId);
-    if (!book) return;
-    onContinue({ source: 'library', book });
+    if (tab !== 'library' || selectedCount === 0) return;
+    // Preserve curated-library order rather than selection order so
+    // the user's library lands in the same canonical ordering they
+    // saw in the grid — and downstream tests / analytics see stable
+    // book ids regardless of tap sequence.
+    const books = CURATED_LIBRARY.filter((b) => selectedIds.has(b.id));
+    if (books.length === 0) return;
+    onContinue({ source: 'library', books });
   };
 
   return (
@@ -106,7 +135,7 @@ export function OnboardingFirstBookScreen({
 
         {/* Tab content */}
         {tab === 'library' ? (
-          <LibraryTab selectedId={selectedId} onSelect={setSelectedId} />
+          <LibraryTab selectedIds={selectedIds} onToggle={toggleSelect} />
         ) : (
           <UploadTab onPickFile={onPickFile} />
         )}
@@ -164,11 +193,11 @@ function TabButton({
 // ============================================================================
 
 function LibraryTab({
-  selectedId,
-  onSelect,
+  selectedIds,
+  onToggle,
 }: {
-  selectedId: CuratedBookId | null;
-  onSelect: (id: CuratedBookId) => void;
+  selectedIds: Set<CuratedBookId>;
+  onToggle: (id: CuratedBookId) => void;
 }) {
   return (
     <ScrollView
@@ -181,8 +210,8 @@ function LibraryTab({
           <BookCard
             key={book.id}
             book={book}
-            selected={selectedId === book.id}
-            onPress={() => onSelect(book.id)}
+            selected={selectedIds.has(book.id)}
+            onPress={() => onToggle(book.id)}
           />
         ))}
       </View>
@@ -202,12 +231,30 @@ function BookCard({
   return (
     <Pressable
       onPress={onPress}
-      accessibilityRole="radio"
+      // Checkbox semantics — taps toggle membership rather than
+      // mutually exclude others (which would be the radio pattern
+      // we used to have).
+      accessibilityRole="checkbox"
       accessibilityState={{ selected, checked: selected }}
       style={[styles.card, selected && styles.cardSelected]}
     >
       <View style={[styles.cover, selected && styles.coverSelected]}>
-        <BookCoverArt cover={book.cover} title={book.title} author={book.author} />
+        <BookCoverArt
+          cover={book.cover}
+          title={book.title}
+          author={book.author}
+          gutenbergId={book.gutenbergId}
+        />
+        {/* Selected check badge — floats over the top-right of the
+            cover so the multi-select state is unmistakable at a
+            glance. Without this, several cards with the same forest
+            ring blend together and the user has to count rings to
+            know what's selected. */}
+        {selected && (
+          <View style={styles.coverCheck}>
+            <Icon name="Check" size={12} color={tokens.colors.cream[50]} strokeWidth={3} />
+          </View>
+        )}
       </View>
       <View style={styles.cardMeta}>
         <RNText style={styles.cardTitle} numberOfLines={1}>
@@ -222,22 +269,44 @@ function BookCard({
 }
 
 /**
- * Cover artwork — 135deg linear-gradient background via `react-native-svg`,
- * with the title + author overlaid as native text. Keeping text outside the
- * Svg means it picks up the system font and stays selectable on web.
+ * Cover artwork — real Project Gutenberg cover when available, with
+ * the existing 135deg gradient + typography as a fallback for books
+ * Gutenberg doesn't have a cover image for (and as the placeholder
+ * shown for the ~200-500ms while the image is loading).
+ *
+ * The gradient previously rendered alone, which looked plain enough
+ * that testers asked whether the thumbnails were broken. Real covers
+ * carry the book's identity at a glance.
  */
 function BookCoverArt({
   cover,
   title,
   author,
+  gutenbergId,
 }: {
   cover: CuratedBook['cover'];
   title: string;
   author: string;
+  gutenbergId?: number;
 }) {
   const gradientId = `cover-${title.replace(/\W+/g, '-')}`;
+  // Track load + error so we can fade the real cover in only when
+  // it's actually painted, and keep the gradient visible if the
+  // image 404s (some Gutenberg entries have no cover).
+  const [imgReady, setImgReady] = useState(false);
+  const [imgFailed, setImgFailed] = useState(false);
+  const showRealCover = !!gutenbergId && imgReady && !imgFailed;
+  // Project Gutenberg's stable cover URL pattern. The `medium` size
+  // is ~150x225 — perfect for a 3-column thumbnail grid.
+  const coverUri = gutenbergId
+    ? `https://www.gutenberg.org/cache/epub/${gutenbergId}/pg${gutenbergId}.cover.medium.jpg`
+    : null;
+
   return (
     <View style={styles.coverArt}>
+      {/* Gradient + typography fallback. Always rendered, hidden
+          behind the real cover once it loads. This is also the
+          permanent state for books without a Gutenberg cover. */}
       <Svg
         style={StyleSheet.absoluteFillObject}
         width="100%"
@@ -260,6 +329,24 @@ function BookCoverArt({
         <RNText style={[styles.coverTitle, { color: cover.titleColor }]}>{title}</RNText>
         <RNText style={[styles.coverAuthor, { color: cover.authorColor }]}>{author}</RNText>
       </View>
+
+      {/* Real Gutenberg cover — fades over the gradient once loaded.
+          Kept absolutely positioned so the gradient renders behind it
+          for the brief load window and as a permanent fallback if
+          the image fails. */}
+      {coverUri && (
+        <Image
+          source={{ uri: coverUri }}
+          style={[
+            StyleSheet.absoluteFillObject,
+            { opacity: showRealCover ? 1 : 0 },
+          ]}
+          resizeMode="cover"
+          onLoad={() => setImgReady(true)}
+          onError={() => setImgFailed(true)}
+          accessible={false}
+        />
+      )}
     </View>
   );
 }
@@ -463,6 +550,25 @@ const styles = StyleSheet.create({
   },
   coverTextBlock: {
     alignItems: 'center',
+  },
+  // Multi-select check badge floating over the top-right of the
+  // cover. Forest pill with a white check, sized just large enough
+  // to be unambiguous without crowding the cover itself.
+  coverCheck: {
+    position: 'absolute',
+    top: 6,
+    right: 6,
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: tokens.colors.forest[800],
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOpacity: 0.2,
+    shadowRadius: 3,
+    shadowOffset: { width: 0, height: 1 },
+    elevation: 3,
   },
   coverTitle: {
     fontFamily: tokens.fonts.displayBold,

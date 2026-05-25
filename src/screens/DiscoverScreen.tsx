@@ -1,22 +1,72 @@
-import { useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  ActivityIndicator,
+  Alert,
+  Image,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  TextInput,
+  View,
+} from 'react-native';
+import * as Clipboard from 'expo-clipboard';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Icon, TabBar, type TabKey, Text } from '~/components';
 import { tokens } from '~/design/tokens';
+import { SUPPORT_EMAIL } from '~/lib/legalUrls';
+import { useBackHandler } from '~/lib/useBackHandler';
+import {
+  fetchStandardEbooks,
+  popularGutenberg,
+  searchGutenberg,
+  topicGutenberg,
+  type DiscoverBook as ApiBook,
+} from '~/lib/discoverApi';
+import {
+  getCachedShelf,
+  hydrateShelfCache,
+  peekCachedShelf,
+  setCachedShelf,
+} from '~/lib/discoverCache';
+import {
+  importDiscoverBook,
+  importErrorMessage,
+} from '~/lib/discoverImport';
+import { DISCOVER_SEED } from '~/lib/discoverSeed';
+import { useBooks } from '~/hooks/useBooks';
+import { supabase } from '~/lib/supabase';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
+/**
+ * Screen-side book shape. A superset of the API's DiscoverBook, with
+ * UI-specific fields (`coverColor`, `coverLabel`) derived from the
+ * source data + a deterministic palette.
+ *
+ * `source` is the literal source name (matching `ImportableBook`) so
+ * the import flow's type-narrowing works without extra coercion.
+ */
 type DiscoverBook = {
   id: string;
   title: string;
   coverLabel?: string;
   author: string;
   coverColor: string;
+  /** Real cover image (Gutenberg jpeg). When set the cards render an
+   * <Image>; the colored cover is the fallback. */
+  coverUrl: string | null;
+  /** Direct EPUB URL — used by the import flow. */
+  epubUrl: string | null;
   tags: string[];
-  readTime: string;
-  chapters: number;
+  /** Optional — Gutendex doesn't ship reading time. */
+  readTime?: string;
+  /** Optional — Gutendex doesn't ship chapter count. */
+  chapters?: number;
   about: string;
-  source?: string;
+  /** Source identifier the edge function knows how to import from. */
+  source: 'gutenberg' | 'standardebooks';
+  /** Display label for the detail view ("Project Gutenberg"). */
+  sourceLabel?: string;
   related?: { id: string; title: string; coverColor: string }[];
 };
 
@@ -34,117 +84,801 @@ const CC = {
   olive:   '#5A6E3D',
 } as const;
 
-// ─── Mock data ────────────────────────────────────────────────────────────────
+// ─── API → Screen adapter ────────────────────────────────────────────────────
 
-const B: Record<string, DiscoverBook> = {
-  meditations: {
-    id: 'meditations', title: 'Meditations', author: 'Marcus Aurelius',
-    coverColor: CC.plum, tags: ['Philosophy', 'Stoicism', 'Roman'], readTime: '~5h', chapters: 12,
-    about: "Private notes of a Roman Emperor — a daily practice of Stoic philosophy that's still surprisingly practical 1,800 years on.",
-    source: 'Project Gutenberg · originally written c. 161 AD.',
-    related: [
-      { id: 'walden', title: 'Walden', coverColor: CC.olive },
-      { id: 'jekyll', title: 'Dr Jekyll and Mr Hyde', coverColor: CC.slate },
-      { id: 'pride', title: 'Pride and Prejudice', coverColor: CC.brown },
-    ],
-  },
-  ageOfInnocence: {
-    id: 'ageOfInnocence', title: 'The Age of Innocence', author: 'Edith Wharton',
-    coverColor: CC.brown, tags: ['Fiction', 'Society', 'American'], readTime: '~12h', chapters: 34,
-    about: "Newland Archer, engaged to the conventional May Welland, falls for her unconventional cousin. A sharp portrait of Old New York's unspoken rules.",
-    source: 'Standard Ebooks · originally published 1920.',
-  },
-  sunAlsoRises: {
-    id: 'sunAlsoRises', title: 'The Sun Also Rises', author: 'Ernest Hemingway',
-    coverColor: CC.rust, tags: ['Fiction', 'Lost Generation', 'American'], readTime: '~8h', chapters: 19,
-    about: "Jake Barnes and a circle of expatriates drift from Paris to Pamplona for the bullfights. Hemingway's first novel — taut, spare, devastating.",
-    source: 'Project Gutenberg · originally published 1926.',
-  },
-  tenderIsTheNight: {
-    id: 'tenderIsTheNight', title: 'Tender Is the Night', author: 'F.S. Fitzgerald',
-    coverColor: CC.teal, tags: ['Fiction', 'Jazz Age', 'American'], readTime: '~13h', chapters: 34,
-    about: "Dick and Nicole Diver, glamorous on the French Riviera, slowly unravel. Fitzgerald's most autobiographical novel.",
-    source: 'Project Gutenberg · originally published 1934.',
-  },
-  sisterCarrie: {
-    id: 'sisterCarrie', title: 'Sister Carrie', author: 'Theodore Dreiser',
-    coverColor: CC.olive, tags: ['Naturalism', 'Drama', 'American'], readTime: '~17h', chapters: 47,
-    about: "A young woman rises through Chicago by ambition and luck while those around her fall. Dreiser's unflinching debut.",
-    source: 'Project Gutenberg · originally published 1900.',
-  },
-  metamorphosis: {
-    id: 'metamorphosis', title: 'The Metamorphosis', author: 'Franz Kafka',
-    coverColor: CC.forest, tags: ['Surrealism', 'Short', 'German'], readTime: '~2h', chapters: 3,
-    about: "Gregor Samsa wakes to find himself transformed into a monstrous insect. Bizarre, funny, and quietly devastating.",
-    source: 'Standard Ebooks · originally published 1915.',
-  },
-  oldManAndSea: {
-    id: 'oldManAndSea', title: 'The Old Man and the Sea', author: 'Ernest Hemingway',
-    coverColor: CC.amber, tags: ['Fiction', 'Short', 'American'], readTime: '~3h', chapters: 1,
-    about: "An aging Cuban fisherman struggles alone in the Gulf Stream with a giant marlin. The novella that won Hemingway the Pulitzer Prize.",
-    source: 'Project Gutenberg · originally published 1952.',
-  },
-  jekyll: {
-    id: 'jekyll', title: 'Dr Jekyll and Mr Hyde',
-    coverLabel: 'The Strange Case of Dr Jekyll',
-    author: 'Robert Louis Stevenson',
-    coverColor: CC.slate, tags: ['Gothic', 'Horror', 'British'], readTime: '~2h', chapters: 10,
-    about: "A London lawyer investigates his friend Dr Jekyll and the violent Mr Hyde. A foundational text of psychological horror.",
-    source: 'Standard Ebooks · originally published 1886.',
-  },
-  pride: {
-    id: 'pride', title: 'Pride and Prejudice', author: 'Jane Austen',
-    coverColor: CC.brown, tags: ['Romance', '19th Century', 'British'], readTime: '~9h', chapters: 61,
-    about: "The witty Elizabeth Bennet navigates questions of marriage and social standing in rural England. Austen's most beloved novel.",
-    source: 'Standard Ebooks · originally published 1813.',
-  },
-  middlemarch: {
-    id: 'middlemarch', title: 'Middlemarch', author: 'George Eliot',
-    coverColor: CC.forest7, tags: ['Realism', 'Victorian', 'British'], readTime: '~28h', chapters: 86,
-    about: 'A panoramic study of English provincial life — doctors, landowners, idealists — told with compassion and moral intelligence.',
-    source: 'Standard Ebooks · originally published 1871.',
-  },
-  annaKarenina: {
-    id: 'annaKarenina', title: 'Anna Karenina', author: 'Leo Tolstoy',
-    coverColor: CC.rust, tags: ['Russian', 'Drama', '19th Century'], readTime: '~36h', chapters: 239,
-    about: "Anna's affair with Count Vronsky sets her on a collision course with Russian society. Tolstoy's towering social novel.",
-    source: 'Project Gutenberg · originally published 1878.',
-  },
-  janeEyre: {
-    id: 'janeEyre', title: 'Jane Eyre', author: 'Charlotte Brontë',
-    coverColor: CC.slate, tags: ['Gothic', 'Romance', 'Victorian'], readTime: '~16h', chapters: 38,
-    about: "An orphaned governess falls for the brooding Mr Rochester — until a terrible secret changes everything. Gothic romance at its peak.",
-    source: 'Standard Ebooks · originally published 1847.',
-  },
+const COVER_PALETTE = [
+  CC.forest,
+  CC.brown,
+  CC.amber,
+  CC.slate,
+  CC.rust,
+  CC.teal,
+  CC.plum,
+  CC.olive,
+  CC.forest7,
+] as const;
+
+/**
+ * Cheap deterministic hash → palette index. Same book id renders with
+ * the same fallback color across reloads / between rails.
+ */
+function pickCoverColor(id: string): string {
+  let hash = 0;
+  for (let i = 0; i < id.length; i++) {
+    hash = (hash * 31 + id.charCodeAt(i)) >>> 0;
+  }
+  return COVER_PALETTE[hash % COVER_PALETTE.length]!;
+}
+
+function fromApiBook(b: ApiBook): DiscoverBook {
+  // The lib uses `'standard-ebooks'` (hyphenated, follows id-prefix
+  // convention) while the import edge function expects the shorter
+  // `'standardebooks'` token. We translate at this boundary so the
+  // rest of the screen layer doesn't have to know about the
+  // discrepancy.
+  const source: DiscoverBook['source'] =
+    b.source === 'standard-ebooks' ? 'standardebooks' : 'gutenberg';
+  const sourceLabel =
+    source === 'standardebooks' ? 'Standard Ebooks' : 'Project Gutenberg';
+  const fallbackAbout =
+    source === 'standardebooks'
+      ? 'Hand-typeset public-domain edition from Standard Ebooks — free to read in your library.'
+      : 'Public-domain title from Project Gutenberg — free to read in your library.';
+  return {
+    id: b.id,
+    title: b.title,
+    author: b.author,
+    coverColor: pickCoverColor(b.id),
+    coverLabel: b.title,
+    coverUrl: b.coverUrl,
+    epubUrl: b.epubUrl,
+    tags: b.tags,
+    about: b.about || fallbackAbout,
+    // `source` is the literal id the import flow knows how to handle.
+    // `sourceLabel` is the human-readable version shown in the
+    // detail page's "Source" row.
+    source,
+    sourceLabel,
+  };
+}
+
+const CATEGORIES = [
+  'For you',
+  'Classics',
+  'Christianity',
+  'Fiction',
+  'Mystery',
+  'Adventure',
+  'Romance',
+  'Sci-fi',
+  'Philosophy',
+  'Poetry',
+  'History',
+  'Children',
+  'Short reads',
+] as const;
+type Category = (typeof CATEGORIES)[number];
+
+/**
+ * Tiny in-memory LRU for search hits. Keyed by lowercased query.
+ * Module-level (not state) so the cache survives Discover unmount and
+ * a single `useState` doesn't churn per character. Cap of 24 keeps
+ * memory trivial — at ~8KB per result set the worst case is ~200KB.
+ */
+const SEARCH_CACHE_MAX = 24;
+const searchCache: Map<string, DiscoverBook[]> = (() => {
+  const m = new Map<string, DiscoverBook[]>();
+  // Override `set` to enforce LRU eviction (Map preserves insertion
+  // order, so the oldest key is .keys().next().value when over cap).
+  const origSet = m.set.bind(m);
+  m.set = (key, value) => {
+    if (m.has(key)) m.delete(key); // re-insert to move to MRU position
+    origSet(key, value);
+    if (m.size > SEARCH_CACHE_MAX) {
+      const oldest = m.keys().next().value;
+      if (oldest !== undefined) m.delete(oldest);
+    }
+    return m;
+  };
+  return m;
+})();
+
+/**
+ * Map a category chip to a Gutendex topic search. "For you" returns
+ * the generic popular feed since we don't yet have personalisation
+ * data. The topic strings are matched as substrings against subjects
+ * + bookshelves; broader/single-word terms tend to surface a livelier
+ * mix than ultra-specific ones.
+ */
+const CATEGORY_TOPIC: Record<Exclude<Category, 'For you'>, string> = {
+  'Classics': 'classics',
+  'Fiction': 'fiction',
+  // Gutenberg's "Christianity" bookshelf + "Religion" subjects cover
+  // ~3,000 titles — Augustine, Aquinas, Bunyan, Edwards, Wesley,
+  // Calvin, Spurgeon, devotional / theology / church history. Topic
+  // matches against subjects + bookshelves substring, so 'christianity'
+  // catches both the bookshelf name AND book-level "Religion --
+  // Christianity" subject tags.
+  'Christianity': 'christianity',
+  'Mystery': 'mystery',
+  'Adventure': 'adventure',
+  'Romance': 'romance',
+  // 'science fiction' is the canonical Gutenberg subject for the genre
+  // — broader 'sci-fi' barely matches anything in the catalog.
+  'Sci-fi': 'science fiction',
+  'Philosophy': 'philosophy',
+  'Poetry': 'poetry',
+  'History': 'history',
+  // Targets Gutenberg's "Children's literature" + "Children's fiction"
+  // bookshelves which use this exact phrasing.
+  'Children': "children's",
+  'Short reads': 'short stories',
 };
-
-const FEATURED = B.meditations;
-const GATSBY_RAIL: DiscoverBook[] = [B.ageOfInnocence, B.sunAlsoRises, B.tenderIsTheNight, B.sisterCarrie];
-const SHORT_READS: DiscoverBook[] = [B.metamorphosis, B.oldManAndSea, B.jekyll];
-const CLASSICS: DiscoverBook[] = [B.pride, B.middlemarch, B.annaKarenina, B.janeEyre];
-const PRE_ADDED = new Set(['tenderIsTheNight', 'pride']);
-
-const CATEGORIES = ['For you', 'Classics', 'Philosophy', 'Self-development', 'Short reads', 'In Twi'];
 
 // ─── Screen ───────────────────────────────────────────────────────────────────
 
 export type DiscoverScreenProps = {
   onTabChange: (tab: TabKey) => void;
+  /**
+   * Fired whenever Discover pushes/pops a sub-view (category list,
+   * book detail). App.tsx uses this to hide the global mini-player
+   * overlay on drill-ins. Mirrors the pattern on LibraryScreen
+   * (`onReaderOpenChange`) and YouScreen (`onSubViewOpenChange`).
+   */
+  onSubViewOpenChange?: (open: boolean) => void;
 };
 
-export function DiscoverScreen({ onTabChange }: DiscoverScreenProps) {
+export function DiscoverScreen({
+  onTabChange,
+  onSubViewOpenChange,
+}: DiscoverScreenProps) {
   const [view, setView] = useState<'home' | 'category' | 'detail'>('home');
-  const [activeCategory, setActiveCategory] = useState('For you');
+  // Notify the parent shell when we leave / return to the home
+  // view. Effect-based so both directions fire without wrapping
+  // every setView call.
+  useEffect(() => {
+    onSubViewOpenChange?.(view !== 'home');
+  }, [view, onSubViewOpenChange]);
+  const [activeCategory, setActiveCategory] = useState<Category>('For you');
   const [detailBook, setDetailBook] = useState<DiscoverBook | null>(null);
   const [detailFrom, setDetailFrom] = useState<'home' | 'category'>('home');
-  const [libraryIds, setLibraryIds] = useState<Set<string>>(PRE_ADDED);
+  // "In library" derives from the real books table (via useBooks
+  // realtime). We match by source_url because Discover books carry
+  // their Gutenberg URL on `epubUrl`, and the import flow writes that
+  // exact value to books.source_url. Switching to derived state means
+  // no manual reconciliation between optimistic UI + real data.
+  const { books: userBooks } = useBooks();
+  const libraryIds = useMemo<Set<string>>(() => {
+    const set = new Set<string>();
+    for (const b of userBooks) {
+      const url = b.source_url;
+      if (!url) continue;
+      // Reverse-map books.source_url back to the Discover id form.
+      // Each source has its own URL pattern → id template, mirroring
+      // the id construction in discoverApi.ts and the standard-ebooks
+      // edge function:
+      //
+      //   Gutenberg:
+      //     URL    https://www.gutenberg.org/ebooks/12345.epub.images
+      //     id     gutenberg:12345
+      //
+      //   Standard Ebooks:
+      //     URL    https://standardebooks.org/ebooks/jane-austen/
+      //              pride-and-prejudice/downloads/…epub
+      //     id     standard-ebooks:jane-austen/pride-and-prejudice
+      //
+      // Both branches are tried per row — order doesn't matter
+      // because the URL patterns don't overlap.
+      const gutMatch = url.match(/gutenberg\.org\/.*?\/(\d+)/);
+      if (gutMatch) {
+        set.add(`gutenberg:${gutMatch[1]}`);
+        continue;
+      }
+      const seMatch = url.match(
+        /standardebooks\.org\/ebooks\/([^/]+\/[^/]+)/,
+      );
+      if (seMatch) {
+        set.add(`standard-ebooks:${seMatch[1]}`);
+      }
+    }
+    return set;
+  }, [userBooks]);
 
-  const toggleLibrary = (id: string) =>
-    setLibraryIds((prev) => {
+  // In-flight import tracker — keys are Discover book ids that we've
+  // submitted to import-from-url and haven't yet seen come back as a
+  // libraryIds member. Lets the Add button switch to a spinner so the
+  // user sees something is happening between tap and library realtime
+  // delivering the new row.
+  const [pendingIds, setPendingIds] = useState<Set<string>>(new Set());
+
+  // ── Home shelves ────────────────────────────────────────────────────────
+  // Each rail has its own state + loading flag so the UI renders
+  // progressively as each request lands, rather than waiting on the
+  // slowest of the three. The cache layer means repeat visits skip the
+  // network entirely (stale-while-revalidate: render cache → refresh).
+  const [popular, setPopular] = useState<DiscoverBook[]>([]);
+  const [fictionRail, setFictionRail] = useState<DiscoverBook[]>([]);
+  const [shortReads, setShortReads] = useState<DiscoverBook[]>([]);
+  // "Spiritual classics" rail — surfaces Gutenberg's Christianity
+  // bookshelf (Augustine, Bunyan, Edwards, Wesley, à Kempis, etc.) on
+  // the Discover home so religious readers see relevant content
+  // without having to find the Christianity category chip first.
+  const [spiritualRail, setSpiritualRail] = useState<DiscoverBook[]>([]);
+  // "Polished classics" rail — Standard Ebooks' hand-typeset editions
+  // of public-domain titles. Smaller catalog (~1,200) but
+  // dramatically nicer typography than Gutenberg's auto-converted
+  // ebooks, so worth its own shelf for readers who care about
+  // presentation.
+  const [polishedRail, setPolishedRail] = useState<DiscoverBook[]>([]);
+  const [popularLoading, setPopularLoading] = useState(true);
+  const [fictionLoading, setFictionLoading] = useState(true);
+  const [shortLoading, setShortLoading] = useState(true);
+  const [spiritualLoading, setSpiritualLoading] = useState(true);
+  const [polishedLoading, setPolishedLoading] = useState(true);
+  const [homeError, setHomeError] = useState<string | null>(null);
+  // "Loading" for the home view as a whole = popular hasn't shown up
+  // yet (popular drives the featured card). Other rails can come later.
+  const homeLoading = popularLoading && popular.length === 0;
+
+  // ── Category view ──────────────────────────────────────────────────────
+  const [categoryBooks, setCategoryBooks] = useState<DiscoverBook[]>([]);
+  const [categoryLoading, setCategoryLoading] = useState(false);
+
+  // ── Search ─────────────────────────────────────────────────────────────
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<DiscoverBook[] | null>(null);
+  const [searching, setSearching] = useState(false);
+
+  // Featured = first popular pick. Computed (not state) so it stays in
+  // sync with the popular feed without an extra setState call.
+  const featured: DiscoverBook | null = popular[0] ?? null;
+
+  // Initial home-shelf load — three independent fetches, each rendered
+  // as soon as its data lands. Each rail also runs a stale-while-
+  // revalidate against AsyncStorage: paint cached books immediately
+  // (instant repeat opens), then fire a fresh fetch in the background
+  // and swap when it returns.
+  useEffect(() => {
+    let cancelled = false;
+    setHomeError(null);
+
+    // Fire-and-forget hydration of the memory cache mirror. Reads every
+    // `bookflow:discover:*` key from AsyncStorage in one shot so that
+    // by the time the user taps a category chip a few ms from now,
+    // `peekCachedShelf` returns the cached books synchronously and the
+    // category page renders without a loading flash. Idempotent —
+    // concurrent callers share the same in-flight promise.
+    void hydrateShelfCache();
+
+    /**
+     * Load one shelf with SWR semantics. `cacheKey` is the AsyncStorage
+     * slot; `fetcher` returns fresh API data; `seed` is an optional
+     * baked-in starter list (lib-shape ApiBook[]) to paint instantly
+     * when there's no cache (cold-start UX — see DISCOVER_SEED).
+     *
+     * Never-empty rule: once a non-empty list is on screen (seed,
+     * cache, or network), an empty network response does NOT clear
+     * it. Symptom of the rule's absence: the seed paints, the network
+     * returns `{ok:true, books:[]}` (gutendex hiccup, region block,
+     * malformed proxy response), and the rail goes blank — exactly
+     * the bug the user reported.
+     */
+    const loadShelf = async (
+      cacheKey: string,
+      fetcher: () => ReturnType<typeof popularGutenberg>,
+      setBooks: (books: DiscoverBook[]) => void,
+      setLoading: (l: boolean) => void,
+      seed?: ApiBook[],
+    ) => {
+      let displayed: DiscoverBook[] = [];
+      const setDisplayed = (b: DiscoverBook[]) => {
+        displayed = b;
+        setBooks(b);
+        setLoading(false);
+      };
+
+      // 1. Cache pass — paint instantly if we have something fresh enough.
+      const cached = await getCachedShelf<DiscoverBook>(cacheKey);
+      if (cancelled) return;
+      if (cached && cached.length > 0) {
+        setDisplayed(cached);
+      } else if (seed && seed.length > 0) {
+        // No cache but we have a baked-in seed — reshape (so the
+        // deterministic colour palette runs) and paint. The fresh fetch
+        // below will overwrite once it lands with non-empty results;
+        // the seed is the cold-start UX.
+        setDisplayed(seed.map(fromApiBook));
+      }
+
+      // 2. Background refresh — always fire, even on cache hit. Falls
+      // through to error path on network failure but keeps cached data
+      // visible (only sets error on the popular shelf since that's the
+      // one the user notices first).
+      try {
+        const result = await fetcher();
+        if (cancelled) return;
+        if (result.ok) {
+          const books = result.books.map(fromApiBook);
+          if (books.length > 0) {
+            // Fresh non-empty data wins — paint it and refresh cache.
+            setDisplayed(books);
+            void setCachedShelf(cacheKey, books);
+          } else if (displayed.length === 0) {
+            // Empty network result and we have nothing to show — stay
+            // in loading state so the rail at least renders skeletons
+            // until something arrives. Don't poison the cache with [].
+            setLoading(false);
+          }
+          // If displayed.length > 0 and books.length === 0, do nothing:
+          // keep the seed/cache visible rather than blanking the rail.
+        } else if (displayed.length === 0) {
+          // Network failed and we never painted anything — surface the
+          // error so the user knows something's up.
+          setHomeError(result.error);
+          setLoading(false);
+        }
+      } catch (err) {
+        if (cancelled) return;
+        if (displayed.length === 0) {
+          setHomeError(err instanceof Error ? err.message : String(err));
+          setLoading(false);
+        }
+      }
+    };
+
+    // Fan out — each shelf is independent. 8 books per shelf instead of
+    // 12; the rails only show a few cards in the viewport anyway, and
+    // the smaller payload + smaller list of images shaves the first-
+    // paint time noticeably on slower networks.
+    void loadShelf(
+      'popular',
+      () => popularGutenberg({ limit: 8 }),
+      setPopular,
+      setPopularLoading,
+      // Cold-start seed — first-time users see content instantly.
+      DISCOVER_SEED,
+    );
+    // Fiction + short-reads rails both fall back to the same seed list
+    // when their cache misses. They'll be replaced with topic-filtered
+    // results once the network responds, but the user always sees
+    // *something* even on a slow first launch.
+    void loadShelf(
+      'topic:fiction',
+      () => topicGutenberg('fiction', { limit: 8 }),
+      setFictionRail,
+      setFictionLoading,
+      DISCOVER_SEED,
+    );
+    void loadShelf(
+      'topic:short-stories',
+      () => topicGutenberg('short stories', { limit: 8 }),
+      setShortReads,
+      setShortLoading,
+      DISCOVER_SEED,
+    );
+    void loadShelf(
+      'topic:christianity',
+      () => topicGutenberg('christianity', { limit: 8 }),
+      setSpiritualRail,
+      setSpiritualLoading,
+      DISCOVER_SEED,
+    );
+    void loadShelf(
+      'source:standard-ebooks',
+      () => fetchStandardEbooks({ limit: 8 }),
+      setPolishedRail,
+      setPolishedLoading,
+      // Use the same generic seed — by the time the user notices the
+      // shelf, the real Standard Ebooks list has usually landed (1
+      // edge function hit, ~300 ms). The seed avoids a "no shelf"
+      // gap during that brief window.
+      DISCOVER_SEED,
+    );
+
+    // Pre-warm the category caches in the background so the first time
+    // the user taps a category chip / "See all" the data is already
+    // sitting in AsyncStorage AND the in-memory mirror. Each prefetch
+    // is a no-op if a fresh cache entry already exists.
+    //
+    // No longer throttled — the home-shelf fetches are already in
+    // flight by the time this loop runs, and the prewarm requests are
+    // light. A short stagger inside the loop spreads them so all 12
+    // don't hit Gutendex on the same tick (it has been known to rate-
+    // limit bursts from the same IP).
+    let prewarmIndex = 0;
+    const prewarmCategory = (cat: Exclude<Category, 'For you'>) => {
+      const topic = CATEGORY_TOPIC[cat];
+      const cacheKey = `category:${cat}`;
+      void (async () => {
+        // Fast path: memory peek. The hydrate kicked off above might
+        // have already populated this; if so, skip the network.
+        if (peekCachedShelf<DiscoverBook>(cacheKey)) return;
+        const cached = await getCachedShelf<DiscoverBook>(cacheKey);
+        if (cancelled) return;
+        if (cached && cached.length > 0) return; // already warm on disk
+        const result = await topicGutenberg(topic, { limit: 12 });
+        if (cancelled || !result.ok) return;
+        void setCachedShelf(cacheKey, result.books.map(fromApiBook));
+      })();
+    };
+    const prewarmIntervalId = setInterval(() => {
+      if (cancelled) {
+        clearInterval(prewarmIntervalId);
+        return;
+      }
+      // Find the next non-prewarmed category and kick it off.
+      while (prewarmIndex < CATEGORIES.length) {
+        const cat = CATEGORIES[prewarmIndex++]!;
+        if (cat === 'For you') continue;
+        prewarmCategory(cat as Exclude<Category, 'For you'>);
+        return;
+      }
+      clearInterval(prewarmIntervalId);
+    }, 120); // 120ms stagger between category prewarm requests
+
+    return () => {
+      cancelled = true;
+      clearInterval(prewarmIntervalId);
+    };
+  }, []);
+
+  // Category fetch — runs whenever the category view opens with a
+  // non-"For you" pick. Layered SWR:
+  //   1. If we have cached data, paint it instantly.
+  //   2. Otherwise paint the baked-in seed so the screen is never
+  //      blank — better than a spinner over an empty canvas. The
+  //      seed list is generic classics; not perfect for "Mystery" or
+  //      "Romance", but a far better fallback than nothing.
+  //   3. Background-fetch fresh data (12 books, not 24 — Gutendex
+  //      responds faster on smaller pages and the user only sees
+  //      ~6-8 cards above the fold anyway).
+  //   4. Same "never blank" rule as the home shelves: an empty
+  //      network result doesn't clear what's already on screen.
+  useEffect(() => {
+    if (view !== 'category') return;
+    if (activeCategory === 'For you') {
+      // "For you" reuses the popular feed — already loaded.
+      setCategoryBooks(popular);
+      setCategoryLoading(false);
+      return;
+    }
+    let cancelled = false;
+    let displayed: DiscoverBook[] = [];
+    const cacheKey = `category:${activeCategory}`;
+
+    // Synchronous peek — when the prewarm (or a prior visit) populated
+    // the memory mirror, the user sees the books in the same frame as
+    // the tap, no spinner. Only set `categoryLoading: true` when we
+    // genuinely have nothing to show, so cold-cache opens still get a
+    // loading state but warm opens skip the flash.
+    const peeked = peekCachedShelf<DiscoverBook>(cacheKey);
+    if (peeked && peeked.length > 0) {
+      displayed = peeked;
+      setCategoryBooks(peeked);
+      setCategoryLoading(false);
+    } else if (DISCOVER_SEED.length > 0) {
+      // Cold cache → render the seed so the user sees content
+      // immediately. Loading flag stays true so the title shows
+      // "Loading…" until fresh data lands.
+      displayed = DISCOVER_SEED.map(fromApiBook);
+      setCategoryBooks(displayed);
+      setCategoryLoading(true);
+    } else {
+      setCategoryLoading(true);
+    }
+
+    void (async () => {
+      // Memory peek already covered the hot path. Async getCachedShelf
+      // here exists for the case where memory was empty but disk has
+      // a fresh entry — e.g. cold app launch where hydration hasn't
+      // completed when the user taps a chip.
+      if (displayed.length === 0) {
+        const cached = await getCachedShelf<DiscoverBook>(cacheKey);
+        if (cancelled) return;
+        if (cached && cached.length > 0) {
+          displayed = cached;
+          setCategoryBooks(cached);
+          setCategoryLoading(false);
+        }
+      }
+
+      const topic = CATEGORY_TOPIC[activeCategory];
+      const result = await topicGutenberg(topic, { limit: 12 });
+      if (cancelled) return;
+      if (result.ok) {
+        const books = result.books.map(fromApiBook);
+        if (books.length > 0) {
+          setCategoryBooks(books);
+          void setCachedShelf(cacheKey, books);
+        }
+        // Empty results: keep whatever we already painted (cache or
+        // seed). Avoids the "rail blanked out after network call"
+        // bug we hit on the home shelves.
+      } else if (displayed.length === 0) {
+        setCategoryBooks([]);
+      }
+      setCategoryLoading(false);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [view, activeCategory, popular]);
+
+  // ── Local suggestion pool ──────────────────────────────────────────────
+  // Union of every Discover book we've already seen this session —
+  // home rails, prewarmed categories, and prior search hits. Used to
+  // surface instant typeahead suggestions while the network query is
+  // still debouncing / in flight. De-duped by id so a book that
+  // appears in multiple rails counts once.
+  const localPool = useMemo<DiscoverBook[]>(() => {
+    const seen = new Map<string, DiscoverBook>();
+    for (const list of [
+      popular,
+      fictionRail,
+      shortReads,
+      spiritualRail,
+      polishedRail,
+    ]) {
+      for (const b of list) if (!seen.has(b.id)) seen.set(b.id, b);
+    }
+    // Fold in cached search results too — every previous query the
+    // user ran contributes its books to the pool, so a re-search
+    // covering similar terms has rich local matches.
+    for (const cachedList of searchCache.values()) {
+      for (const b of cachedList) if (!seen.has(b.id)) seen.set(b.id, b);
+    }
+    // Cold-start fallback: seed list. Better than an empty pool on
+    // a fresh app launch where no shelves have loaded yet.
+    if (seen.size === 0) {
+      for (const b of DISCOVER_SEED.map(fromApiBook)) {
+        if (!seen.has(b.id)) seen.set(b.id, b);
+      }
+    }
+    return Array.from(seen.values());
+  }, [popular, fictionRail, shortReads, spiritualRail, polishedRail]);
+
+  // Filter the local pool by substring match against title + author +
+  // tags. Cheap (~40-200 books, single pass). Returns at most 8 so
+  // the typeahead doesn't overwhelm the screen before the real
+  // search comes back with the full 12.
+  const localMatches = useCallback(
+    (q: string): DiscoverBook[] => {
+      if (!q) return [];
+      const needle = q.toLowerCase();
+      const hits: DiscoverBook[] = [];
+      for (const b of localPool) {
+        if (hits.length >= 8) break;
+        if (
+          b.title.toLowerCase().includes(needle) ||
+          b.author.toLowerCase().includes(needle) ||
+          b.tags.some((t) => t.toLowerCase().includes(needle))
+        ) {
+          hits.push(b);
+        }
+      }
+      return hits;
+    },
+    [localPool],
+  );
+
+  // Search effect. Two-stage:
+  //   1. Synchronous local typeahead — fires on every keystroke
+  //      against the in-memory pool. Zero latency, no spinner.
+  //   2. Debounced network search (150ms) hits Gutendex for results
+  //      that weren't in the pool, with a hard 4-second cap. On
+  //      timeout we abort the request and either keep the local
+  //      matches (better than blanking) or show the empty state with
+  //      the "Request this book" CTA.
+  //
+  // Why the 4-second cap: Gutendex can occasionally take 6-15 s on
+  // cold or heavy queries, and an open-ended spinner reads as
+  // "broken" to testers. 4 s is long enough that fast queries still
+  // land successfully and short enough that we never trap the user
+  // watching a wheel spin. Repeat queries hit the cache and skip
+  // the network entirely.
+  useEffect(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) {
+      setSearchResults(null);
+      setSearching(false);
+      return;
+    }
+
+    // 1. Cache hit → render instantly, skip the network round-trip
+    //    entirely. Most repeated searches land here.
+    const cached = searchCache.get(q);
+    if (cached) {
+      setSearchResults(cached);
+      setSearching(false);
+      return;
+    }
+
+    // 2. Cold cache → paint local matches immediately so the user
+    //    sees SOMETHING within a frame of the keystroke, then fire
+    //    the debounced network search. `searching` stays true so
+    //    the inline spinner next to the input keeps signaling
+    //    "fresh results coming".
+    const localHits = localMatches(q);
+    if (localHits.length > 0) {
+      setSearchResults(localHits);
+    }
+    // Don't blank out previously-shown results while a new query
+    // debounces; keep showing whatever we had so the user doesn't
+    // see a flash of empty space between keystrokes.
+    setSearching(true);
+
+    const controller = new AbortController();
+    // Hard cap on how long we'll show the spinner. After 4 s we
+    // abort the Gutendex fetch (so the error.name === 'AbortError'
+    // path fires inside fetchGutendex) and fall through to the
+    // empty-state / local-only branch.
+    const timeoutId = setTimeout(() => controller.abort(), 4000);
+
+    const debounceId = setTimeout(async () => {
+      const result = await searchGutenberg(q, {
+        limit: 12,
+        signal: controller.signal,
+      });
+      clearTimeout(timeoutId);
+      if (result.ok) {
+        const networkBooks = result.books.map(fromApiBook);
+        // Merge: network first (more relevant — title/author/topic
+        // graded by Gutendex's own scoring), then local-only ids
+        // the network didn't include. Keeps total under ~15.
+        const seenIds = new Set(networkBooks.map((b) => b.id));
+        const merged = [
+          ...networkBooks,
+          ...localHits.filter((b) => !seenIds.has(b.id)),
+        ].slice(0, 15);
+        setSearchResults(merged);
+        searchCache.set(q, merged);
+      } else if (localHits.length === 0) {
+        // Either Gutendex returned an error OR our 4-second timeout
+        // fired and aborted the request. Either way: nothing local
+        // to fall back to, so show the empty-state surface which
+        // carries the "Request this book" CTA.
+        setSearchResults([]);
+      }
+      setSearching(false);
+    }, 150);
+
+    return () => {
+      clearTimeout(debounceId);
+      clearTimeout(timeoutId);
+      // Abort any in-flight request when the effect re-runs (user
+      // typed another character, navigated away, etc.) so we don't
+      // leak Gutendex traffic or land late results that overwrite
+      // a fresher query's render.
+      controller.abort();
+    };
+  }, [searchQuery, localMatches]);
+
+  /**
+   * Tap the "Add" button on a Discover card → kick off the real import
+   * flow. The Edge Function now returns as soon as the books row is
+   * inserted (download / upload / process happen in the background),
+   * so this resolves in under a second. We clear the pending spinner
+   * the moment the bookId is back — the book is in the user's
+   * library at that point, just with a "Processing…" status badge.
+   *
+   * Re-tapping a book that's already in the library is a no-op (the
+   * button reads "In library" and is non-interactive in that state).
+   */
+  const handleAddToLibrary = async (book: DiscoverBook) => {
+    if (libraryIds.has(book.id) || pendingIds.has(book.id)) return;
+    setPendingIds((prev) => new Set(prev).add(book.id));
+    const result = await importDiscoverBook(book);
+    setPendingIds((prev) => {
       const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
+      next.delete(book.id);
       return next;
     });
+    if (!result.ok) {
+      Alert.alert("Couldn't add book", importErrorMessage(result.error));
+    }
+  };
+
+  /**
+   * Remove a previously-added Discover book from the library. We
+   * look up the actual Supabase book id by reverse-matching
+   * source_url (the Discover id format is `gutenberg:NNN`; the
+   * stored source_url contains `/NNN.epub.something`). After
+   * confirming via native Alert, we clear storage + delete the row
+   * — the `useBooks` realtime subscription removes the id from
+   * `libraryIds` automatically, flipping the AddPill back to "Add".
+   */
+  const handleRemoveFromLibrary = useCallback(
+    (book: DiscoverBook) => {
+      // Find the matching DB row by reversing the source_url match
+      // we use to build libraryIds. Tries Gutenberg first, then
+      // Standard Ebooks — same shapes as the libraryIds memo.
+      const match = userBooks.find((b) => {
+        const url = b.source_url;
+        if (!url) return false;
+        const gutMatch = url.match(/gutenberg\.org\/.*?\/(\d+)/);
+        if (gutMatch) return `gutenberg:${gutMatch[1]}` === book.id;
+        const seMatch = url.match(
+          /standardebooks\.org\/ebooks\/([^/]+\/[^/]+)/,
+        );
+        if (seMatch) return `standard-ebooks:${seMatch[1]}` === book.id;
+        return false;
+      });
+      if (!match) {
+        Alert.alert(
+          'Already removed',
+          'This book is no longer in your library.',
+        );
+        return;
+      }
+      Alert.alert(
+        'Remove from library?',
+        `"${book.title}" will be removed from your library along with any saved progress.`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Remove',
+            style: 'destructive',
+            onPress: () => {
+              void (async () => {
+                try {
+                  const {
+                    data: { user },
+                  } = await supabase.auth.getUser();
+                  // Clear the user's storage prefix for this book
+                  // first so the row delete doesn't orphan files.
+                  if (user) {
+                    const prefix = `${user.id}/${match.id}`;
+                    const { data: objects } = await supabase.storage
+                      .from('books')
+                      .list(prefix);
+                    if (objects?.length) {
+                      await supabase.storage
+                        .from('books')
+                        .remove(
+                          objects.map(
+                            (o: { name: string }) => `${prefix}/${o.name}`,
+                          ),
+                        );
+                    }
+                  }
+                  // Cascade deletes chapters / pages / audio_cache.
+                  const { error } = await supabase
+                    .from('books')
+                    .delete()
+                    .eq('id', match.id);
+                  if (error) {
+                    Alert.alert("Couldn't remove", error.message);
+                  }
+                  // realtime in useBooks() updates libraryIds for us
+                } catch (err) {
+                  Alert.alert(
+                    "Couldn't remove",
+                    err instanceof Error ? err.message : String(err),
+                  );
+                }
+              })();
+            },
+          },
+        ],
+      );
+    },
+    [userBooks],
+  );
+
+  // Drop any pendingIds that have made it into libraryIds — keeps the
+  // pending state in sync with the realtime feed without leaking.
+  useEffect(() => {
+    if (pendingIds.size === 0) return;
+    let changed = false;
+    const next = new Set(pendingIds);
+    for (const id of pendingIds) {
+      if (libraryIds.has(id)) {
+        next.delete(id);
+        changed = true;
+      }
+    }
+    if (changed) setPendingIds(next);
+  }, [libraryIds, pendingIds]);
 
   const openDetail = (book: DiscoverBook, from: 'home' | 'category') => {
     setDetailBook(book);
@@ -152,7 +886,7 @@ export function DiscoverScreen({ onTabChange }: DiscoverScreenProps) {
     setView('detail');
   };
 
-  const openCategory = (cat: string) => {
+  const openCategory = (cat: Category) => {
     setActiveCategory(cat);
     setView('category');
   };
@@ -162,8 +896,10 @@ export function DiscoverScreen({ onTabChange }: DiscoverScreenProps) {
       <DetailView
         book={detailBook}
         inLibrary={libraryIds.has(detailBook.id)}
+        pending={pendingIds.has(detailBook.id)}
         onBack={() => setView(detailFrom)}
-        onToggleLibrary={() => toggleLibrary(detailBook.id)}
+        onAdd={() => handleAddToLibrary(detailBook)}
+        onRemove={() => handleRemoveFromLibrary(detailBook)}
         onTabChange={onTabChange}
       />
     );
@@ -173,11 +909,22 @@ export function DiscoverScreen({ onTabChange }: DiscoverScreenProps) {
     return (
       <CategoryView
         category={activeCategory}
-        books={CLASSICS}
+        books={categoryBooks}
+        loading={categoryLoading}
         libraryIds={libraryIds}
-        onToggleLibrary={toggleLibrary}
+        pendingIds={pendingIds}
+        onAdd={handleAddToLibrary}
+        onRemove={handleRemoveFromLibrary}
         onBook={(b) => openDetail(b, 'category')}
-        onBack={() => setView('home')}
+        // Back from category lands on Discover home AND resets the
+        // active category to "For you" — a category chip stays
+        // visually selected while you're in the category, but once
+        // you back out the home view should feel fresh, not like
+        // you're still drilled into Christianity / Fiction / etc.
+        onBack={() => {
+          setView('home');
+          setActiveCategory('For you');
+        }}
         onTabChange={onTabChange}
       />
     );
@@ -186,8 +933,21 @@ export function DiscoverScreen({ onTabChange }: DiscoverScreenProps) {
   return (
     <HomeView
       activeCategory={activeCategory}
+      featured={featured}
+      gatsbyRail={fictionRail}
+      shortReads={shortReads}
+      spiritualRail={spiritualRail}
+      polishedRail={polishedRail}
       libraryIds={libraryIds}
-      onToggleLibrary={toggleLibrary}
+      pendingIds={pendingIds}
+      loading={homeLoading}
+      error={homeError}
+      searchQuery={searchQuery}
+      onSearchChange={setSearchQuery}
+      searchResults={searchResults}
+      searching={searching}
+      onAdd={handleAddToLibrary}
+      onRemove={handleRemoveFromLibrary}
       onCategory={openCategory}
       onBook={(b) => openDetail(b, 'home')}
       onTabChange={onTabChange}
@@ -199,22 +959,67 @@ export function DiscoverScreen({ onTabChange }: DiscoverScreenProps) {
 
 function HomeView({
   activeCategory,
+  featured,
+  gatsbyRail,
+  shortReads,
+  spiritualRail,
+  polishedRail,
   libraryIds,
-  onToggleLibrary,
+  pendingIds,
+  loading,
+  error,
+  searchQuery,
+  onSearchChange,
+  searchResults,
+  searching,
+  onAdd,
+  onRemove,
   onCategory,
   onBook,
   onTabChange,
 }: {
-  activeCategory: string;
+  activeCategory: Category;
+  featured: DiscoverBook | null;
+  gatsbyRail: DiscoverBook[];
+  shortReads: DiscoverBook[];
+  spiritualRail: DiscoverBook[];
+  polishedRail: DiscoverBook[];
   libraryIds: Set<string>;
-  onToggleLibrary: (id: string) => void;
-  onCategory: (cat: string) => void;
+  pendingIds: Set<string>;
+  loading: boolean;
+  error: string | null;
+  searchQuery: string;
+  onSearchChange: (q: string) => void;
+  searchResults: DiscoverBook[] | null;
+  searching: boolean;
+  onAdd: (book: DiscoverBook) => void;
+  /** Remove handler — when present, "In library" pills become tappable. */
+  onRemove: (book: DiscoverBook) => void;
+  onCategory: (cat: Category) => void;
   onBook: (book: DiscoverBook) => void;
   onTabChange: (tab: TabKey) => void;
 }) {
+  const showSearchResults = searchQuery.trim().length > 0;
+
+  // Hardware back while a search is active clears the query and
+  // returns the user to the Discover home (rails + categories)
+  // instead of bubbling up to the root "Press back again to exit"
+  // toast. Matches the platform convention that back closes the
+  // current view's overlay state before exiting the app.
+  useBackHandler(() => {
+    if (showSearchResults) {
+      onSearchChange('');
+      return true;
+    }
+    return false;
+  });
+
   return (
     <SafeAreaView style={s.safe} edges={['top', 'left', 'right']}>
-      <ScrollView showsVerticalScrollIndicator={false}>
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+      >
         {/* Header */}
         <View style={s.homeHeader}>
           <Text style={s.homeTitle}>Discover</Text>
@@ -223,76 +1028,219 @@ function HomeView({
         {/* Search bar */}
         <View style={s.searchBar}>
           <Icon name="Search" size={16} color={tokens.colors.ink[400]} />
-          <Text style={s.searchPlaceholder}>Search books…</Text>
+          <TextInput
+            value={searchQuery}
+            onChangeText={onSearchChange}
+            placeholder="Search books…"
+            placeholderTextColor={tokens.colors.ink[400]}
+            style={s.searchInput}
+            returnKeyType="search"
+            autoCorrect={false}
+            autoCapitalize="none"
+            clearButtonMode="while-editing"
+          />
+          {searching && (
+            <ActivityIndicator size="small" color={tokens.colors.ink[400]} />
+          )}
         </View>
 
-        {/* Category chips */}
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={s.chipScroll}
-        >
-          {CATEGORIES.map((cat) => {
-            const active = cat === activeCategory;
-            return (
-              <Pressable
-                key={cat}
-                onPress={() => cat !== 'For you' ? onCategory(cat) : undefined}
-                style={[s.chip, active ? s.chipActive : s.chipInactive]}
-              >
-                <Text style={[s.chipText, { color: active ? tokens.colors.cream[50] : tokens.colors.ink[700] }]}>
-                  {cat}
+        {showSearchResults ? (
+          <SearchResults
+            query={searchQuery}
+            results={searchResults}
+            searching={searching}
+            libraryIds={libraryIds}
+            pendingIds={pendingIds}
+            onBook={onBook}
+            onAdd={onAdd}
+            onRemove={onRemove}
+          />
+        ) : (
+          <>
+            {/* Category chips */}
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={s.chipScroll}
+            >
+              {CATEGORIES.map((cat) => {
+                const active = cat === activeCategory;
+                return (
+                  <Pressable
+                    key={cat}
+                    onPress={() => (cat !== 'For you' ? onCategory(cat) : undefined)}
+                    style={[s.chip, active ? s.chipActive : s.chipInactive]}
+                  >
+                    <Text
+                      style={[
+                        s.chipText,
+                        { color: active ? tokens.colors.cream[50] : tokens.colors.ink[700] },
+                      ]}
+                    >
+                      {cat}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
+
+            {loading ? (
+              <View style={s.loadingZone}>
+                <ActivityIndicator
+                  size="small"
+                  color={tokens.colors.forest[800]}
+                />
+                <Text style={s.loadingText}>Loading free books…</Text>
+              </View>
+            ) : error ? (
+              <View style={s.errorZone}>
+                <Text style={s.errorTitle}>Couldn't reach the catalog</Text>
+                <Text style={s.errorBody}>
+                  {error}. Pull down to retry, or upload a book manually
+                  from the Library.
                 </Text>
-              </Pressable>
-            );
-          })}
-        </ScrollView>
+              </View>
+            ) : (
+              <>
+                {/* Featured this week */}
+                {featured && (
+                  <>
+                    <View style={[s.sectionRow, { marginBottom: 10 }]}>
+                      <Text style={s.sectionTitle}>Featured this week</Text>
+                    </View>
+                    <FeaturedCard
+                      book={featured}
+                      inLibrary={libraryIds.has(featured.id)}
+                      pending={pendingIds.has(featured.id)}
+                      onPress={() => onBook(featured)}
+                      onAdd={() => onAdd(featured)}
+                    />
+                  </>
+                )}
 
-        {/* Featured this week */}
-        <View style={[s.sectionRow, { marginBottom: 10 }]}>
-          <Text style={s.sectionTitle}>Featured this week</Text>
-        </View>
-        <FeaturedCard
-          book={FEATURED}
-          inLibrary={libraryIds.has(FEATURED.id)}
-          onPress={() => onBook(FEATURED)}
-          onToggle={() => onToggleLibrary(FEATURED.id)}
-        />
+                {/* Popular fiction */}
+                {gatsbyRail.length > 0 && (
+                  <>
+                    <View style={s.sectionRow}>
+                      <Text style={s.sectionTitle}>Popular fiction</Text>
+                      <Pressable
+                        hitSlop={8}
+                        onPress={() => onCategory('Fiction')}
+                      >
+                        <Text style={s.seeAll}>See all →</Text>
+                      </Pressable>
+                    </View>
+                    <ScrollView
+                      horizontal
+                      showsHorizontalScrollIndicator={false}
+                      contentContainerStyle={s.railScroll}
+                    >
+                      {gatsbyRail.map((book) => (
+                        <RailCard
+                          key={book.id}
+                          book={book}
+                          inLibrary={libraryIds.has(book.id)}
+                          onPress={() => onBook(book)}
+                        />
+                      ))}
+                    </ScrollView>
+                  </>
+                )}
 
-        {/* Because you're reading Gatsby */}
-        <View style={s.sectionRow}>
-          <Text style={s.sectionTitle}>Because you're reading Gatsby</Text>
-          <Pressable hitSlop={8}><Text style={s.seeAll}>See all →</Text></Pressable>
-        </View>
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={s.railScroll}
-        >
-          {GATSBY_RAIL.map((book) => (
-            <RailCard
-              key={book.id}
-              book={book}
-              inLibrary={libraryIds.has(book.id)}
-              onPress={() => onBook(book)}
-            />
-          ))}
-        </ScrollView>
+                {/* Spiritual classics — Gutenberg's Christianity bookshelf.
+                 *  Augustine, à Kempis, Bunyan, Edwards, Wesley, Spurgeon
+                 *  + theology and church history. Renders before "Short
+                 *  reads" so the rhythm goes long-form → long-form →
+                 *  short-form down the page. */}
+                {spiritualRail.length > 0 && (
+                  <>
+                    <View style={s.sectionRow}>
+                      <Text style={s.sectionTitle}>Spiritual classics</Text>
+                      <Pressable
+                        hitSlop={8}
+                        onPress={() => onCategory('Christianity')}
+                      >
+                        <Text style={s.seeAll}>See all →</Text>
+                      </Pressable>
+                    </View>
+                    <ScrollView
+                      horizontal
+                      showsHorizontalScrollIndicator={false}
+                      contentContainerStyle={s.railScroll}
+                    >
+                      {spiritualRail.map((book) => (
+                        <RailCard
+                          key={book.id}
+                          book={book}
+                          inLibrary={libraryIds.has(book.id)}
+                          onPress={() => onBook(book)}
+                        />
+                      ))}
+                    </ScrollView>
+                  </>
+                )}
 
-        {/* Short reads */}
-        <View style={s.sectionRow}>
-          <Text style={s.sectionTitle}>Short reads · under 100 pages</Text>
-          <Pressable hitSlop={8}><Text style={s.seeAll}>See all →</Text></Pressable>
-        </View>
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={[s.railScroll, { paddingBottom: 28 }]}
-        >
-          {SHORT_READS.map((book) => (
-            <ShortCard key={book.id} book={book} onPress={() => onBook(book)} />
-          ))}
-        </ScrollView>
+                {/* Polished classics — Standard Ebooks' hand-typeset
+                 *  editions. Surfaces under its own shelf so users who
+                 *  care about typography (the David persona) can find
+                 *  better-presented versions of the same titles
+                 *  Gutenberg also has. */}
+                {polishedRail.length > 0 && (
+                  <>
+                    <View style={s.sectionRow}>
+                      <Text style={s.sectionTitle}>Polished classics</Text>
+                      <Text style={s.sectionSubLabel}>
+                        From Standard Ebooks
+                      </Text>
+                    </View>
+                    <ScrollView
+                      horizontal
+                      showsHorizontalScrollIndicator={false}
+                      contentContainerStyle={s.railScroll}
+                    >
+                      {polishedRail.map((book) => (
+                        <RailCard
+                          key={book.id}
+                          book={book}
+                          inLibrary={libraryIds.has(book.id)}
+                          onPress={() => onBook(book)}
+                        />
+                      ))}
+                    </ScrollView>
+                  </>
+                )}
+
+                {/* Short reads */}
+                {shortReads.length > 0 && (
+                  <>
+                    <View style={s.sectionRow}>
+                      <Text style={s.sectionTitle}>Short reads</Text>
+                      <Pressable
+                        hitSlop={8}
+                        onPress={() => onCategory('Short reads')}
+                      >
+                        <Text style={s.seeAll}>See all →</Text>
+                      </Pressable>
+                    </View>
+                    <ScrollView
+                      horizontal
+                      showsHorizontalScrollIndicator={false}
+                      contentContainerStyle={[s.railScroll, { paddingBottom: 28 }]}
+                    >
+                      {shortReads.map((book) => (
+                        <ShortCard
+                          key={book.id}
+                          book={book}
+                          onPress={() => onBook(book)}
+                        />
+                      ))}
+                    </ScrollView>
+                  </>
+                )}
+              </>
+            )}
+          </>
+        )}
       </ScrollView>
 
       <TabBar activeTab="discover" onChange={onTabChange} />
@@ -300,33 +1248,416 @@ function HomeView({
   );
 }
 
-function FeaturedCard({
-  book, inLibrary, onPress, onToggle,
+/**
+ * Vertical list of search hits. Each row is a single tappable book
+ * card with cover, title, author, and an Add toggle. Empty state shows
+ * "No matches" so the user knows the request landed but came back empty.
+ */
+function SearchResults({
+  query,
+  results,
+  searching,
+  libraryIds,
+  pendingIds,
+  onBook,
+  onAdd,
+  onRemove,
 }: {
-  book: DiscoverBook; inLibrary: boolean; onPress: () => void; onToggle: () => void;
+  query: string;
+  results: DiscoverBook[] | null;
+  searching: boolean;
+  libraryIds: Set<string>;
+  pendingIds: Set<string>;
+  onBook: (book: DiscoverBook) => void;
+  onAdd: (book: DiscoverBook) => void;
+  onRemove: (book: DiscoverBook) => void;
+}) {
+  // Three render states:
+  //   - results=null AND searching → first-ever query, no local
+  //     match (rare since localPool covers the most common
+  //     searches). Show a small loading zone.
+  //   - results=null OR results=[] AND NOT searching → network
+  //     came back empty. Show "No matches" + a "Request this book"
+  //     affordance (sends a pre-filled email so we can prioritise
+  //     adding it to the catalog).
+  //   - results=[…] → render the list. Searching state surfaces as
+  //     the inline spinner next to the input (not in this component).
+  if (results === null) {
+    if (searching) {
+      return (
+        <View style={s.loadingZone}>
+          <ActivityIndicator size="small" color={tokens.colors.forest[800]} />
+        </View>
+      );
+    }
+    return null;
+  }
+  if (results.length === 0) {
+    return <SearchEmptyState query={query} />;
+  }
+  return (
+    <View style={s.catBookList}>
+      {results.map((book, i) => (
+        <View key={book.id}>
+          {i > 0 && <View style={s.catDivider} />}
+          <Pressable onPress={() => onBook(book)} style={s.catBookCard}>
+            <CoverBox
+              style={s.catBookCover}
+              book={book}
+              fallbackTextStyle={s.catCoverText}
+            />
+            <View style={s.catBookInfo}>
+              <Text style={s.catBookTitle} numberOfLines={2}>
+                {book.title}
+              </Text>
+              <Text style={s.catBookAuthor} numberOfLines={1}>
+                {book.author}
+              </Text>
+              <View style={s.catTags}>
+                {book.tags.slice(0, 2).map((tag) => (
+                  <View key={tag} style={s.catTag}>
+                    <Text style={s.catTagText}>{tag}</Text>
+                  </View>
+                ))}
+              </View>
+              <AddPill
+                book={book}
+                inLibrary={libraryIds.has(book.id)}
+                pending={pendingIds.has(book.id)}
+                onAdd={onAdd}
+                onRemove={onRemove}
+              />
+            </View>
+          </Pressable>
+        </View>
+      ))}
+    </View>
+  );
+}
+
+/**
+ * Empty-state surface for a search that returned zero results.
+ *
+ * Instead of a one-shot "Request this book" button (which depended
+ * on the device having a native mail app set up — many Android
+ * testers don't), this surface lets the user assemble the request
+ * by tapping each piece individually. Three rows, each tappable to
+ * copy that exact string to the clipboard:
+ *
+ *   1. The support address.
+ *   2. A pre-baked subject line ("Book request").
+ *   3. A pre-baked body referencing the user's search term, so the
+ *      operator knows exactly what was requested without the user
+ *      having to retype the title.
+ *
+ * The user then opens whichever mail surface they actually use
+ * (Gmail web in Chrome, Outlook, Yahoo, whatever) and pastes the
+ * three pieces into the right slots. Slower than a mailto handoff
+ * for users WITH a native mail app, but it works reliably on
+ * every device — and matches the same one-tap-to-copy pattern
+ * the Send feedback screen uses.
+ */
+function SearchEmptyState({ query }: { query: string }) {
+  const trimmed = query.trim();
+  // Single piece of "which row was just tapped" state so the
+  // affordance can briefly flip the icon to a check and the hint
+  // to "Copied" for ~1.8s before resetting. One source of truth so
+  // tapping a different row before the timer fires also clears
+  // the previous row's confirmation.
+  const [copiedField, setCopiedField] = useState<
+    'email' | 'subject' | 'body' | null
+  >(null);
+
+  // Body intentionally short and warm — operators (which is just
+  // me right now) need enough to know which book without wading
+  // through copy. Two short sentences keep it scannable in the
+  // Gmail thread list and doesn't feel like a form letter.
+  const subject = 'Book request';
+  const body =
+    `Hi Bookflow team,\n\n` +
+    `I was looking for "${trimmed}" but couldn't find it in your ` +
+    `catalog. Could you add it? Thanks!`;
+
+  const handleCopy = useCallback(
+    async (field: 'email' | 'subject' | 'body', value: string) => {
+      try {
+        await Clipboard.setStringAsync(value);
+        setCopiedField(field);
+        setTimeout(() => {
+          // Only clear if this row is still the active one — if
+          // the user tapped another row in the meantime, that
+          // row's own timer owns the reset.
+          setCopiedField((current) => (current === field ? null : current));
+        }, 1800);
+      } catch {
+        // Clipboard writes are essentially infallible on modern
+        // Android / iOS; if it ever fails the user can long-press
+        // the visible text to select + copy manually.
+      }
+    },
+    [],
+  );
+
+  return (
+    <View style={s.searchRequestZone}>
+      <Text style={s.errorTitle}>No matches</Text>
+      <Text style={s.errorBody}>
+        We couldn't find "{trimmed}" in our catalog. Tap each field
+        below to copy it, then paste into your mail app to request
+        this book.
+      </Text>
+
+      <View style={s.requestCardStack}>
+        <CopyableRow
+          value={SUPPORT_EMAIL}
+          copied={copiedField === 'email'}
+          onPress={() => handleCopy('email', SUPPORT_EMAIL)}
+          accessibilityLabel={`Copy support email ${SUPPORT_EMAIL}`}
+        />
+        <CopyableRow
+          label="Subject"
+          value={subject}
+          copied={copiedField === 'subject'}
+          onPress={() => handleCopy('subject', subject)}
+          accessibilityLabel="Copy subject line"
+        />
+        <CopyableRow
+          label="Body"
+          value={body}
+          multiline
+          copied={copiedField === 'body'}
+          onPress={() => handleCopy('body', body)}
+          accessibilityLabel="Copy email body"
+        />
+      </View>
+    </View>
+  );
+}
+
+/**
+ * One row of the "request a book" stack — tappable card showing a
+ * labelled value with a copy/check icon. Used three times in
+ * SearchEmptyState (email, subject, body) so the visual + tap
+ * behaviour stays consistent across all three.
+ */
+function CopyableRow({
+  label,
+  value,
+  multiline,
+  copied,
+  onPress,
+  accessibilityLabel,
+}: {
+  label?: string;
+  value: string;
+  multiline?: boolean;
+  copied: boolean;
+  onPress: () => void;
+  accessibilityLabel: string;
 }) {
   return (
-    <Pressable onPress={onPress} style={s.featuredCard}>
-      <View style={[s.featuredCoverCol, { backgroundColor: book.coverColor }]}>
-        <Text style={s.featuredCoverText}>{book.coverLabel ?? book.title}</Text>
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel}
+      style={({ pressed }) => [
+        s.copyCard,
+        pressed && { opacity: 0.85 },
+      ]}
+    >
+      <View style={s.copyCardBody}>
+        {label && <Text style={s.copyCardLabel}>{label}</Text>}
+        <Text
+          style={s.copyCardValue}
+          numberOfLines={multiline ? 4 : 1}
+        >
+          {value}
+        </Text>
       </View>
+      <Icon
+        name={copied ? 'Check' : 'Copy'}
+        size={16}
+        color={
+          copied ? tokens.colors.forest[700] : tokens.textColors.muted
+        }
+      />
+    </Pressable>
+  );
+}
+
+/**
+ * Compact pill rendered on category + search rows. Three states:
+ *   - default: forest button "Add"
+ *   - pending: forest button with a spinner instead of "Add"
+ *   - in-library: muted pill "In library" (non-interactive)
+ *
+ * Centralised so SearchResults + CategoryView render the same control
+ * without duplicating the three-state logic at every site.
+ */
+function AddPill({
+  book,
+  inLibrary,
+  pending,
+  onAdd,
+  onRemove,
+}: {
+  book: DiscoverBook;
+  inLibrary: boolean;
+  pending: boolean;
+  onAdd: (book: DiscoverBook) => void;
+  /**
+   * Remove handler — when present + `inLibrary` is true, the pill
+   * becomes a tappable "Remove from library" affordance. Caller
+   * decides whether to confirm and what to do on success. Optional
+   * because some surfaces (search results inside Discover) don't
+   * yet wire removal up.
+   */
+  onRemove?: (book: DiscoverBook) => void;
+}) {
+  if (inLibrary) {
+    // Tappable when a remove handler is wired; falls back to a
+    // static badge if not. Confirmation is the caller's
+    // responsibility — we just propagate the tap.
+    return (
+      <Pressable
+        onPress={(e) => {
+          e.stopPropagation?.();
+          if (onRemove) onRemove(book);
+        }}
+        style={s.catAddedBtn}
+        disabled={!onRemove}
+        accessibilityRole="button"
+        accessibilityLabel={
+          onRemove ? `Remove ${book.title} from library` : 'In library'
+        }
+      >
+        <Icon
+          name="Check"
+          size={10}
+          color={tokens.colors.forest[800]}
+          strokeWidth={2.5}
+        />
+        <Text style={s.catAddedBtnText}>In library</Text>
+      </Pressable>
+    );
+  }
+  return (
+    <Pressable
+      onPress={(e) => {
+        e.stopPropagation?.();
+        if (!pending) onAdd(book);
+      }}
+      style={[s.catAddBtn, pending && { opacity: 0.7 }]}
+      disabled={pending}
+    >
+      {pending ? (
+        <ActivityIndicator size="small" color={tokens.colors.cream[50]} />
+      ) : (
+        <Icon
+          name="Plus"
+          size={10}
+          color={tokens.colors.cream[50]}
+          strokeWidth={2.5}
+        />
+      )}
+      <Text style={s.catAddBtnText}>{pending ? 'Adding…' : 'Add'}</Text>
+    </Pressable>
+  );
+}
+
+/**
+ * Cover container — renders the real cover image when one is available,
+ * with a colored fallback box (text on top) for books missing imagery.
+ * Image errors fall back to the colored box at runtime.
+ */
+function CoverBox({
+  book,
+  style,
+  fallbackTextStyle,
+}: {
+  book: DiscoverBook;
+  style: object;
+  fallbackTextStyle: object;
+}) {
+  const [errored, setErrored] = useState(false);
+  const showImage = !!book.coverUrl && !errored;
+  return (
+    <View style={[style, { backgroundColor: book.coverColor, overflow: 'hidden' }]}>
+      {showImage ? (
+        <Image
+          source={{ uri: book.coverUrl! }}
+          style={StyleSheet.absoluteFill}
+          resizeMode="cover"
+          onError={() => setErrored(true)}
+        />
+      ) : (
+        <Text style={fallbackTextStyle} numberOfLines={3}>
+          {book.coverLabel ?? book.title}
+        </Text>
+      )}
+    </View>
+  );
+}
+
+function FeaturedCard({
+  book, inLibrary, pending, onPress, onAdd,
+}: {
+  book: DiscoverBook;
+  inLibrary: boolean;
+  pending: boolean;
+  onPress: () => void;
+  onAdd: () => void;
+}) {
+  const buttonLabel = inLibrary
+    ? 'In library'
+    : pending
+      ? 'Adding…'
+      : 'Add to library';
+  const buttonIcon = inLibrary ? 'Check' : 'Plus';
+  return (
+    <Pressable onPress={onPress} style={s.featuredCard}>
+      <CoverBox
+        book={book}
+        style={s.featuredCoverCol}
+        fallbackTextStyle={s.featuredCoverText}
+      />
       <View style={s.featuredInfo}>
         <Text style={s.featuredEyebrow}>✦ Editor's pick</Text>
-        <Text style={s.featuredBookTitle}>{book.title}</Text>
-        <Text style={s.featuredAuthor}>{book.author}</Text>
+        <Text style={s.featuredBookTitle} numberOfLines={2}>{book.title}</Text>
+        <Text style={s.featuredAuthor} numberOfLines={1}>{book.author}</Text>
         <Text style={s.featuredBlurb} numberOfLines={3}>{book.about}</Text>
         <Pressable
-          onPress={(e) => { e.stopPropagation?.(); onToggle(); }}
-          style={[s.featuredAddBtn, inLibrary && s.featuredAddBtnAdded]}
+          onPress={(e) => {
+            e.stopPropagation?.();
+            if (!inLibrary && !pending) onAdd();
+          }}
+          style={[
+            s.featuredAddBtn,
+            inLibrary && s.featuredAddBtnAdded,
+            pending && { opacity: 0.7 },
+          ]}
+          disabled={inLibrary || pending}
         >
-          <Icon
-            name={inLibrary ? 'Check' : 'Plus'}
-            size={11}
-            color={inLibrary ? tokens.colors.forest[800] : tokens.colors.forest[900]}
-            strokeWidth={2}
-          />
-          <Text style={[s.featuredAddBtnText, { color: inLibrary ? tokens.colors.forest[800] : tokens.colors.forest[900] }]}>
-            {inLibrary ? 'In library' : 'Add to library'}
+          {pending ? (
+            <ActivityIndicator
+              size="small"
+              color={tokens.colors.forest[900]}
+            />
+          ) : (
+            <Icon
+              name={buttonIcon}
+              size={11}
+              color={inLibrary ? tokens.colors.forest[800] : tokens.colors.forest[900]}
+              strokeWidth={2}
+            />
+          )}
+          <Text
+            style={[
+              s.featuredAddBtnText,
+              { color: inLibrary ? tokens.colors.forest[800] : tokens.colors.forest[900] },
+            ]}
+          >
+            {buttonLabel}
           </Text>
         </Pressable>
       </View>
@@ -337,8 +1668,12 @@ function FeaturedCard({
 function RailCard({ book, inLibrary, onPress }: { book: DiscoverBook; inLibrary: boolean; onPress: () => void }) {
   return (
     <Pressable onPress={onPress} style={s.railCard}>
-      <View style={[s.railCover, { backgroundColor: book.coverColor }]}>
-        <Text style={s.railCoverText}>{book.coverLabel ?? book.title}</Text>
+      <View style={s.railCoverWrap}>
+        <CoverBox
+          book={book}
+          style={s.railCover}
+          fallbackTextStyle={s.railCoverText}
+        />
         {inLibrary && (
           <View style={s.addedBadge}>
             <Icon name="Check" size={9} color={tokens.colors.cream[50]} strokeWidth={2.5} />
@@ -346,7 +1681,7 @@ function RailCard({ book, inLibrary, onPress }: { book: DiscoverBook; inLibrary:
         )}
       </View>
       <Text style={s.railCardTitle} numberOfLines={2}>{book.title}</Text>
-      <Text style={s.railCardMeta}>{book.author}</Text>
+      <Text style={s.railCardMeta} numberOfLines={1}>{book.author}</Text>
     </Pressable>
   );
 }
@@ -354,14 +1689,13 @@ function RailCard({ book, inLibrary, onPress }: { book: DiscoverBook; inLibrary:
 function ShortCard({ book, onPress }: { book: DiscoverBook; onPress: () => void }) {
   return (
     <Pressable onPress={onPress} style={s.shortCard}>
-      <View style={[s.shortCover, { backgroundColor: book.coverColor }]}>
-        <Text style={s.shortCoverText} numberOfLines={2}>{book.coverLabel ?? book.title}</Text>
-        <View style={s.readTimeBadge}>
-          <Text style={s.readTimeText}>{book.readTime}</Text>
-        </View>
-      </View>
+      <CoverBox
+        book={book}
+        style={s.shortCover}
+        fallbackTextStyle={s.shortCoverText}
+      />
       <Text style={[s.railCardTitle, { fontSize: 11 }]} numberOfLines={2}>{book.title}</Text>
-      <Text style={s.railCardMeta}>{book.author}</Text>
+      <Text style={s.railCardMeta} numberOfLines={1}>{book.author}</Text>
     </Pressable>
   );
 }
@@ -369,12 +1703,16 @@ function ShortCard({ book, onPress }: { book: DiscoverBook; onPress: () => void 
 // ─── Category view ────────────────────────────────────────────────────────────
 
 function CategoryView({
-  category, books, libraryIds, onToggleLibrary, onBook, onBack, onTabChange,
+  category, books, loading, libraryIds, pendingIds, onAdd, onRemove, onBook, onBack, onTabChange,
 }: {
   category: string;
   books: DiscoverBook[];
+  loading: boolean;
   libraryIds: Set<string>;
-  onToggleLibrary: (id: string) => void;
+  pendingIds: Set<string>;
+  onAdd: (book: DiscoverBook) => void;
+  /** Tap an "In library" pill to remove. Caller handles confirmation. */
+  onRemove: (book: DiscoverBook) => void;
   onBook: (book: DiscoverBook) => void;
   onBack: () => void;
   onTabChange: (tab: TabKey) => void;
@@ -387,7 +1725,9 @@ function CategoryView({
         </Pressable>
         <View style={s.catHeaderInfo}>
           <Text style={s.catHeaderTitle}>{category}</Text>
-          <Text style={s.catHeaderMeta}>{books.length * 20}+ books · all free</Text>
+          <Text style={s.catHeaderMeta}>
+            {loading ? 'Loading…' : `${books.length} books · all free`}
+          </Text>
         </View>
         <Pressable style={s.catFilterBtn} hitSlop={8}>
           <Icon name="Filter" size={16} color={tokens.colors.ink[700]} />
@@ -395,19 +1735,33 @@ function CategoryView({
       </View>
 
       <ScrollView showsVerticalScrollIndicator={false}>
-        <View style={s.catBookList}>
-          {books.map((book, i) => {
-            const inLibrary = libraryIds.has(book.id);
-            return (
+        {/* Render priority:
+         *   1. If we have ANY books (cache, prewarm, or seed) → show
+         *      them immediately. The header already says "Loading…"
+         *      so the user knows fresh results are coming; meanwhile
+         *      they can browse instead of staring at a spinner.
+         *   2. Truly empty + still fetching → spinner. Only happens
+         *      on cold cache with no seed.
+         *   3. Truly empty + done fetching → empty-state copy.
+         */}
+        {books.length > 0 ? (
+          <View style={s.catBookList}>
+            {books.map((book, i) => (
               <View key={book.id}>
                 {i > 0 && <View style={s.catDivider} />}
                 <Pressable onPress={() => onBook(book)} style={s.catBookCard}>
-                  <View style={[s.catBookCover, { backgroundColor: book.coverColor }]}>
-                    <Text style={s.catCoverText}>{book.coverLabel ?? book.title}</Text>
-                  </View>
+                  <CoverBox
+                    book={book}
+                    style={s.catBookCover}
+                    fallbackTextStyle={s.catCoverText}
+                  />
                   <View style={s.catBookInfo}>
-                    <Text style={s.catBookTitle}>{book.title}</Text>
-                    <Text style={s.catBookAuthor}>{book.author}</Text>
+                    <Text style={s.catBookTitle} numberOfLines={2}>
+                      {book.title}
+                    </Text>
+                    <Text style={s.catBookAuthor} numberOfLines={1}>
+                      {book.author}
+                    </Text>
                     <View style={s.catTags}>
                       {book.tags.slice(0, 2).map((tag) => (
                         <View key={tag} style={s.catTag}>
@@ -415,29 +1769,31 @@ function CategoryView({
                         </View>
                       ))}
                     </View>
-                    <View style={s.catActions}>
-                      <Pressable
-                        onPress={(e) => { e.stopPropagation?.(); onToggleLibrary(book.id); }}
-                        style={inLibrary ? s.catAddedBtn : s.catAddBtn}
-                      >
-                        <Icon
-                          name={inLibrary ? 'Check' : 'Plus'}
-                          size={10}
-                          color={inLibrary ? tokens.colors.forest[800] : tokens.colors.cream[50]}
-                          strokeWidth={2.5}
-                        />
-                        <Text style={inLibrary ? s.catAddedBtnText : s.catAddBtnText}>
-                          {inLibrary ? 'In library' : 'Add'}
-                        </Text>
-                      </Pressable>
-                      <Text style={s.catReadTime}>{book.readTime} read</Text>
-                    </View>
+                    <AddPill
+                      book={book}
+                      inLibrary={libraryIds.has(book.id)}
+                      pending={pendingIds.has(book.id)}
+                      onAdd={onAdd}
+                      onRemove={onRemove}
+                    />
                   </View>
                 </Pressable>
               </View>
-            );
-          })}
-        </View>
+            ))}
+          </View>
+        ) : loading ? (
+          <View style={s.loadingZone}>
+            <ActivityIndicator size="small" color={tokens.colors.forest[800]} />
+          </View>
+        ) : (
+          <View style={s.errorZone}>
+            <Text style={s.errorTitle}>No books in this category yet</Text>
+            <Text style={s.errorBody}>
+              Try a different category or pull up the search bar to look
+              for something specific.
+            </Text>
+          </View>
+        )}
       </ScrollView>
 
       <TabBar activeTab="discover" onChange={onTabChange} />
@@ -448,12 +1804,15 @@ function CategoryView({
 // ─── Detail view ──────────────────────────────────────────────────────────────
 
 function DetailView({
-  book, inLibrary, onBack, onToggleLibrary, onTabChange,
+  book, inLibrary, pending, onBack, onAdd, onRemove, onTabChange,
 }: {
   book: DiscoverBook;
   inLibrary: boolean;
+  pending: boolean;
   onBack: () => void;
-  onToggleLibrary: () => void;
+  onAdd: () => void;
+  /** Remove the book from the user's library. Caller confirms. */
+  onRemove: () => void;
   onTabChange: (tab: TabKey) => void;
 }) {
   return (
@@ -470,25 +1829,35 @@ function DetailView({
 
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={s.detailScroll}>
         <View style={s.detailCoverWrap}>
-          <View style={[s.detailCover, { backgroundColor: book.coverColor }]}>
-            <Text style={s.detailCoverText}>{book.coverLabel ?? book.title}</Text>
-          </View>
+          <CoverBox
+            book={book}
+            style={s.detailCover}
+            fallbackTextStyle={s.detailCoverText}
+          />
         </View>
 
         <Text style={s.detailBookTitle}>{book.title}</Text>
         <Text style={s.detailAuthor}>{book.author}</Text>
 
         <View style={s.detailMetaRow}>
-          <View style={s.detailMetaItem}>
-            <Text style={s.detailMetaValue}>{book.readTime}</Text>
-            <Text style={s.detailMetaLabel}>Read time</Text>
-          </View>
-          <View style={s.detailMetaDivider} />
-          <View style={s.detailMetaItem}>
-            <Text style={s.detailMetaValue}>{book.chapters}</Text>
-            <Text style={s.detailMetaLabel}>Chapters</Text>
-          </View>
-          <View style={s.detailMetaDivider} />
+          {book.readTime && (
+            <>
+              <View style={s.detailMetaItem}>
+                <Text style={s.detailMetaValue}>{book.readTime}</Text>
+                <Text style={s.detailMetaLabel}>Read time</Text>
+              </View>
+              <View style={s.detailMetaDivider} />
+            </>
+          )}
+          {typeof book.chapters === 'number' && (
+            <>
+              <View style={s.detailMetaItem}>
+                <Text style={s.detailMetaValue}>{book.chapters}</Text>
+                <Text style={s.detailMetaLabel}>Chapters</Text>
+              </View>
+              <View style={s.detailMetaDivider} />
+            </>
+          )}
           <View style={s.detailMetaItem}>
             <View style={s.freeBadge}>
               <Text style={s.freeBadgeText}>Free</Text>
@@ -508,10 +1877,12 @@ function DetailView({
           ))}
         </View>
 
-        {book.source && (
+        {(book.sourceLabel || book.source) && (
           <>
             <Text style={s.detailSectionLabel}>Source</Text>
-            <Text style={s.detailSource}>{book.source}</Text>
+            <Text style={s.detailSource}>
+              {book.sourceLabel ?? book.source}
+            </Text>
           </>
         )}
 
@@ -537,17 +1908,60 @@ function DetailView({
       </ScrollView>
 
       <View style={s.detailCTABar}>
+        {/* Single primary CTA cycles through three states:
+         *   - default     → "Add to library" (forest filled)
+         *   - in-flight   → "Adding…" with spinner
+         *   - in library  → "Remove from library" (muted, taps to
+         *                    confirm + delete). Was previously a
+         *                    non-interactive "In library" badge. */}
         <Pressable
-          onPress={onToggleLibrary}
-          style={[s.detailPrimaryBtn, inLibrary && s.detailPrimaryBtnAdded]}
+          onPress={() => {
+            if (pending) return;
+            if (inLibrary) onRemove();
+            else onAdd();
+          }}
+          style={[
+            s.detailPrimaryBtn,
+            inLibrary && s.detailPrimaryBtnAdded,
+            pending && { opacity: 0.7 },
+          ]}
+          disabled={pending}
+          accessibilityRole="button"
+          accessibilityLabel={
+            inLibrary
+              ? `Remove ${book.title} from library`
+              : `Add ${book.title} to library`
+          }
         >
-          <Icon
-            name={inLibrary ? 'Check' : 'Plus'}
-            size={15}
-            color={inLibrary ? tokens.colors.forest[800] : tokens.colors.cream[50]}
-          />
-          <Text style={[s.detailPrimaryBtnText, { color: inLibrary ? tokens.colors.forest[800] : tokens.colors.cream[50] }]}>
-            {inLibrary ? 'In library' : 'Add to library'}
+          {pending ? (
+            <ActivityIndicator
+              size="small"
+              color={tokens.colors.cream[50]}
+            />
+          ) : (
+            <Icon
+              name={inLibrary ? 'Check' : 'Plus'}
+              size={15}
+              color={
+                inLibrary ? tokens.colors.forest[800] : tokens.colors.cream[50]
+              }
+            />
+          )}
+          <Text
+            style={[
+              s.detailPrimaryBtnText,
+              {
+                color: inLibrary
+                  ? tokens.colors.forest[800]
+                  : tokens.colors.cream[50],
+              },
+            ]}
+          >
+            {inLibrary
+              ? 'Remove from library'
+              : pending
+                ? 'Adding…'
+                : 'Add to library'}
           </Text>
         </Pressable>
         <Pressable style={s.detailSampleBtn}>
@@ -579,12 +1993,16 @@ const s = StyleSheet.create({
   // Home
   homeHeader: {
     paddingHorizontal: 20,
-    paddingTop: tokens.space.lg,
+    // Top padding bumped + explicit lineHeight so Fraunces' tall display
+    // caps don't get clipped at the SafeAreaView edge (same fix we
+    // applied to the Listen tab header).
+    paddingTop: 14,
     paddingBottom: tokens.space.lg,
   },
   homeTitle: {
     fontFamily: tokens.fonts.display,
     fontSize: 28,
+    lineHeight: 36,
     color: tokens.colors.ink[900],
     letterSpacing: -0.5,
   },
@@ -605,6 +2023,91 @@ const s = StyleSheet.create({
     fontSize: 14,
     color: tokens.colors.ink[400],
     fontFamily: tokens.fonts.ui,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: 14,
+    color: tokens.colors.ink[900],
+    fontFamily: tokens.fonts.ui,
+    padding: 0,
+  },
+  loadingZone: {
+    paddingVertical: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+  },
+  loadingText: {
+    fontFamily: tokens.fonts.ui,
+    fontSize: 12,
+    color: tokens.colors.ink[400],
+  },
+  errorZone: {
+    paddingVertical: 32,
+    paddingHorizontal: 32,
+    alignItems: 'center',
+    gap: 6,
+  },
+  errorTitle: {
+    fontFamily: tokens.fonts.display,
+    fontSize: 18,
+    color: tokens.colors.ink[900],
+    textAlign: 'center',
+  },
+  errorBody: {
+    fontFamily: tokens.fonts.ui,
+    fontSize: 13,
+    color: tokens.colors.ink[500],
+    textAlign: 'center',
+    lineHeight: 19,
+  },
+  // Search empty-state "request a book" surface. Tighter padding
+  // than the generic errorZone so the three copy cards have room
+  // to breathe inside the screen's existing horizontal margins.
+  searchRequestZone: {
+    paddingVertical: 24,
+    paddingHorizontal: 22,
+    alignItems: 'stretch',
+    gap: 6,
+  },
+  requestCardStack: {
+    marginTop: 18,
+    gap: 10,
+  },
+  // Each copy card — value + copy icon. Tappable as a whole so
+  // the user doesn't have to aim at the small icon.
+  copyCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: tokens.colors.cream[100],
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    gap: 12,
+  },
+  copyCardBody: {
+    flex: 1,
+    gap: 2,
+  },
+  copyCardLabel: {
+    fontFamily: tokens.fonts.uiMedium,
+    fontSize: 10,
+    fontWeight: '500',
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
+    color: tokens.textColors.muted,
+  },
+  copyCardValue: {
+    fontFamily: tokens.fonts.ui,
+    fontSize: 13,
+    lineHeight: 18,
+    color: tokens.textColors.primary,
+  },
+  // Rail cover needs a relative wrapper so the "in library" badge can
+  // anchor to its top-right corner. The CoverBox itself paints the full
+  // cover area.
+  railCoverWrap: {
+    position: 'relative',
   },
   chipScroll: {
     paddingHorizontal: 20,
@@ -644,6 +2147,16 @@ const s = StyleSheet.create({
     fontFamily: tokens.fonts.uiMedium,
     fontSize: 12,
     color: tokens.colors.forest[800],
+  },
+  // Compact source-attribution label that sits in the section row in
+  // lieu of a "See all →" link (used on shelves backed by sources
+  // that aren't paginated through our category screen, e.g. Standard
+  // Ebooks). Matches the muted secondary-label voice of seeAll
+  // without the affordance styling.
+  sectionSubLabel: {
+    fontFamily: tokens.fonts.ui,
+    fontSize: 11,
+    color: tokens.textColors.muted,
   },
 
   // Featured card
@@ -901,13 +2414,19 @@ const s = StyleSheet.create({
     marginTop: 6,
   },
   catAddBtn: {
+    // alignSelf pins the button to its content width — without it the
+    // Pressable stretches to fill the parent flex column on iOS,
+    // making the row look like one giant button.
+    alignSelf: 'flex-start',
     height: 28,
     paddingHorizontal: 12,
     borderRadius: 14,
     backgroundColor: tokens.colors.forest[800],
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
     gap: 4,
+    marginTop: 6,
   },
   catAddBtnText: {
     fontFamily: tokens.fonts.uiMedium,
@@ -915,6 +2434,7 @@ const s = StyleSheet.create({
     color: tokens.colors.cream[50],
   },
   catAddedBtn: {
+    alignSelf: 'flex-start',
     height: 28,
     paddingHorizontal: 12,
     borderRadius: 14,
@@ -923,7 +2443,9 @@ const s = StyleSheet.create({
     borderColor: tokens.colors.forest[200],
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
     gap: 4,
+    marginTop: 6,
   },
   catAddedBtnText: {
     fontFamily: tokens.fonts.uiMedium,

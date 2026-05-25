@@ -480,23 +480,29 @@ export function SendFeedbackScreen({ onBack }: { onBack: () => void }) {
             pressed && { opacity: 0.85 },
           ]}
         >
-          <View style={styles.emailCardRow}>
+          {/* Two-column row. Left column stacks the email address
+              above its "Tap to copy" hint; the icon on the right is
+              vertically centered against that whole stack (via the
+              parent row's alignItems: 'center'), so it reads as
+              "this whole card is the action" rather than belonging
+              only to the email line. */}
+          <View style={styles.emailCardLeft}>
             <Text style={styles.emailCardValue} numberOfLines={1}>
               {SUPPORT_EMAIL}
             </Text>
-            <Icon
-              name={copied ? 'Check' : 'Copy'}
-              size={16}
-              color={
-                copied
-                  ? tokens.colors.forest[700]
-                  : tokens.textColors.muted
-              }
-            />
+            <Text style={styles.emailCardHint}>
+              {copied ? 'Copied to clipboard' : 'Tap to copy'}
+            </Text>
           </View>
-          <Text style={styles.emailCardHint}>
-            {copied ? 'Copied to clipboard' : 'Tap to copy'}
-          </Text>
+          <Icon
+            name={copied ? 'Check' : 'Copy'}
+            size={18}
+            color={
+              copied
+                ? tokens.colors.forest[700]
+                : tokens.textColors.muted
+            }
+          />
         </Pressable>
       </ScrollView>
     </SafeAreaView>
@@ -847,21 +853,26 @@ const styles = StyleSheet.create({
   // The email handoff card. Tappable surface that copies the
   // address so a user without a mail app can still grab it for
   // paste into Gmail / Outlook / web mail.
+  //
+  // Layout: row with the email + hint stacked on the left and the
+  // copy icon on the right. The row's alignItems: 'center' vertically
+  // centers the icon against the full stack, so it sits at the
+  // visual midpoint of the email line and the "Tap to copy" hint
+  // rather than aligning to just the email row.
   emailCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
     backgroundColor: tokens.bgColors.surface,
     borderRadius: 12,
     paddingHorizontal: 14,
     paddingVertical: 14,
-    gap: 4,
-  },
-  emailCardRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
     gap: 12,
   },
-  emailCardValue: {
+  emailCardLeft: {
     flex: 1,
+    gap: 4,
+  },
+  emailCardValue: {
     fontFamily: tokens.fonts.uiMedium,
     fontSize: 15,
     color: tokens.textColors.primary,
