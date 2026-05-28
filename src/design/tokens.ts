@@ -50,12 +50,25 @@ export const colors = {
 
   // Sepia reader theme
   sepia: {
-    bg: '#F3ECD9',
-    surface: '#EDE4CF',
-    text: '#3A2D1E',
-    muted: '#7A6A52',
-    subtle: '#9C8A6E',
-    border: '#DDD0B8',
+    bg: '#F5EDD8',
+    surface: '#EDE0C4',
+    text: '#3D2B1F',
+    muted: '#7A5C3E',
+    subtle: '#7A5C3E',
+    border: '#D4C4A0',
+  },
+
+  // Dark reader theme — forest-tinted near-black. Lives under
+  // `colors.dark` so reader code can stop hardcoding the same hex
+  // codes inline across the palette object.
+  dark: {
+    bg: '#1A1F1B',
+    surface: '#232A24',
+    text: '#E8E5DC',
+    muted: '#8A8780',
+    subtle: '#8A8780',
+    border: '#3D453E',
+    accent: '#4A7C59',
   },
 
   // Semantic
@@ -64,6 +77,18 @@ export const colors = {
   errorBg: '#FBEAE7',
   success: '#2D7A4F',
   successBg: '#E8F4ED',
+  /** Warning palette — used by usage-limit banners, paywall
+   * triggers, and the practice-questions misanswer state. */
+  warn: '#A0692A',
+  warnBg: '#FDF3E3',
+  warnBorder: '#EFD9B5',
+  /** Offline indicator — slate palette used by the network-banner
+   * shown across LibraryScreen and AIToolsScreen when a
+   * connectivity stub reports disconnected. Distinct from `warn`
+   * (which is amber and signals a usage-limit / paywall trigger). */
+  offline: '#4A5568',
+  offlineBg: '#F0F2F5',
+  offlineBorder: '#CBD5E0',
 } as const;
 
 // ============================================================================

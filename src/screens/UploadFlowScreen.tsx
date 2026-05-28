@@ -6,28 +6,6 @@ import Svg, { Circle as SvgCircle } from 'react-native-svg';
 import { BottomSheet, type BottomSheetRef, Icon, Text } from '~/components';
 import { tokens } from '~/design/tokens';
 
-/**
- * Flip to `true` to test the scanned-PDF error flow through the upload path.
- * In production this flag is replaced by real PDF text-extraction detection.
- */
-const MOCK_SCANNED_PDF = false;
-
-/**
- * Flip to `true` to preview the book processing failed state (audio generation failed).
- */
-const MOCK_PROCESSING_FAILED = false;
-
-// ─── Mock file data ───────────────────────────────────────────────────────────
-
-const MOCK_FILE = {
-  title: 'Things Fall Apart',
-  author: 'Chinua Achebe',
-  format: 'EPUB',
-  chapters: 25,
-  sizeLabel: '1.2 MB',
-  coverColor: tokens.colors.forest[800],
-};
-
 // ─── Add book sheet ───────────────────────────────────────────────────────────
 
 export type AddBookSheetProps = {
@@ -127,126 +105,15 @@ function AddOption({
   );
 }
 
-// ─── Confirm sheet ────────────────────────────────────────────────────────────
-
-export type ConfirmSheetProps = {
-  onConfirm: () => void;
-  onBack: () => void;
-  /** Called when the file is detected as a scanned PDF with no extractable text. */
-  onScannedPdf?: () => void;
-};
-
-export const ConfirmSheet = forwardRef<BottomSheetRef, ConfirmSheetProps>(
-  function ConfirmSheet({ onConfirm, onBack, onScannedPdf }, ref) {
-    const sheetRef = useRef<BottomSheetRef>(null);
-
-    useImperativeHandle(ref, () => ({
-      present: () => sheetRef.current?.present(),
-      dismiss: () => sheetRef.current?.dismiss(),
-    }));
-
-    return (
-      <BottomSheet ref={sheetRef}>
-        <View style={styles.confirmHeaderPad}>
-          <Text style={styles.confirmTitle}>Add to library?</Text>
-          <Text style={styles.confirmSub}>Here's what we found in the file</Text>
-        </View>
-
-        <View style={styles.confirmPreview}>
-          <View style={[styles.confirmCover, { backgroundColor: MOCK_FILE.coverColor }]}>
-            <Text style={styles.confirmCoverLabel} numberOfLines={4}>
-              {MOCK_FILE.title}
-            </Text>
-          </View>
-          <View style={styles.confirmInfo}>
-            <Text style={styles.confirmBookTitle}>{MOCK_FILE.title}</Text>
-            <Text style={styles.confirmBookAuthor}>{MOCK_FILE.author}</Text>
-            <View style={styles.confirmChips}>
-              <MetaChip label={MOCK_FILE.format} />
-              <MetaChip label={`${MOCK_FILE.chapters} chapters`} />
-              <MetaChip label={MOCK_FILE.sizeLabel} />
-            </View>
-          </View>
-        </View>
-
-        <View style={styles.detailRows}>
-          <DetailRow label="Text extractable" value="✓ Yes — full text" valueStyle="success" />
-          <DetailRow label="Language detected" value="English" />
-          <DetailRow label="Cover image" value="Extracted from file" />
-          <DetailRow
-            label="Audio generation"
-            value="~3 min to process"
-            valueStyle="muted"
-            isLast
-          />
-        </View>
-
-        <View style={styles.confirmCtas}>
-          <Pressable
-            accessibilityRole="button"
-            onPress={() => {
-              sheetRef.current?.dismiss();
-              if (MOCK_SCANNED_PDF && onScannedPdf) {
-                onScannedPdf();
-              } else {
-                onConfirm();
-              }
-            }}
-            style={({ pressed }) => [styles.confirmPrimary, pressed && { opacity: 0.85 }]}
-          >
-            <Text style={styles.confirmPrimaryLabel}>Add to library</Text>
-          </Pressable>
-          <Pressable
-            accessibilityRole="button"
-            onPress={() => {
-              sheetRef.current?.dismiss();
-              onBack();
-            }}
-            style={({ pressed }) => [styles.confirmSecondary, pressed && { opacity: 0.7 }]}
-          >
-            <Text style={styles.confirmSecondaryLabel}>Choose a different file</Text>
-          </Pressable>
-        </View>
-      </BottomSheet>
-    );
-  },
-);
-
-function MetaChip({ label }: { label: string }) {
-  return (
-    <View style={styles.chip}>
-      <Text style={styles.chipLabel}>{label}</Text>
-    </View>
-  );
-}
-
-function DetailRow({
-  label,
-  value,
-  valueStyle,
-  isLast,
-}: {
-  label: string;
-  value: string;
-  valueStyle?: 'success' | 'muted';
-  isLast?: boolean;
-}) {
-  const valueColor =
-    valueStyle === 'success'
-      ? tokens.colors.success
-      : valueStyle === 'muted'
-      ? tokens.colors.ink[400]
-      : tokens.colors.ink[900];
-
-  return (
-    <View style={[styles.detailRow, !isLast && styles.detailRowBorder]}>
-      <Text style={styles.detailLabel}>{label}</Text>
-      <Text style={[styles.detailValue, { color: valueColor }]}>{value}</Text>
-    </View>
-  );
-}
-
 // ─── Processing screen ────────────────────────────────────────────────────────
+
+export type ProcessingStepState = 'done' | 'active' | 'pending' | 'failed';
+
+export type ProcessingStep = {
+  state: ProcessingStepState;
+  label: string;
+  sublabel: string;
+};
 
 export type ProcessingScreenProps = {
   onBackground: () => void;
@@ -254,6 +121,19 @@ export type ProcessingScreenProps = {
   onRetryAudio?: () => void;
   onReadWithoutAudio?: () => void;
   onRemoveBook?: () => void;
+  /** When provided, drives the UI dynamically instead of generic copy. */
+  title?: string;
+  subtitle?: string;
+  /** Book title used in the failed-state body copy and the "Read
+   * without audio" card. Defaults to "this book" so the copy still
+   * reads cleanly if the caller doesn't have a title at hand. */
+  bookTitle?: string;
+  /** Pretty file size for the file-uploaded step (e.g. "1.2 MB"). */
+  fileSizeLabel?: string;
+  /** 0..1 — drives the ring. Pass undefined to show an indeterminate ring. */
+  progress?: number;
+  steps?: ProcessingStep[];
+  failed?: boolean;
 };
 
 export function ProcessingScreen({
@@ -262,8 +142,19 @@ export function ProcessingScreen({
   onRetryAudio,
   onReadWithoutAudio,
   onRemoveBook,
+  title: titleProp,
+  subtitle: subtitleProp,
+  bookTitle,
+  fileSizeLabel,
+  progress: progressProp,
+  steps: stepsProp,
+  failed: failedProp,
 }: ProcessingScreenProps) {
-  const [failed] = useState(MOCK_PROCESSING_FAILED);
+  const failed = failedProp ?? false;
+  // Display name for the failed-state copy. Falls back to "this book"
+  // so we never render "We couldn't generate audio for undefined".
+  const displayTitle = bookTitle?.trim() || 'this book';
+  const sizeText = fileSizeLabel?.trim() || 'File';
   const spinAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
@@ -329,28 +220,45 @@ export function ProcessingScreen({
 
         <Text style={styles.processingTitle}>Audio generation failed</Text>
         <Text style={styles.processingSub}>
-          We couldn't generate audio for {MOCK_FILE.title}. The file was uploaded and chapters were
+          We couldn't generate audio for {displayTitle}. The file was uploaded and chapters were
           extracted successfully.
         </Text>
 
-        {/* Steps — first two done, third failed */}
+        {/* Steps — first two done, third failed. If the caller passed
+            explicit `steps`, use those; otherwise fall back to a
+            generic "uploaded / extracted / audio failed" trio with
+            the real file size from the upload state. */}
         <View style={styles.stepsList}>
-          <StepRow
-            state="done"
-            label="File uploaded"
-            sublabel={`${MOCK_FILE.sizeLabel} · completed`}
-          />
-          <StepRow
-            state="done"
-            label="Chapters extracted"
-            sublabel={`${MOCK_FILE.chapters} chapters · completed`}
-          />
-          <StepRow
-            state="failed"
-            label="Generating audio"
-            sublabel="Failed at chapter 16 of 25"
-            isLast
-          />
+          {stepsProp ? (
+            stepsProp.map((step, i) => (
+              <StepRow
+                key={`${step.label}-${i}`}
+                state={step.state}
+                label={step.label}
+                sublabel={step.sublabel}
+                isLast={i === stepsProp.length - 1}
+              />
+            ))
+          ) : (
+            <>
+              <StepRow
+                state="done"
+                label="File uploaded"
+                sublabel={`${sizeText} · completed`}
+              />
+              <StepRow
+                state="done"
+                label="Chapters extracted"
+                sublabel="completed"
+              />
+              <StepRow
+                state="failed"
+                label="Generating audio"
+                sublabel="Failed"
+                isLast
+              />
+            </>
+          )}
         </View>
 
         {/* What was saved */}
@@ -359,7 +267,7 @@ export function ProcessingScreen({
           <View style={styles.savedCardText}>
             <Text style={styles.savedCardTitle}>Text reading is ready now</Text>
             <Text style={styles.savedCardSub}>
-              You can read {MOCK_FILE.title} immediately. Audio can be generated separately.
+              You can read {displayTitle} immediately. Audio can be generated separately.
             </Text>
           </View>
         </View>
@@ -389,8 +297,28 @@ export function ProcessingScreen({
     );
   }
 
-  const PROGRESS = 0.65;
+  const PROGRESS = progressProp ?? 0.65;
+  const indeterminate = progressProp == null;
   const DASH_OFFSET = CIRCUMFERENCE * (1 - PROGRESS);
+  const ringPercent = Math.round(PROGRESS * 100);
+
+  const titleText = titleProp ?? `Preparing ${displayTitle}`;
+  const subtitleText =
+    subtitleProp ?? 'Reading the file and getting it ready for you.';
+
+  // Default steps cover the typical upload phases without claiming a
+  // chapter count we don't yet know. When LibraryScreen passes
+  // real `steps`, those win.
+  const defaultSteps: ProcessingStep[] = [
+    { state: 'done', label: 'File uploaded', sublabel: `${sizeText} · completed` },
+    { state: 'active', label: 'Extracting text', sublabel: 'In progress…' },
+    {
+      state: 'pending',
+      label: 'Generating audio',
+      sublabel: 'Starts after text is ready',
+    },
+  ];
+  const stepsToRender = stepsProp ?? defaultSteps;
 
   return (
     <View style={styles.processingScreen}>
@@ -404,48 +332,47 @@ export function ProcessingScreen({
             stroke={tokens.colors.cream[200]}
             strokeWidth={6}
           />
-          <SvgCircle
-            cx={48}
-            cy={48}
-            r={RADIUS}
-            fill="none"
-            stroke={tokens.colors.forest[800]}
-            strokeWidth={6}
-            strokeLinecap="round"
-            strokeDasharray={CIRCUMFERENCE}
-            strokeDashoffset={DASH_OFFSET}
-            rotation={-90}
-            origin="48, 48"
-          />
+          {!indeterminate && (
+            <SvgCircle
+              cx={48}
+              cy={48}
+              r={RADIUS}
+              fill="none"
+              stroke={tokens.colors.forest[800]}
+              strokeWidth={6}
+              strokeLinecap="round"
+              strokeDasharray={CIRCUMFERENCE}
+              strokeDashoffset={DASH_OFFSET}
+              rotation={-90}
+              origin="48, 48"
+            />
+          )}
         </Svg>
         <View style={styles.ringLabelAbsolute}>
-          <Text style={styles.ringLabelText}>65%</Text>
+          {indeterminate ? (
+            <Animated.View style={{ transform: [{ rotate }] }}>
+              <Icon name="Loader" size={28} color={tokens.colors.forest[800]} />
+            </Animated.View>
+          ) : (
+            <Text style={styles.ringLabelText}>{ringPercent}%</Text>
+          )}
         </View>
       </View>
 
-      <Text style={styles.processingTitle}>Preparing {MOCK_FILE.title}</Text>
-      <Text style={styles.processingSub}>
-        Generating audio for {MOCK_FILE.chapters} chapters. You can keep browsing while we work.
-      </Text>
+      <Text style={styles.processingTitle}>{titleText}</Text>
+      <Text style={styles.processingSub}>{subtitleText}</Text>
 
       <View style={styles.stepsList}>
-        <StepRow
-          state="done"
-          label="File uploaded"
-          sublabel={`${MOCK_FILE.sizeLabel} · completed`}
-        />
-        <StepRow
-          state="done"
-          label="Chapters extracted"
-          sublabel={`${MOCK_FILE.chapters} chapters · completed`}
-        />
-        <StepRow
-          state="active"
-          label="Generating audio"
-          sublabel="Chapter 16 of 25 · ~90 seconds left"
-          spinAnim={rotate}
-          isLast
-        />
+        {stepsToRender.map((step, i) => (
+          <StepRow
+            key={`${step.label}-${i}`}
+            state={step.state}
+            label={step.label}
+            sublabel={step.sublabel}
+            spinAnim={step.state === 'active' ? rotate : undefined}
+            isLast={i === stepsToRender.length - 1}
+          />
+        ))}
       </View>
 
       <View style={styles.processingActions}>
@@ -966,19 +893,26 @@ const styles = StyleSheet.create({
 
 // ─── Scanned PDF error screen ─────────────────────────────────────────────────
 
-const MOCK_SCANNED_FILE = {
-  name: 'ACCT201-textbook-2023.pdf',
-  size: '87.4 MB',
-};
-
 export type ScannedPdfErrorScreenProps = {
   /** Re-opens the file picker to try a different file. */
   onTryAnother: () => void;
   /** Navigates to Discover as an alternative path. */
   onBrowse: () => void;
+  /** The PDF the user just tried to upload. Drives the file-info
+   * card; falls back to a generic "Your PDF" label if the caller
+   * doesn't have these (e.g. opened via deep-link). */
+  fileName?: string;
+  fileSizeLabel?: string;
 };
 
-export function ScannedPdfErrorScreen({ onTryAnother, onBrowse }: ScannedPdfErrorScreenProps) {
+export function ScannedPdfErrorScreen({
+  onTryAnother,
+  onBrowse,
+  fileName,
+  fileSizeLabel,
+}: ScannedPdfErrorScreenProps) {
+  const displayName = fileName?.trim() || 'Your PDF';
+  const displaySize = fileSizeLabel?.trim();
   return (
     <SafeAreaView style={scanStyles.safe} edges={['top', 'left', 'right', 'bottom']}>
       {/* Header */}
@@ -1020,10 +954,10 @@ export function ScannedPdfErrorScreen({ onTryAnother, onBrowse }: ScannedPdfErro
           </View>
           <View style={scanStyles.fileInfo}>
             <Text style={scanStyles.fileName} numberOfLines={1}>
-              {MOCK_SCANNED_FILE.name}
+              {displayName}
             </Text>
             <Text style={scanStyles.fileMeta}>
-              {MOCK_SCANNED_FILE.size} · Scanned · No extractable text
+              {displaySize ? `${displaySize} · ` : ''}Scanned · No extractable text
             </Text>
           </View>
         </View>

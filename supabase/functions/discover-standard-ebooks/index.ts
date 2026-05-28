@@ -49,7 +49,13 @@ const KNOWN_FEEDS: ReadonlySet<FeedKey> = new Set([
 ]);
 const DEFAULT_FEED: FeedKey = 'all';
 const DEFAULT_LIMIT = 24;
-const MAX_LIMIT = 100;
+// MAX_LIMIT bumped from 100 → 1500 so the client can pull the FULL
+// Standard Ebooks catalog (~1200 entries) into its in-memory search
+// pool. With 100 the typeahead missed most SE-only titles because
+// fewer than a tenth of the catalog was reachable for local match.
+// The OPDS `/all` feed returns every title in one document anyway
+// — the cap was purely a defensive guard, not a pagination bound.
+const MAX_LIMIT = 1500;
 
 type DiscoverBook = {
   id: string;

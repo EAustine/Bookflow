@@ -39,10 +39,10 @@ export type StudentVerificationScreenProps = {
 };
 
 const SUCCESS_FG = '#2D7A4F';
-const SUCCESS_BG = '#E8F4ED';
+const SUCCESS_BG = tokens.colors.successBg;
 const SUCCESS_BORDER = '#A8D5B9';
-const PENDING_FG = '#A0692A';
-const PENDING_BG = '#FDF3E3';
+const PENDING_FG = tokens.colors.warn;
+const PENDING_BG = tokens.colors.warnBg;
 
 export function StudentVerificationScreen({
   state,

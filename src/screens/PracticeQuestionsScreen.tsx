@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Pressable,
   ScrollView,
@@ -7,21 +7,24 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Icon, Text } from '~/components';
+import { BottomSheet, Icon, Text, type BottomSheetRef } from '~/components';
 import { tokens } from '~/design/tokens';
+import { formatNetworkError } from '~/lib/networkErrors';
+import { useBackHandler } from '~/lib/useBackHandler';
 import type { Book } from '~/types/book';
+import { generatePractice } from '~/lib/aiPractice';
 
 // ─── Semantic colors not in token set ─────────────────────────────────────────
 
 const C = {
-  success: '#2D7A4F',
-  successBg: '#E8F4ED',
+  success: tokens.colors.success,
+  successBg: tokens.colors.successBg,
   successBorder: '#B7CCB9',
-  error: '#B5453A',
-  errorBg: '#FBEAE7',
+  error: tokens.colors.error,
+  errorBg: tokens.colors.errorBg,
   errorBorder: '#EFC9C6',
-  warn: '#A0692A',
-  warnBg: '#FDF3E3',
+  warn: tokens.colors.warn,
+  warnBg: tokens.colors.warnBg,
 };
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -48,6 +51,24 @@ type ShortQuestion = {
 };
 
 type Question = MCQQuestion | ShortQuestion;
+
+function practiceErrorMessage(code: string): string {
+  switch (code) {
+    case 'page_too_short':
+      return "This page doesn't have enough text to make a fair quiz from.";
+    case 'page_not_found':
+      return "Couldn't find this page in the book. Try re-processing.";
+    case 'invalid_llm_output':
+      return "The model returned malformed questions. Tap retry to try again.";
+    case 'server_misconfigured':
+      return 'The practice service is temporarily unavailable.';
+    case 'request_failed':
+    case 'function_failed':
+      return 'Network issue talking to the practice service.';
+    default:
+      return "Something went wrong generating the quiz.";
+  }
+}
 type Grade = 'correct' | 'partial' | 'incorrect';
 
 type AnswerRecord =
@@ -59,123 +80,6 @@ type QuizType = 'mixed' | 'mcq' | 'short';
 type QuizOrder = 'sequential' | 'random';
 
 type QuizConfig = { count: QuizCount; qType: QuizType; order: QuizOrder };
-
-// ─── Mock questions ───────────────────────────────────────────────────────────
-
-const QUESTIONS: Question[] = [
-  {
-    id: '1', type: 'mcq',
-    text: "What does Gatsby show Nick as proof of his time at Oxford?",
-    options: [
-      { letter: 'A', text: 'A letter from a military general' },
-      { letter: 'B', text: 'A cricket photograph and a medal from Montenegro' },
-      { letter: 'C', text: 'A diploma certificate from 1919' },
-      { letter: 'D', text: 'A newspaper clipping about his war record' },
-    ],
-    correctIdx: 1,
-    feedback: "Gatsby produces a photograph of himself with Oxford cricket players and a medal 'comme souvenir de Montenegro' — his two pieces of proof.",
-    source: 'p. 44',
-  },
-  {
-    id: '2', type: 'short',
-    text: "How does Nick describe Gatsby's car, and what does it suggest about Gatsby's character?",
-    modelAnswer: "Nick calls it a 'death car' — cream colored, monstrous, laden with multi-colored hatboxes. Its ostentatious excess signals that Gatsby performs wealth rather than simply inhabiting it.",
-    feedback: "Good start. A complete answer also notes the ominous foreshadowing in Nick calling it a 'death car' — a detail Fitzgerald plants deliberately.",
-    source: 'p. 45',
-  },
-  {
-    id: '3', type: 'mcq',
-    text: "Who does Gatsby say fixed the 1919 World Series during Nick's lunch?",
-    options: [
-      { letter: 'A', text: 'Tom Buchanan' },
-      { letter: 'B', text: 'Meyer Wolfsheim' },
-      { letter: 'C', text: 'Dan Cody' },
-      { letter: 'D', text: 'Chester Becker' },
-    ],
-    correctIdx: 1,
-    feedback: "Meyer Wolfsheim is Gatsby's shady associate introduced over lunch. His claim about fixing the World Series hints at the criminal foundations beneath Gatsby's wealth.",
-    source: 'p. 48',
-  },
-  {
-    id: '4', type: 'mcq',
-    text: "What university does Gatsby claim to have attended?",
-    options: [
-      { letter: 'A', text: 'Yale' },
-      { letter: 'B', text: 'Cambridge' },
-      { letter: 'C', text: 'Oxford' },
-      { letter: 'D', text: 'Princeton' },
-    ],
-    correctIdx: 2,
-    feedback: "Gatsby tells Nick he was educated at Oxford — 'It was a family tradition.' Nick is skeptical, but Gatsby produces a photograph as proof.",
-    source: 'p. 44',
-  },
-  {
-    id: '5', type: 'mcq',
-    text: "Who tells Nick about Gatsby and Daisy's past romance?",
-    options: [
-      { letter: 'A', text: 'Tom Buchanan' },
-      { letter: 'B', text: 'Daisy herself' },
-      { letter: 'C', text: 'Jordan Baker' },
-      { letter: 'D', text: 'Meyer Wolfsheim' },
-    ],
-    correctIdx: 2,
-    feedback: "Jordan Baker reveals to Nick the backstory of Gatsby and Daisy's Louisville romance — she held the full story as a witness.",
-    source: 'p. 52',
-  },
-  {
-    id: '6', type: 'mcq',
-    text: "What did Daisy do the night before her wedding when she received Gatsby's letter?",
-    options: [
-      { letter: 'A', text: 'She called off the wedding immediately' },
-      { letter: 'B', text: 'She ignored it and burned it' },
-      { letter: 'C', text: 'She was found drunk clutching the letter, then married Tom as planned' },
-      { letter: 'D', text: 'She sent a reply asking to meet Gatsby' },
-    ],
-    correctIdx: 2,
-    feedback: "Jordan tells Nick that Daisy was found drunk and sobbing, clutching Gatsby's letter — but by the next day she had 'changed her mind' and married Tom.",
-    source: 'p. 54',
-  },
-  {
-    id: '7', type: 'short',
-    text: "Why did Gatsby buy his house in West Egg?",
-    modelAnswer: "Gatsby bought the West Egg mansion specifically to be across the bay from Daisy's East Egg home, able to see her green dock light — a deliberate act of longing and proximity after years apart.",
-    feedback: "Good — you identified the core reason. For full marks, include that Gatsby could see Daisy's green light from his dock, which Fitzgerald uses as a symbol of his longing.",
-    source: 'p. 57',
-  },
-  {
-    id: '8', type: 'mcq',
-    text: "Where is Daisy's house located relative to Gatsby's mansion?",
-    options: [
-      { letter: 'A', text: 'Just down the street in West Egg' },
-      { letter: 'B', text: 'Across the bay in East Egg' },
-      { letter: 'C', text: 'In New York City' },
-      { letter: 'D', text: 'Louisville, Kentucky' },
-    ],
-    correctIdx: 1,
-    feedback: "Daisy lives in East Egg, directly across the bay from Gatsby's West Egg mansion. He can see the green light at the end of her dock at night.",
-    source: 'p. 57',
-  },
-  {
-    id: '9', type: 'short',
-    text: "What does the long list of party guests reveal about Gatsby's social world?",
-    modelAnswer: "The parade of names — with odd occupations and scattered misfortunes — shows that Gatsby's guests use him without knowing him. His parties attract strangers who accept his hospitality while remaining ignorant of who he truly is, underscoring his deep isolation.",
-    feedback: "Good start. A strong answer also notes the irony that so many attend his parties while nobody truly knows him — the list highlights his anonymity amid spectacle.",
-    source: 'p. 42',
-  },
-  {
-    id: '10', type: 'mcq',
-    text: "Which country awarded Gatsby a military medal that he shows Nick?",
-    options: [
-      { letter: 'A', text: 'France' },
-      { letter: 'B', text: 'Britain' },
-      { letter: 'C', text: 'Montenegro' },
-      { letter: 'D', text: 'Italy' },
-    ],
-    correctIdx: 2,
-    feedback: "Gatsby shows Nick a medal from 'the little Montenegro' for his service in the war — one of his props for the curated story of his life.",
-    source: 'p. 44',
-  },
-];
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -197,26 +101,104 @@ function scoreLabel(pct: number): string {
 export type PracticeQuestionsScreenProps = {
   book: Book;
   onBack: () => void;
+  /**
+   * 0-based page to generate questions from. The reader threads its
+   * current page; defaults to the persisted last_read_page if unset.
+   */
+  pageIndex?: number;
 };
 
-export function PracticeQuestionsScreen({ book, onBack }: PracticeQuestionsScreenProps) {
-  const [phase, setPhase] = useState<'config' | 'quiz' | 'results'>('config');
-  const [config, setConfig] = useState<QuizConfig>({ count: 10, qType: 'mixed', order: 'sequential' });
+export function PracticeQuestionsScreen({ book, onBack, pageIndex }: PracticeQuestionsScreenProps) {
+  // Hardware-back routes to the reader (clears aiMode in the parent)
+  // rather than falling through to the reader's own useBackHandler,
+  // which would otherwise take the user out to Library.
+  useBackHandler(() => {
+    onBack();
+    return true;
+  });
+  const [phase, setPhase] = useState<'config' | 'loading' | 'quiz' | 'results' | 'error'>(
+    'config',
+  );
+  const [config, setConfig] = useState<QuizConfig>({ count: 5, qType: 'mcq', order: 'sequential' });
   const [activeQuestions, setActiveQuestions] = useState<Question[]>([]);
   const [questionIdx, setQuestionIdx] = useState(0);
   const [answers, setAnswers] = useState<Map<string, AnswerRecord>>(new Map());
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  const startQuiz = useCallback(() => {
-    let qs = [...QUESTIONS];
-    if (config.qType === 'mcq') qs = qs.filter((q) => q.type === 'mcq');
-    if (config.qType === 'short') qs = qs.filter((q) => q.type === 'short');
+  // Resolved page index — initially seeded from the prop (or persisted
+  // last-read), but the user can override via the page picker on the
+  // config screen. Tracked as state so a fresh selection re-runs
+  // generation against the new page.
+  const initialPageIndex =
+    pageIndex ?? (book as { last_read_page?: number }).last_read_page ?? 0;
+  const [resolvedPageIndex, setResolvedPageIndex] = useState(initialPageIndex);
+  const defaultPageIndex = initialPageIndex;
+
+  const startQuiz = useCallback(async () => {
+    setPhase('loading');
+    setErrorMessage(null);
+
+    // The edge function only emits MCQ today. The "short" / "mixed"
+    // options in the config UI fall back to MCQ until we wire a
+    // separate short-answer flow (would need open-ended grading).
+    const requestedCount = (
+      [3, 5, 10] as const
+    ).includes(config.count as 3 | 5 | 10)
+      ? (config.count as 3 | 5 | 10)
+      : 5;
+
+    const result = await generatePractice({
+      bookId: book.id,
+      pageIndex: resolvedPageIndex,
+      count: requestedCount,
+    });
+
+    if (!result.ok) {
+      // Error-message priority (mirrors AIToolsScreen / Summary):
+      //   1. If raw message looks network-shaped → friendly offline /
+      //      timeout copy is more actionable than the domain mapper.
+      //   2. Otherwise prefer practiceErrorMessage code mapping —
+      //      it handles practice-specific cases (page_too_short etc).
+      //   3. Last resort: run the raw message through the network
+      //      formatter so we never leak stack-trace-shaped text.
+      const raw = result.message;
+      if (raw && /network request failed|network error|failed to fetch|abort|timeout/i.test(raw)) {
+        setErrorMessage(formatNetworkError(raw, 'generating practice questions'));
+      } else if (result.error) {
+        setErrorMessage(practiceErrorMessage(result.error));
+      } else if (raw) {
+        setErrorMessage(formatNetworkError(raw, 'generating practice questions'));
+      } else {
+        setErrorMessage('Something went wrong. Try again in a moment.');
+      }
+      setPhase('error');
+      return;
+    }
+
+    // Map the API shape (correctIndex / options strings) onto the
+    // internal Question shape (correctIdx / option objects with
+    // letters). The legacy `feedback` and `source` fields map from the
+    // model's `explanation` and a synthetic page reference.
+    let qs: Question[] = result.data.questions.map((q, i) => ({
+      id: `g${i}`,
+      type: 'mcq' as const,
+      text: q.question,
+      options: q.options.map((text, idx) => ({
+        letter: String.fromCharCode(65 + idx) as MCQOption['letter'],
+        text,
+      })),
+      correctIdx: q.correctIndex,
+      feedback: q.explanation,
+      source: `p. ${resolvedPageIndex + 1}`,
+    }));
+
     if (config.order === 'random') qs = [...qs].sort(() => Math.random() - 0.5);
     qs = qs.slice(0, config.count);
     setActiveQuestions(qs);
     setAnswers(new Map());
     setQuestionIdx(0);
     setPhase('quiz');
-  }, [config]);
+  }, [book.id, config.count, config.order, resolvedPageIndex]);
 
   const recordAnswer = useCallback(
     (record: AnswerRecord) => {
@@ -244,6 +226,9 @@ export function PracticeQuestionsScreen({ book, onBack }: PracticeQuestionsScree
     return (
       <ConfigScreen
         book={book}
+        pageIndex={resolvedPageIndex}
+        defaultPageIndex={defaultPageIndex}
+        onPageIndexChange={setResolvedPageIndex}
         config={config}
         onConfig={setConfig}
         onGenerate={startQuiz}
@@ -252,11 +237,50 @@ export function PracticeQuestionsScreen({ book, onBack }: PracticeQuestionsScree
     );
   }
 
+  if (phase === 'loading') {
+    return (
+      <SafeAreaView style={styles.safe} edges={['top', 'left', 'right', 'bottom']}>
+        <View style={styles.loadingWrap}>
+          <Text style={styles.loadingTitle}>Generating questions…</Text>
+          <Text style={styles.loadingBody}>
+            Reading page {resolvedPageIndex + 1} and writing {config.count} questions.
+          </Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  if (phase === 'error') {
+    return (
+      <SafeAreaView style={styles.safe} edges={['top', 'left', 'right', 'bottom']}>
+        <View style={styles.loadingWrap}>
+          <Icon name="AlertCircle" size={28} color={tokens.colors.error} strokeWidth={1.5} />
+          <Text style={styles.loadingTitle}>Couldn't generate questions</Text>
+          <Text style={styles.loadingBody}>
+            {errorMessage ?? 'The model couldn\'t produce a quiz for this page. Try again in a moment.'}
+          </Text>
+          <Pressable
+            style={({ pressed }) => [styles.errorRetry, pressed && { opacity: 0.85 }]}
+            onPress={() => void startQuiz()}
+          >
+            <Icon name="Refresh" size={14} color={tokens.colors.cream[50]} />
+            <Text style={styles.errorRetryLabel}>Try again</Text>
+          </Pressable>
+          <Pressable onPress={() => setPhase('config')} style={styles.errorBack}>
+            <Text style={styles.errorBackLabel}>Back to options</Text>
+          </Pressable>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
   if (phase === 'quiz') {
     const question = activeQuestions[questionIdx];
     return (
       <QuestionScreen
         key={question.id}
+        book={book}
+        pageIndex={resolvedPageIndex}
         question={question}
         questionIdx={questionIdx}
         total={activeQuestions.length}
@@ -287,6 +311,7 @@ export function PracticeQuestionsScreen({ book, onBack }: PracticeQuestionsScree
   return (
     <ResultsScreen
       book={book}
+      pageIndex={resolvedPageIndex}
       correct={correct}
       partial={partial}
       incorrect={incorrect}
@@ -309,18 +334,28 @@ const COST_MAP: Record<QuizCount, string> = { 5: '~1.5K', 10: '~3K', 15: '~4.5K'
 
 function ConfigScreen({
   book,
+  pageIndex,
+  defaultPageIndex,
+  onPageIndexChange,
   config,
   onConfig,
   onGenerate,
   onClose,
 }: {
   book: Book;
+  pageIndex: number;
+  /** Persisted "current page" used to label the row when the user hasn't overridden it. */
+  defaultPageIndex: number;
+  onPageIndexChange: (idx: number) => void;
   config: QuizConfig;
   onConfig: React.Dispatch<React.SetStateAction<QuizConfig>>;
   onGenerate: () => void;
   onClose: () => void;
 }) {
-  const chNum = book.currentChapter?.match(/\d+/)?.[0] ?? '1';
+  const pageNum = pageIndex + 1;
+  const isCurrentPage = pageIndex === defaultPageIndex;
+  const totalPages = Math.max(1, book.totalPages || 1);
+  const pickerRef = useRef<BottomSheetRef>(null);
 
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'left', 'right', 'bottom']}>
@@ -336,14 +371,22 @@ function ConfigScreen({
         contentContainerStyle={styles.configBody}
         showsVerticalScrollIndicator={false}
       >
-        {/* Chapter */}
-        <SectionBlock label="Chapter">
-          <Pressable style={styles.chapterRow}>
+        {/* Page */}
+        <SectionBlock label="Page">
+          <Pressable
+            style={styles.chapterRow}
+            onPress={() => pickerRef.current?.present()}
+            accessibilityRole="button"
+            accessibilityLabel={`Selected page ${pageNum} of ${totalPages}. Tap to change.`}
+          >
             <View style={{ flex: 1 }}>
               <Text style={styles.chapterTitle}>
-                Chapter {chNum} — Current chapter
+                Page {pageNum}
+                {isCurrentPage ? ' — Current page' : ''}
               </Text>
-              <Text style={styles.chapterSub}>Tap to change</Text>
+              <Text style={styles.chapterSub}>
+                Tap to change · {totalPages} pages total
+              </Text>
             </View>
             <Icon name="ChevronDown" size={14} color={tokens.textColors.muted} strokeWidth={1.5} />
           </Pressable>
@@ -400,13 +443,111 @@ function ConfigScreen({
           <Text style={styles.generateBtnLabel}>Generate questions</Text>
         </Pressable>
       </View>
+
+      <BottomSheet ref={pickerRef} title="Pick a page">
+        <PagePickerBody
+          totalPages={totalPages}
+          selectedIndex={pageIndex}
+          defaultIndex={defaultPageIndex}
+          onSelect={(idx) => {
+            onPageIndexChange(idx);
+            pickerRef.current?.dismiss();
+          }}
+        />
+      </BottomSheet>
     </SafeAreaView>
+  );
+}
+
+// ─── Page picker body ─────────────────────────────────────────────────────────
+
+/**
+ * Vertical list of all pages in the book. Each row is tappable; the
+ * currently-selected one is highlighted in forest, the persisted
+ * "current page" gets a badge so the user knows which one matches their
+ * read position. Auto-scrolls to the selected page when first opened.
+ */
+function PagePickerBody({
+  totalPages,
+  selectedIndex,
+  defaultIndex,
+  onSelect,
+}: {
+  totalPages: number;
+  selectedIndex: number;
+  defaultIndex: number;
+  onSelect: (idx: number) => void;
+}) {
+  const ROW_HEIGHT = 44;
+  const scrollRef = useRef<ScrollView>(null);
+
+  // Center the selection on first render so the user lands on context,
+  // not at page 1. Subsequent re-renders (e.g. after onSelect) leave the
+  // sheet alone — the dismiss + re-present happens after selection.
+  useEffect(() => {
+    requestAnimationFrame(() => {
+      const offset = Math.max(0, selectedIndex * ROW_HEIGHT - ROW_HEIGHT * 2);
+      scrollRef.current?.scrollTo({ y: offset, animated: false });
+    });
+  }, [selectedIndex]);
+
+  return (
+    <ScrollView
+      ref={scrollRef}
+      style={pickerStyles.list}
+      contentContainerStyle={pickerStyles.listContent}
+      showsVerticalScrollIndicator={false}
+      // Cap the picker height so it never eats the whole sheet on a long book.
+      // BottomSheet enableDynamicSizing fits to children, so this gives it
+      // a definite ceiling.
+      nestedScrollEnabled
+    >
+      {Array.from({ length: totalPages }, (_, i) => {
+        const isSelected = i === selectedIndex;
+        const isDefault = i === defaultIndex;
+        return (
+          <Pressable
+            key={i}
+            onPress={() => onSelect(i)}
+            style={[pickerStyles.row, isSelected && pickerStyles.rowSelected]}
+            accessibilityRole="button"
+            accessibilityState={{ selected: isSelected }}
+          >
+            <Text
+              style={[pickerStyles.rowLabel, isSelected && pickerStyles.rowLabelSelected]}
+            >
+              Page {i + 1}
+            </Text>
+            {isDefault && (
+              <Text
+                style={[
+                  pickerStyles.currentBadge,
+                  isSelected && pickerStyles.currentBadgeOnSelected,
+                ]}
+              >
+                Current
+              </Text>
+            )}
+            {isSelected && (
+              <Icon
+                name="Check"
+                size={16}
+                color={tokens.colors.cream[50]}
+                strokeWidth={2.5}
+              />
+            )}
+          </Pressable>
+        );
+      })}
+    </ScrollView>
   );
 }
 
 // ─── Question screen (MCQ + short answer) ─────────────────────────────────────
 
 function QuestionScreen({
+  book,
+  pageIndex,
   question,
   questionIdx,
   total,
@@ -417,6 +558,8 @@ function QuestionScreen({
   onNext,
   onClose,
 }: {
+  book: Book;
+  pageIndex: number;
   question: Question;
   questionIdx: number;
   total: number;
@@ -434,7 +577,7 @@ function QuestionScreen({
     <SafeAreaView style={styles.safe} edges={['top', 'left', 'right', 'bottom']}>
       <PQHeader
         title={`Question ${questionIdx + 1} of ${total}`}
-        sub={`Ch. ${activeQuestions[0] ? '' : ''}The Great Gatsby`}
+        sub={`${book.title} · Page ${pageIndex + 1}`}
         onClose={onClose}
         right={
           !isAnswered ? (
@@ -514,6 +657,16 @@ function MCQBody({
     return styles.optionLetter;
   };
 
+  // Letter glyph color flips to cream when the badge has a coloured fill, so
+  // it stays legible on green/red. Default state uses the muted grey text.
+  const letterTextStyle = (idx: number) => {
+    if (!isAnswered) return styles.optionLetterText;
+    if (idx === question.correctIdx || idx === answer?.selectedIdx) {
+      return [styles.optionLetterText, styles.optionLetterTextOnFill];
+    }
+    return styles.optionLetterText;
+  };
+
   const textStyle = (idx: number) => {
     if (!isAnswered) return styles.optionText;
     if (idx === question.correctIdx) return [styles.optionText, styles.optionTextCorrect];
@@ -535,7 +688,7 @@ function MCQBody({
             disabled={isAnswered}
           >
             <View style={letterStyle(idx)}>
-              <Text style={styles.optionLetterText}>{opt.letter}</Text>
+              <Text style={letterTextStyle(idx)}>{opt.letter}</Text>
             </View>
             <Text style={textStyle(idx)} numberOfLines={3}>
               {opt.text}
@@ -667,6 +820,7 @@ function ShortAnswerBody({
 
 function ResultsScreen({
   book,
+  pageIndex,
   correct,
   partial,
   incorrect,
@@ -681,6 +835,7 @@ function ResultsScreen({
   onDone,
 }: {
   book: Book;
+  pageIndex: number;
   correct: number;
   partial: number;
   incorrect: number;
@@ -694,8 +849,6 @@ function ResultsScreen({
   onRetry: () => void;
   onDone: () => void;
 }) {
-  const chNum = book.currentChapter?.match(/\d+/)?.[0] ?? '1';
-
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'left', 'right', 'bottom']}>
       {/* Results header */}
@@ -703,7 +856,7 @@ function ResultsScreen({
         <Pressable style={styles.resultsClose} onPress={onDone} hitSlop={8}>
           <Icon name="X" size={14} color={tokens.textColors.secondary} />
         </Pressable>
-        <Text style={styles.resultsHeaderTitle}>Results — Ch. {chNum}</Text>
+        <Text style={styles.resultsHeaderTitle}>Results — Page {pageIndex + 1}</Text>
         <View style={{ width: 30 }} />
       </View>
 
@@ -830,7 +983,12 @@ function PQHeader({
       </Pressable>
       <View style={styles.headerCenter}>
         <Text style={styles.headerTitle}>{title}</Text>
-        <Text style={styles.headerSub}>{sub}</Text>
+        {/* Truncate to one line — long book titles otherwise wrap
+            to 3+ lines and push the rest of the layout down.
+            Single-line + tail ellipsis keeps the header compact. */}
+        <Text style={styles.headerSub} numberOfLines={1} ellipsizeMode="tail">
+          {sub}
+        </Text>
       </View>
       {right}
     </View>
@@ -941,6 +1099,55 @@ const styles = StyleSheet.create({
     backgroundColor: tokens.bgColors.canvas,
   },
   scroll: { flex: 1 },
+
+  // Loading + error overlays
+  loadingWrap: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 32,
+    gap: 10,
+  },
+  loadingTitle: {
+    fontFamily: tokens.fonts.display,
+    fontSize: 17,
+    fontWeight: '500',
+    color: tokens.textColors.primary,
+    textAlign: 'center',
+  },
+  loadingBody: {
+    fontFamily: tokens.fonts.ui,
+    fontSize: 13,
+    lineHeight: 19,
+    color: tokens.textColors.muted,
+    textAlign: 'center',
+  },
+  errorRetry: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 18,
+    paddingVertical: 12,
+    borderRadius: 14,
+    backgroundColor: tokens.colors.forest[800],
+    marginTop: 18,
+  },
+  errorRetryLabel: {
+    fontFamily: tokens.fonts.uiMedium,
+    fontSize: 14,
+    fontWeight: '500',
+    color: tokens.colors.cream[50],
+  },
+  errorBack: {
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginTop: 4,
+  },
+  errorBackLabel: {
+    fontFamily: tokens.fonts.uiMedium,
+    fontSize: 13,
+    color: tokens.textColors.muted,
+  },
 
   // Shared header
   header: {
@@ -1177,6 +1384,9 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '500',
     color: tokens.textColors.muted,
+  },
+  optionLetterTextOnFill: {
+    color: tokens.colors.cream[50],
   },
   optionText: {
     flex: 1,
@@ -1584,5 +1794,57 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '500',
     color: tokens.textColors.muted,
+  },
+});
+
+// ─── Page picker styles ───────────────────────────────────────────────────────
+
+const pickerStyles = StyleSheet.create({
+  list: {
+    // Cap the inner scroller so books with hundreds of pages don't push
+    // the bottom sheet to fullscreen. enableDynamicSizing on the sheet
+    // honours this height.
+    maxHeight: 360,
+  },
+  listContent: {
+    paddingBottom: 8,
+  },
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    height: 44,
+    paddingHorizontal: 16,
+    borderRadius: 10,
+    gap: 10,
+  },
+  rowSelected: {
+    backgroundColor: tokens.colors.forest[800],
+  },
+  rowLabel: {
+    flex: 1,
+    fontFamily: tokens.fonts.ui,
+    fontSize: 14,
+    color: tokens.textColors.primary,
+  },
+  rowLabelSelected: {
+    color: tokens.colors.cream[50],
+    fontFamily: tokens.fonts.uiMedium,
+    fontWeight: '500',
+  },
+  currentBadge: {
+    fontFamily: tokens.fonts.uiMedium,
+    fontSize: 10,
+    fontWeight: '500',
+    letterSpacing: 0.06,
+    textTransform: 'uppercase',
+    color: tokens.colors.forest[800],
+    backgroundColor: tokens.colors.forest[50],
+    borderRadius: 4,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+  currentBadgeOnSelected: {
+    color: tokens.colors.cream[50],
+    backgroundColor: 'rgba(255, 255, 255, 0.15)',
   },
 });

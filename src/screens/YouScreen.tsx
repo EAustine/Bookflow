@@ -17,11 +17,24 @@
  *     users get a soft "running low" cue without a dark-pattern nudge.
  */
 
-import { useCallback, useRef, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { Image, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { AccountScreen } from '~/screens/AccountScreen';
+import { HelpFAQScreen } from '~/screens/HelpFAQScreen';
 import { SettingsScreen } from '~/screens/SettingsScreen';
+import {
+  DefaultVoiceScreen,
+  NotificationsScreen,
+  ReadingDisplayScreen,
+  SendFeedbackScreen,
+  TranslationLanguageScreen,
+} from '~/screens/YouDrillScreens';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import {
+  TRANSLATION_LANGUAGE_LABELS,
+  useReaderStore,
+} from '~/stores/readerStore';
+import { VOICE_OPTIONS } from '~/lib/aiAudio';
 import {
   BottomSheet,
   type BottomSheetRef,
@@ -41,6 +54,10 @@ import { tokens } from '~/design/tokens';
 export type YouProfile = {
   name: string;
   email: string;
+  /** Resolved public URL of the user's profile picture (from the
+   *  `avatars` bucket). Null when the user hasn't uploaded one;
+   *  UI falls back to the colored-initials chip in that case. */
+  avatarUrl?: string | null;
 };
 
 export type YouPlanName = 'Free' | 'Standard' | 'Premium';
@@ -74,6 +91,14 @@ export type YouScreenProps = {
   defaultVoiceHint?: string;
   translationLanguageHint?: string;
   appVersion?: string;
+  /**
+   * Fired whenever YouScreen pushes / pops a sub-view (Account &
+   * subscription, Settings, Reading display, etc.). App.tsx uses
+   * this to hide the global mini-player overlay while the user is
+   * deep in their settings — same pattern as `onReaderOpenChange`
+   * on LibraryScreen. Top-level "home" view emits `false`.
+   */
+  onSubViewOpenChange?: (open: boolean) => void;
 };
 
 // Sensible defaults so the screen still reads nicely if a hint isn't wired.
@@ -106,10 +131,43 @@ export function YouScreen({
   defaultVoiceHint = DEFAULTS.defaultVoiceHint,
   translationLanguageHint = DEFAULTS.translationLanguageHint,
   appVersion = DEFAULTS.appVersion,
+  onSubViewOpenChange,
 }: YouScreenProps) {
   const sheetRef = useRef<BottomSheetRef>(null);
   const [signingOut, setSigningOut] = useState(false);
-  const [view, setView] = useState<'home' | 'account' | 'settings'>('home');
+  const [view, setView] = useState<
+    | 'home'
+    | 'account'
+    | 'settings'
+    | 'reading'
+    | 'voice'
+    | 'language'
+    | 'notifications'
+    | 'help'
+    | 'feedback'
+  >('home');
+
+  // Notify the parent shell when the You tab enters/leaves a drill-in
+  // sub-view so the global mini-player overlay can hide. Effect-based
+  // so the callback fires both directions without wrapping every
+  // setView call site.
+  useEffect(() => {
+    onSubViewOpenChange?.(view !== 'home');
+  }, [view, onSubViewOpenChange]);
+
+  // Live preference labels for the trailing hints in the Reading
+  // section. Reading the store here means the hint reflects the
+  // user's current choice without prop drilling.
+  const fontFamily = useReaderStore((s) => s.fontFamily);
+  const fontSize = useReaderStore((s) => s.fontSize);
+  const translationLanguage = useReaderStore((s) => s.translationLanguage);
+  const defaultVoiceId = useReaderStore((s) => s.defaultVoiceId);
+  const liveReadingHint = `${
+    fontFamily === 'serif' ? 'Literata' : fontFamily === 'lexend' ? 'Lexend' : 'Sans'
+  } · ${fontSize}px`;
+  const liveVoiceHint =
+    VOICE_OPTIONS.find((v) => v.id === defaultVoiceId)?.label ?? 'Rachel';
+  const liveLanguageHint = TRANSLATION_LANGUAGE_LABELS[translationLanguage];
 
   const presentSignOutSheet = useCallback(() => {
     sheetRef.current?.present();
@@ -136,7 +194,28 @@ export function YouScreen({
   if (view === 'settings') {
     return <SettingsScreen onBack={() => setView('home')} />;
   }
-
+  if (view === 'reading') {
+    return <ReadingDisplayScreen onBack={() => setView('home')} />;
+  }
+  if (view === 'voice') {
+    return <DefaultVoiceScreen onBack={() => setView('home')} />;
+  }
+  if (view === 'language') {
+    return <TranslationLanguageScreen onBack={() => setView('home')} />;
+  }
+  if (view === 'notifications') {
+    return <NotificationsScreen onBack={() => setView('home')} />;
+  }
+  if (view === 'help') {
+    // HelpFAQScreen (search-enabled, 30 questions across 6 sections)
+    // replaces the previous 5-question HelpScreen stub in
+    // YouDrillScreens. Same onBack contract so the navigation
+    // shape is unchanged.
+    return <HelpFAQScreen onBack={() => setView('home')} />;
+  }
+  if (view === 'feedback') {
+    return <SendFeedbackScreen onBack={() => setView('home')} />;
+  }
   if (view === 'account') {
     return (
       <AccountScreen
@@ -168,25 +247,25 @@ export function YouScreen({
             <ListRow
               leadingIcon="TextSize"
               label="Reading display"
-              hint={readingDisplayHint}
+              hint={liveReadingHint}
               drillsInto
-              onPress={onReadingDisplay ?? (() => {})}
+              onPress={onReadingDisplay ?? (() => setView('reading'))}
             />
             <Divider />
             <ListRow
               leadingIcon="Microphone"
               label="Default voice"
-              hint={defaultVoiceHint}
+              hint={liveVoiceHint}
               drillsInto
-              onPress={onDefaultVoice ?? (() => {})}
+              onPress={onDefaultVoice ?? (() => setView('voice'))}
             />
             <Divider />
             <ListRow
               leadingIcon="Globe"
               label="Translation language"
-              hint={translationLanguageHint}
+              hint={liveLanguageHint}
               drillsInto
-              onPress={onTranslationLanguage ?? (() => {})}
+              onPress={onTranslationLanguage ?? (() => setView('language'))}
             />
           </SettingsSection>
 
@@ -209,7 +288,7 @@ export function YouScreen({
               leadingIcon="Bell"
               label="Notifications"
               drillsInto
-              onPress={onNotifications ?? (() => {})}
+              onPress={onNotifications ?? (() => setView('notifications'))}
             />
             <Divider />
             <ListRow
@@ -225,14 +304,14 @@ export function YouScreen({
               leadingIcon="HelpCircle"
               label="Help & FAQ"
               drillsInto
-              onPress={onHelp ?? (() => {})}
+              onPress={onHelp ?? (() => setView('help'))}
             />
             <Divider />
             <ListRow
               leadingIcon="MessageCircle"
               label="Send feedback"
               drillsInto
-              onPress={onSendFeedback ?? (() => {})}
+              onPress={onSendFeedback ?? (() => setView('feedback'))}
             />
           </SettingsSection>
 
@@ -278,6 +357,14 @@ function ProfileHeader({
   onPress: () => void;
 }) {
   const initials = getInitials(profile.name, profile.email);
+  // Mirrors AccountScreen's ProfileSection — render the avatar
+  // image when present, fall back to initials when the URL is null
+  // OR the Image element fails to load (broken signed URL, stale
+  // cache, missing object). The `console.warn` on failure tells us
+  // the exact URL that broke so we can debug the storage / RLS
+  // configuration without guessing.
+  const [avatarLoadFailed, setAvatarLoadFailed] = useState(false);
+  const showImage = !!profile.avatarUrl && !avatarLoadFailed;
   return (
     <Pressable
       accessibilityRole="button"
@@ -289,7 +376,25 @@ function ProfileHeader({
       ]}
     >
       <View style={styles.avatar}>
-        <Text style={styles.avatarText}>{initials}</Text>
+        {showImage ? (
+          <Image
+            key={profile.avatarUrl ?? 'no-avatar'}
+            source={{ uri: profile.avatarUrl ?? undefined }}
+            style={styles.avatarImage}
+            resizeMode="cover"
+            onError={(e) => {
+              console.warn(
+                '[avatar/you] failed to load',
+                profile.avatarUrl,
+                e.nativeEvent?.error,
+              );
+              setAvatarLoadFailed(true);
+            }}
+            onLoad={() => setAvatarLoadFailed(false)}
+          />
+        ) : (
+          <Text style={styles.avatarText}>{initials}</Text>
+        )}
       </View>
       <View style={styles.profileMeta}>
         <Text variant="heading-sm" numberOfLines={1}>
@@ -540,6 +645,11 @@ const styles = StyleSheet.create({
     backgroundColor: tokens.colors.forest[800],
     alignItems: 'center',
     justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  avatarImage: {
+    width: 52,
+    height: 52,
   },
   avatarText: {
     fontFamily: tokens.fonts.display,

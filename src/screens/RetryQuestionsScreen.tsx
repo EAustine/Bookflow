@@ -12,6 +12,7 @@ import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Icon, Text } from '~/components';
 import { tokens } from '~/design/tokens';
+import { useBackHandler } from '~/lib/useBackHandler';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -26,51 +27,43 @@ export type RetryQuestion = {
 export type RetryOrder = 'sequential' | 'shuffle';
 
 export type RetryQuestionsScreenProps = {
-  chapterLabel: string; // e.g. "Ch. 4"
+  /** e.g. "Ch. 4" — used in the header. Required so the user knows
+   * which session they're retrying. */
+  chapterLabel: string;
+  /** The questions the user got wrong or partially right in the
+   * original session. Required: there's no sensible fallback (the
+   * old "Gatsby" mock list would have shipped to users with no
+   * relation to whatever book they were practising). */
   questions: RetryQuestion[];
   onClose: () => void;
   onStart: (config: { order: RetryOrder; questionIds: string[] }) => void;
 };
-
-// ─── Mock data ────────────────────────────────────────────────────────────────
-
-const MOCK_QUESTIONS: RetryQuestion[] = [
-  {
-    id: 'q1',
-    text: 'Who does Gatsby describe as fixing the 1919 World Series?',
-    failureType: 'wrong',
-  },
-  {
-    id: 'q2',
-    text: 'Why did Gatsby buy his house in West Egg?',
-    failureType: 'partial',
-  },
-  {
-    id: 'q3',
-    text: "What does Gatsby's guest list reveal about his social world?",
-    failureType: 'partial',
-  },
-];
 
 // Token-system gap: success palette
 const SUCCESS_COLOR = '#2D7A4F';
 const SUCCESS_BG = '#E8F4ED';
 const SUCCESS_BORDER = '#A8D5B9';
 
-const ERROR_COLOR = '#B5453A';
-const ERROR_BG = '#FBEAE7';
+const ERROR_COLOR = tokens.colors.error;
+const ERROR_BG = tokens.colors.errorBg;
 
-const WARN_COLOR = '#A0692A';
-const WARN_BG = '#FDF3E3';
+const WARN_COLOR = tokens.colors.warn;
+const WARN_BG = tokens.colors.warnBg;
 
 // ─── Screen ───────────────────────────────────────────────────────────────────
 
 export function RetryQuestionsScreen({
-  chapterLabel = 'Ch. 4',
-  questions = MOCK_QUESTIONS,
+  chapterLabel,
+  questions,
   onClose,
   onStart,
-}: Partial<RetryQuestionsScreenProps> & Pick<RetryQuestionsScreenProps, 'onClose' | 'onStart'>) {
+}: RetryQuestionsScreenProps) {
+  // Hardware-back closes this overlay rather than escaping all the
+  // way out to Library through the parent reader's useBackHandler.
+  useBackHandler(() => {
+    onClose();
+    return true;
+  });
   const [order, setOrder] = useState<RetryOrder>('sequential');
 
   const cycleOrder = () =>

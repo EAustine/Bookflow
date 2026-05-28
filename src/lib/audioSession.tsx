@@ -339,9 +339,23 @@ export function AudioSessionProvider({ children }: { children: ReactNode }) {
     setCoverUrl(cached);
     if (cached) return; // already resolved — nothing async to do
     let cancelled = false;
-    void resolveCoverUrl(path).then((url) => {
-      if (!cancelled) setCoverUrl(url);
-    });
+    // `.catch` guard. resolveCoverUrl hits Supabase Storage which
+    // throws "TypeError: Network request failed" when offline. The
+    // raw `void promise.then(...)` form had no rejection handler,
+    // which propagated to React Native's LogBox as a red error
+    // toast on the Listen screen any time the user opened it
+    // without a network. The cover is non-essential here (we have
+    // a colored placeholder fallback), so a silent catch + Metro
+    // warn is the right behaviour.
+    void resolveCoverUrl(path)
+      .then((url) => {
+        if (!cancelled) setCoverUrl(url);
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          console.warn('[audioSession] resolveCoverUrl failed:', err);
+        }
+      });
     return () => {
       cancelled = true;
     };
@@ -560,10 +574,19 @@ export function AudioSessionProvider({ children }: { children: ReactNode }) {
   // realtime fan-out further.
   useEffect(() => {
     if (!book) return;
+    // .catch guard — persistReadingPosition writes to Supabase
+    // and the promise rejects offline with "TypeError: Network
+    // request failed". The result is best-effort progress
+    // tracking; failing silently is correct behaviour. Without
+    // the .catch the rejection propagated to LogBox as a red
+    // toast on the Listen screen whenever the user changed page
+    // while offline. Position will sync next time we're online.
     void persistReadingPosition({
       bookId: book.id,
       pageIndex,
       position: 0,
+    }).catch((err) => {
+      console.warn('[audioSession] persistReadingPosition failed:', err);
     });
   }, [book?.id, pageIndex]);
 
@@ -599,10 +622,13 @@ export function AudioSessionProvider({ children }: { children: ReactNode }) {
       // even if the user has never opened it in the reader. Without
       // this, listening alone wouldn't bump the timestamps and the
       // resume card stayed empty after audio-only sessions.
+      // .catch — see useEffect above for the LogBox-quiet rationale.
       void persistReadingPosition({
         bookId: nextBook.id,
         pageIndex: targetPage,
         position: 0,
+      }).catch((err) => {
+        console.warn('[audioSession] start persist failed:', err);
       });
       // AsyncStorage-backed fallback for the resume card. The books
       // table update above is the canonical signal, but a cache /

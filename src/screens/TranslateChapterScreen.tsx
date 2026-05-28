@@ -30,6 +30,7 @@ import {
   useTranslation,
   type TranslationLanguage,
 } from '~/lib/aiTranslate';
+import { formatNetworkError } from '~/lib/networkErrors';
 import { useBackHandler } from '~/lib/useBackHandler';
 
 export type TranslateChapterScreenProps = {
@@ -92,10 +93,28 @@ export function TranslateChapterScreen({
   const loading = state.status === 'loading';
   const failed = state.status === 'error';
   const translation = state.status === 'success' ? state.translation : null;
-  const errorMessage =
-    state.status === 'error'
-      ? state.errorMessage ?? translateErrorMessage(state.errorCode)
-      : null;
+  // Mirror the AIToolsScreen / Practice error-message priority:
+  //   1. Network-shaped raw messages → shared friendly mapper.
+  //   2. Domain code → translateErrorMessage (handles
+  //      missing_translation, page_too_short, etc).
+  //   3. Other raw → friendly fallback via formatNetworkError.
+  // Replaces the legacy `errorMessage ?? translateErrorMessage(code)`
+  // ordering which leaked raw network errors when the AI client
+  // threw mid-fetch.
+  const errorMessage = (() => {
+    if (state.status !== 'error') return null;
+    const raw = state.errorMessage;
+    if (raw && /network request failed|network error|failed to fetch|abort|timeout/i.test(raw)) {
+      return formatNetworkError(raw, 'translating this page');
+    }
+    if (state.errorCode) {
+      return translateErrorMessage(state.errorCode);
+    }
+    if (raw) {
+      return formatNetworkError(raw, 'translating this page');
+    }
+    return null;
+  })();
 
   const activeLabel =
     COMMON_LANGUAGES.find((l) => l.code === targetLanguage)?.label ??

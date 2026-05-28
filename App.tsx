@@ -25,7 +25,16 @@ import {
 } from '@expo-google-fonts/geist';
 import { Lexend_400Regular } from '@expo-google-fonts/lexend';
 import { Literata_400Regular } from '@expo-google-fonts/literata';
+import { installRejectionTracker } from '~/lib/installRejectionTracker';
 import { configureRevenueCat } from '~/lib/revenuecat';
+
+// Install the global unhandled-rejection silencer for network
+// errors. Idempotent and side-effect free unless a rejection fires.
+// Has to run at module evaluation time — before any provider
+// effects mount network fetches — so the Hermes tracker is hooked
+// up before the first rejection event lands. See
+// `installRejectionTracker.ts` for the full rationale.
+installRejectionTracker();
 import {
   type AuthExchangeErrorKind,
   completeAuthCallback,
@@ -47,7 +56,7 @@ import {
   useAudioStable,
 } from '~/lib/audioSession';
 import { VOICE_OPTIONS } from '~/lib/aiAudio';
-import { useBooks } from '~/hooks/useBooks';
+import { BooksProvider, useBooks } from '~/hooks/useBooks';
 import { useBackHandler } from '~/lib/useBackHandler';
 import { useCurrentUser } from '~/hooks/useCurrentUser';
 import { useMonthlyListenStats } from '~/lib/readingStats';
@@ -489,15 +498,30 @@ export default function App() {
               />
             )}
             {stage === 'library' && (
-              <LibraryStage
-                activeTab={activeTab}
-                setActiveTab={setActiveTab}
-                userName={signupName}
-                onSignOut={handleSignOut}
-                onUpgrade={() => setPaywallVisible(true)}
-                listenState={listenState}
-                setListenState={setListenState}
-              />
+              // BooksProvider wraps LibraryStage so the user's library
+              // is fetched ONCE per signed-in session and held in
+              // context. Without this, Library / Discover / Listen /
+              // ListenHistory each mounted their own useBooks
+              // instance, and tab switches tore down and re-hydrated
+              // the books list on every navigation — a visible
+              // "shimmer + re-fetch" pattern that made the Library
+              // tab feel slow whenever the user came back to it.
+              //
+              // Mounts at the library stage boundary (not at
+              // SafeAreaProvider) so unmounting on sign-out cleans up
+              // the realtime subscription and AsyncStorage cache
+              // handles — fresh session starts fresh.
+              <BooksProvider>
+                <LibraryStage
+                  activeTab={activeTab}
+                  setActiveTab={setActiveTab}
+                  userName={signupName}
+                  onSignOut={handleSignOut}
+                  onUpgrade={() => setPaywallVisible(true)}
+                  listenState={listenState}
+                  setListenState={setListenState}
+                />
+              </BooksProvider>
             )}
             {paywallVisible && (
               <View style={styles.paywallOverlay}>
@@ -596,11 +620,19 @@ function buildNowPlayingProps(
     // book first, then up to two others sorted by lastReadAt desc, so
     // the user can quickly switch sessions without leaving the player.
     recentlyListened: (() => {
+      // Recently-listened row builder. Each row carries the book's
+      // coverColor + coverStoragePath so the player UI can render
+      // an actual cover thumbnail instead of just colored initials
+      // — the row component lazily resolves the storage path via
+      // `resolveCoverUrl` (cached) and falls back to the colored
+      // placeholder if the resolve fails offline.
       const activeRow = {
         id: book.id,
         bookTitle: book.title,
         meta: audio.isPlaying ? 'Playing now' : 'Paused',
         initials: (book.title || '??').slice(0, 2).toUpperCase(),
+        coverColor: book.coverColor,
+        coverStoragePath: book.coverStoragePath ?? null,
       };
       const others = recentBooks
         .filter((b) => b.id !== book.id)
@@ -620,6 +652,8 @@ function buildNowPlayingProps(
                 ? `${b.progressPercent}% done`
                 : 'Not started',
           initials: (b.title || '??').slice(0, 2).toUpperCase(),
+          coverColor: b.coverColor,
+          coverStoragePath: b.coverStoragePath ?? null,
         }));
       return [activeRow, ...others];
     })(),

@@ -29,6 +29,8 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 import { tokens } from '~/design/tokens';
+import { formatNetworkError } from '~/lib/networkErrors';
+import { useBackHandler } from '~/lib/useBackHandler';
 import type { Book } from '~/types/book';
 import type { BottomSheetRef } from '~/components/BottomSheet';
 import { useSummary } from '~/lib/aiSummary';
@@ -252,6 +254,14 @@ export function SummaryScreen({
    */
   pageIndex?: number;
 }) {
+  // Route Android hardware-back through the in-screen chevron's
+  // onBack so it lands on the reader (which is what set aiMode=this
+  // in the first place) rather than falling through to the reader's
+  // own useBackHandler, which would take the user out to Library.
+  useBackHandler(() => {
+    onBack();
+    return true;
+  });
   const [length, setLength] = useState<SummaryLength>('standard');
   const [scope, setScope] = useState<'chapter' | 'whole-book'>('chapter');
   // The whole-book scope is gated on an explicit confirm (credit cost
@@ -296,10 +306,34 @@ export function SummaryScreen({
   const failed = summaryState.status === 'error';
   const loading = summaryState.status === 'loading';
   const summary = summaryState.status === 'success' ? summaryState.summary : null;
-  const errorMessage =
-    summaryState.status === 'error'
-      ? summaryState.errorMessage ?? errorCodeToMessage(summaryState.errorCode)
-      : null;
+  // Error-message resolution order:
+  //   1. If the raw errorMessage looks like a network-layer failure
+  //      (offline, timeout, fetch failed), surface the shared
+  //      friendly copy — "You're offline" is more actionable than
+  //      "Network issue talking to the summary service."
+  //   2. Otherwise prefer the AI-hook's code-mapped message — those
+  //      cover domain-specific cases (page_too_short, llm_failed)
+  //      with copy more useful than a generic network message.
+  //   3. Final fallback: run any remaining raw errorMessage through
+  //      the formatter so we never surface stack-trace-shaped text
+  //      to the user.
+  // The legacy ordering let raw errorMessage shadow everything,
+  // which surfaced "TypeError: Network request failed" verbatim
+  // when the AI client failed mid-fetch.
+  const errorMessage = (() => {
+    if (summaryState.status !== 'error') return null;
+    const raw = summaryState.errorMessage;
+    if (raw && /network request failed|network error|failed to fetch|abort|timeout/i.test(raw)) {
+      return formatNetworkError(raw, 'generating the summary');
+    }
+    if (summaryState.errorCode) {
+      return errorCodeToMessage(summaryState.errorCode);
+    }
+    if (raw) {
+      return formatNetworkError(raw, 'generating the summary');
+    }
+    return null;
+  })();
 
   return (
     <SafeAreaView style={sumStyles.safe} edges={['top', 'left', 'right', 'bottom']}>
@@ -317,7 +351,12 @@ export function SummaryScreen({
           <Text style={sumStyles.headerTitle}>
             {scope === 'whole-book' ? 'Whole-book summary' : 'Page summary'}
           </Text>
-          <Text style={sumStyles.headerSub}>
+          {/* Truncate to one line — long book titles like
+              "Expositions of Holy Scripture / Second Corinthians,
+              Galatians, …" wrap to 3+ lines and push the rest of
+              the layout down. Single-line + tail ellipsis keeps the
+              header compact and predictable. */}
+          <Text style={sumStyles.headerSub} numberOfLines={1} ellipsizeMode="tail">
             {scope === 'whole-book'
               ? `${book.title} · all ${book.totalPages || ''} pages`
               : `${book.title} · Page ${resolvedPageIndex + 1}`}
@@ -891,6 +930,13 @@ export function ChatScreen({
   book: Book;
   onBack: () => void;
 }) {
+  // Hardware-back returns to the reader (clears aiMode in the
+  // parent), not to Library — see SummaryScreen above for the
+  // full reasoning.
+  useBackHandler(() => {
+    onBack();
+    return true;
+  });
   const { isConnected } = useNetworkState();
   const isOffline = !isConnected;
 
@@ -966,7 +1012,10 @@ export function ChatScreen({
         </Pressable>
         <View style={chatStyles.headerCenter}>
           <Text style={chatStyles.headerTitle}>Ask about the book</Text>
-          <Text style={chatStyles.headerSub}>{book.title}</Text>
+          {/* Truncate — see summary header comment for the why. */}
+          <Text style={chatStyles.headerSub} numberOfLines={1} ellipsizeMode="tail">
+            {book.title}
+          </Text>
         </View>
         {/* Right slot intentionally empty — there's no chat-level
             settings or help surface yet. Keep a width-matched

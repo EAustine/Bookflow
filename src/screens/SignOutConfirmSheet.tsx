@@ -29,10 +29,10 @@ export type SignOutConfirmSheetProps = {
   onDismiss?: () => void;
 };
 
-const ERROR_FG = '#B5453A';
-const ERROR_BG = '#FBEAE7';
-const SUCCESS_FG = '#2D7A4F';
-const SUCCESS_BG = '#E8F4ED';
+const ERROR_FG = tokens.colors.error;
+const ERROR_BG = tokens.colors.errorBg;
+const SUCCESS_FG = tokens.colors.success;
+const SUCCESS_BG = tokens.colors.successBg;
 
 const PRESERVED: string[] = [
   'Your books, progress, and highlights are cloud-synced',

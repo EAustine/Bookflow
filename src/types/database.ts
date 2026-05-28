@@ -41,32 +41,35 @@ export type Database = {
     Tables: {
       audio_cache: {
         Row: {
-          chapter_id: string
+          alignment_path: string | null
           duration_seconds: number | null
           generated_at: string | null
+          page_id: string
           storage_path: string | null
           voice_id: string
         }
         Insert: {
-          chapter_id: string
+          alignment_path?: string | null
           duration_seconds?: number | null
           generated_at?: string | null
+          page_id: string
           storage_path?: string | null
           voice_id: string
         }
         Update: {
-          chapter_id?: string
+          alignment_path?: string | null
           duration_seconds?: number | null
           generated_at?: string | null
+          page_id?: string
           storage_path?: string | null
           voice_id?: string
         }
         Relationships: [
           {
             foreignKeyName: "audio_cache_chapter_id_fkey"
-            columns: ["chapter_id"]
+            columns: ["page_id"]
             isOneToOne: false
-            referencedRelation: "chapters"
+            referencedRelation: "pages"
             referencedColumns: ["id"]
           },
         ]
@@ -76,42 +79,60 @@ export type Database = {
           author: string | null
           cover_storage_path: string | null
           created_at: string | null
+          file_storage_path: string | null
           file_type: string | null
           id: string
-          last_read_chapter: number | null
+          last_read_at: string | null
+          last_read_page: number | null
           last_read_position: number | null
+          processing_message: string | null
           processing_status: string | null
           source: string | null
+          source_url: string | null
+          suggested_questions: string[] | null
           title: string
           total_chapters: number | null
+          total_pages: number | null
           user_id: string | null
         }
         Insert: {
           author?: string | null
           cover_storage_path?: string | null
           created_at?: string | null
+          file_storage_path?: string | null
           file_type?: string | null
           id?: string
-          last_read_chapter?: number | null
+          last_read_at?: string | null
+          last_read_page?: number | null
           last_read_position?: number | null
+          processing_message?: string | null
           processing_status?: string | null
           source?: string | null
+          source_url?: string | null
+          suggested_questions?: string[] | null
           title: string
           total_chapters?: number | null
+          total_pages?: number | null
           user_id?: string | null
         }
         Update: {
           author?: string | null
           cover_storage_path?: string | null
           created_at?: string | null
+          file_storage_path?: string | null
           file_type?: string | null
           id?: string
-          last_read_chapter?: number | null
+          last_read_at?: string | null
+          last_read_page?: number | null
           last_read_position?: number | null
+          processing_message?: string | null
           processing_status?: string | null
           source?: string | null
+          source_url?: string | null
+          suggested_questions?: string[] | null
           title?: string
           total_chapters?: number | null
+          total_pages?: number | null
           user_id?: string | null
         }
         Relationships: [
@@ -124,67 +145,29 @@ export type Database = {
           },
         ]
       }
-      chapters: {
-        Row: {
-          book_id: string | null
-          chapter_index: number
-          content: string | null
-          created_at: string | null
-          id: string
-          title: string | null
-          word_count: number | null
-        }
-        Insert: {
-          book_id?: string | null
-          chapter_index: number
-          content?: string | null
-          created_at?: string | null
-          id?: string
-          title?: string | null
-          word_count?: number | null
-        }
-        Update: {
-          book_id?: string | null
-          chapter_index?: number
-          content?: string | null
-          created_at?: string | null
-          id?: string
-          title?: string | null
-          word_count?: number | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "chapters_book_id_fkey"
-            columns: ["book_id"]
-            isOneToOne: false
-            referencedRelation: "books"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
       chunk_embeddings: {
         Row: {
           book_id: string | null
-          chapter_id: string | null
           chunk_text: string | null
           embedding: string | null
           id: string
+          page_id: string | null
           page_number: number | null
         }
         Insert: {
           book_id?: string | null
-          chapter_id?: string | null
           chunk_text?: string | null
           embedding?: string | null
           id?: string
+          page_id?: string | null
           page_number?: number | null
         }
         Update: {
           book_id?: string | null
-          chapter_id?: string | null
           chunk_text?: string | null
           embedding?: string | null
           id?: string
+          page_id?: string | null
           page_number?: number | null
         }
         Relationships: [
@@ -197,9 +180,9 @@ export type Database = {
           },
           {
             foreignKeyName: "chunk_embeddings_chapter_id_fkey"
-            columns: ["chapter_id"]
+            columns: ["page_id"]
             isOneToOne: false
-            referencedRelation: "chapters"
+            referencedRelation: "pages"
             referencedColumns: ["id"]
           },
         ]
@@ -233,6 +216,67 @@ export type Database = {
           },
           {
             foreignKeyName: "conversations_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      highlights: {
+        Row: {
+          book_id: string | null
+          color: string | null
+          created_at: string
+          id: string
+          kind: string
+          note: string | null
+          page_id: string | null
+          page_index: number | null
+          text: string
+          user_id: string | null
+        }
+        Insert: {
+          book_id?: string | null
+          color?: string | null
+          created_at?: string
+          id?: string
+          kind: string
+          note?: string | null
+          page_id?: string | null
+          page_index?: number | null
+          text: string
+          user_id?: string | null
+        }
+        Update: {
+          book_id?: string | null
+          color?: string | null
+          created_at?: string
+          id?: string
+          kind?: string
+          note?: string | null
+          page_id?: string | null
+          page_index?: number | null
+          text?: string
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "highlights_book_id_fkey"
+            columns: ["book_id"]
+            isOneToOne: false
+            referencedRelation: "books"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "highlights_chapter_id_fkey"
+            columns: ["page_id"]
+            isOneToOne: false
+            referencedRelation: "pages"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "highlights_user_id_fkey"
             columns: ["user_id"]
             isOneToOne: false
             referencedRelation: "profiles"
@@ -277,7 +321,7 @@ export type Database = {
             foreignKeyName: "listen_sessions_chapter_id_fkey"
             columns: ["chapter_id"]
             isOneToOne: false
-            referencedRelation: "chapters"
+            referencedRelation: "pages"
             referencedColumns: ["id"]
           },
           {
@@ -327,12 +371,89 @@ export type Database = {
           },
         ]
       }
+      pages: {
+        Row: {
+          book_id: string | null
+          content: string | null
+          content_tsv: unknown
+          created_at: string | null
+          html_content: string | null
+          id: string
+          page_index: number
+          pdf_page_number: number | null
+          title: string | null
+          word_count: number | null
+        }
+        Insert: {
+          book_id?: string | null
+          content?: string | null
+          content_tsv?: unknown
+          created_at?: string | null
+          html_content?: string | null
+          id?: string
+          page_index: number
+          pdf_page_number?: number | null
+          title?: string | null
+          word_count?: number | null
+        }
+        Update: {
+          book_id?: string | null
+          content?: string | null
+          content_tsv?: unknown
+          created_at?: string | null
+          html_content?: string | null
+          id?: string
+          page_index?: number
+          pdf_page_number?: number | null
+          title?: string | null
+          word_count?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "chapters_book_id_fkey"
+            columns: ["book_id"]
+            isOneToOne: false
+            referencedRelation: "books"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      practice_questions: {
+        Row: {
+          count: number
+          generated_at: string
+          page_id: string
+          questions: Json
+        }
+        Insert: {
+          count: number
+          generated_at?: string
+          page_id: string
+          questions: Json
+        }
+        Update: {
+          count?: number
+          generated_at?: string
+          page_id?: string
+          questions?: Json
+        }
+        Relationships: [
+          {
+            foreignKeyName: "practice_questions_page_id_fkey"
+            columns: ["page_id"]
+            isOneToOne: false
+            referencedRelation: "pages"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       profiles: {
         Row: {
           ai_credits_limit: number | null
           ai_credits_used: number | null
           audio_seconds_limit: number | null
           audio_seconds_used: number | null
+          avatar_storage_path: string | null
           created_at: string | null
           email: string | null
           full_name: string | null
@@ -349,6 +470,7 @@ export type Database = {
           ai_credits_used?: number | null
           audio_seconds_limit?: number | null
           audio_seconds_used?: number | null
+          avatar_storage_path?: string | null
           created_at?: string | null
           email?: string | null
           full_name?: string | null
@@ -365,6 +487,7 @@ export type Database = {
           ai_credits_used?: number | null
           audio_seconds_limit?: number | null
           audio_seconds_used?: number | null
+          avatar_storage_path?: string | null
           created_at?: string | null
           email?: string | null
           full_name?: string | null
@@ -378,37 +501,127 @@ export type Database = {
         }
         Relationships: []
       }
+      reading_sessions: {
+        Row: {
+          book_id: string | null
+          created_at: string
+          duration_seconds: number | null
+          ended_at: string | null
+          id: string
+          page_id: string | null
+          page_index: number | null
+          started_at: string
+          user_id: string | null
+          words_read: number | null
+        }
+        Insert: {
+          book_id?: string | null
+          created_at?: string
+          duration_seconds?: number | null
+          ended_at?: string | null
+          id?: string
+          page_id?: string | null
+          page_index?: number | null
+          started_at?: string
+          user_id?: string | null
+          words_read?: number | null
+        }
+        Update: {
+          book_id?: string | null
+          created_at?: string
+          duration_seconds?: number | null
+          ended_at?: string | null
+          id?: string
+          page_id?: string | null
+          page_index?: number | null
+          started_at?: string
+          user_id?: string | null
+          words_read?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "reading_sessions_book_id_fkey"
+            columns: ["book_id"]
+            isOneToOne: false
+            referencedRelation: "books"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "reading_sessions_chapter_id_fkey"
+            columns: ["page_id"]
+            isOneToOne: false
+            referencedRelation: "pages"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "reading_sessions_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       summaries: {
         Row: {
-          chapter_id: string
           content: string | null
           generated_at: string | null
           length: string
+          page_id: string
           thumbs_down_reason: string | null
           thumbs_up: boolean | null
         }
         Insert: {
-          chapter_id: string
           content?: string | null
           generated_at?: string | null
           length: string
+          page_id: string
           thumbs_down_reason?: string | null
           thumbs_up?: boolean | null
         }
         Update: {
-          chapter_id?: string
           content?: string | null
           generated_at?: string | null
           length?: string
+          page_id?: string
           thumbs_down_reason?: string | null
           thumbs_up?: boolean | null
         }
         Relationships: [
           {
             foreignKeyName: "summaries_chapter_id_fkey"
-            columns: ["chapter_id"]
+            columns: ["page_id"]
             isOneToOne: false
-            referencedRelation: "chapters"
+            referencedRelation: "pages"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      translations: {
+        Row: {
+          content: string
+          generated_at: string
+          page_id: string
+          target_language: string
+        }
+        Insert: {
+          content: string
+          generated_at?: string
+          page_id: string
+          target_language: string
+        }
+        Update: {
+          content?: string
+          generated_at?: string
+          page_id?: string
+          target_language?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "translations_page_id_fkey"
+            columns: ["page_id"]
+            isOneToOne: false
+            referencedRelation: "pages"
             referencedColumns: ["id"]
           },
         ]

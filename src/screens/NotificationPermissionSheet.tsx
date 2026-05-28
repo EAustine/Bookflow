@@ -65,7 +65,7 @@ function buildConfig(
         badgeText: `Chapter ${chapterNum} finished`,
         triggerIcon: 'Star',
         iconBg: tokens.colors.amber[200],
-        iconColor: '#A0692A',
+        iconColor: tokens.colors.warn,
         title: `Chapter ${chapterNum} done — keep the momentum`,
         sub: `That's the first chapter of ${bookTitle}. A daily reminder makes it easier to come back. You choose when.`,
         previewBody: `Chapter ${chapterNum + 1} of ${bookTitle} is waiting. Pick up where you left off. 📖`,
@@ -158,9 +158,9 @@ export const NotificationPermissionSheet = forwardRef<
             <Text style={styles.notifBody}>{config.previewBody}</Text>
             <View style={styles.notifTimeRow}>
               <Text style={styles.notifTime}>Every day at 8:00 PM</Text>
-              <Pressable onPress={() => {}} hitSlop={8}>
-                <Text style={styles.notifChange}>Change</Text>
-              </Pressable>
+              {/* "Change" button removed — there's no time picker
+                  wired yet, so the reminder time is locked to 8 PM
+                  for everyone. Re-add when the picker lands. */}
             </View>
           </View>
         </View>

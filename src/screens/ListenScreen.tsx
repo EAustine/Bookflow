@@ -97,7 +97,14 @@ export function ListenScreen({ book, onBack, onMinimize, pageIndex }: ListenScre
   // follow along visually. We're NOT highlighting the current word
   // (OpenAI tts-1 doesn't expose word timestamps); the original
   // bimodal-paragraph design assumed that and is removed for now.
-  const { data: dbPage } = usePage(book.id, resolvedPageIndex);
+  // We also surface the hook's loading/error state so we can show
+  // a network-aware fallback when the page text fails to load while
+  // audio playback is unaffected (cached signed URL).
+  const {
+    data: dbPage,
+    loading: dbPageLoading,
+    error: dbPageError,
+  } = usePage(book.id, resolvedPageIndex);
   // Page list for the picker sheet — small payload (no content), so
   // pulling the full list per book is fine. Empty for mock books.
   const { pages: pageList } = usePageList(book.id);
@@ -294,12 +301,38 @@ export function ListenScreen({ book, onBack, onMinimize, pageIndex }: ListenScre
         {/* Bimodal page text. When we have ElevenLabs alignment, the
             currently-spoken word renders with an amber background;
             other paragraphs dim. Without alignment (older cached
-            audio), we fall back to plain static text. */}
-        <BimodalText
-          content={dbPage?.content ?? ''}
-          alignment={audio.alignment}
-          currentCharIndex={audio.currentCharIndex}
-        />
+            audio), we fall back to plain static text.
+
+            When the page row can't load (network failed while
+            opening this page, or the row truly hasn't synced
+            yet) we surface a friendly inline message in the text
+            frame so the user understands why the read-along is
+            empty. Audio can still play from cache — the text and
+            audio are independent data paths — so we tell the user
+            specifically about the text. */}
+        {dbPage?.content ? (
+          <BimodalText
+            content={dbPage.content}
+            alignment={audio.alignment}
+            currentCharIndex={audio.currentCharIndex}
+          />
+        ) : !dbPageLoading && (dbPageError || !dbPage) ? (
+          <View style={styles.textFallback}>
+            <Icon
+              name="AlertCircle"
+              size={18}
+              color={tokens.textColors.secondary}
+              strokeWidth={1.75}
+            />
+            <Text style={styles.textFallbackTitle}>
+              Audio available, text couldn't load
+            </Text>
+            <Text style={styles.textFallbackBody}>
+              Check your connection and pull to refresh. Playback will
+              continue while you're offline.
+            </Text>
+          </View>
+        ) : null}
       </ScrollView>
 
       {/* Audio player */}
@@ -343,6 +376,18 @@ export function ListenScreen({ book, onBack, onMinimize, pageIndex }: ListenScre
           </View>
           <Text style={styles.scrubTime}>{formatTime(totalSecs)}</Text>
         </View>
+
+        {/* Audio error banner. The audio session pre-formats
+            errorMessage via formatNetworkError at its source
+            (aiAudio.ts) so we display it as-is rather than mapping
+            it a second time. Sits above the transport so the user
+            sees it before they try to tap the disabled play button. */}
+        {status.errorMessage ? (
+          <View style={styles.audioErrorRow}>
+            <Icon name="AlertCircle" size={16} color={tokens.colors.error} strokeWidth={2} />
+            <Text style={styles.audioErrorText}>{status.errorMessage}</Text>
+          </View>
+        ) : null}
 
         {/* Transport */}
         <View style={styles.transport}>
@@ -1371,6 +1416,30 @@ const styles = StyleSheet.create({
     color: tokens.colors.ink[300],
     marginBottom: tokens.space.lg,
   },
+  // Inline fallback shown in the text frame when the page row
+  // can't load (offline / Supabase row not synced yet) while
+  // audio is still playable from cache. Keeps the user oriented:
+  // "the playback isn't broken, just the read-along text."
+  textFallback: {
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 24,
+    paddingVertical: 40,
+  },
+  textFallbackTitle: {
+    fontFamily: tokens.fonts.uiMedium,
+    fontSize: 14,
+    fontWeight: '500',
+    color: tokens.textColors.primary,
+    textAlign: 'center',
+  },
+  textFallbackBody: {
+    fontFamily: tokens.fonts.ui,
+    fontSize: 13,
+    color: tokens.textColors.secondary,
+    textAlign: 'center',
+    lineHeight: 18,
+  },
   paragraph: {
     fontFamily: 'Literata_400Regular',
     fontSize: 16,
@@ -1488,6 +1557,32 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: 8,
     marginBottom: 12,
+  },
+  // Inline error banner shown above the transport when audio
+  // generation / playback fails. Pre-this-row the play button
+  // simply went disabled with no explanation; the user couldn't
+  // tell whether they tapped wrong, the file was missing, or the
+  // network had dropped. We render the friendly mapped message
+  // so they at least know it's a network issue worth retrying.
+  audioErrorRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginHorizontal: 8,
+    marginBottom: 12,
+    borderRadius: 12,
+    backgroundColor: tokens.bgColors.surface,
+    borderWidth: 1,
+    borderColor: tokens.colors.error,
+  },
+  audioErrorText: {
+    flex: 1,
+    fontFamily: tokens.fonts.ui,
+    fontSize: 13,
+    color: tokens.textColors.primary,
+    lineHeight: 18,
   },
   speedPill: {
     height: 32,

@@ -4,6 +4,7 @@ import {
   Alert,
   Image,
   Pressable,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   TextInput,
@@ -14,9 +15,13 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Icon, TabBar, type TabKey, Text } from '~/components';
 import { tokens } from '~/design/tokens';
 import { SUPPORT_EMAIL } from '~/lib/legalUrls';
+import { formatNetworkError } from '~/lib/networkErrors';
 import { useBackHandler } from '~/lib/useBackHandler';
+import { useSlowOp } from '~/hooks/useSlowOp';
+import { SlowNetworkBanner } from '~/components/SlowNetworkBanner';
 import {
-  fetchStandardEbooks,
+  fetchOpenLibrary,
+  fetchWikisource,
   popularGutenberg,
   searchGutenberg,
   topicGutenberg,
@@ -64,7 +69,7 @@ type DiscoverBook = {
   chapters?: number;
   about: string;
   /** Source identifier the edge function knows how to import from. */
-  source: 'gutenberg' | 'standardebooks';
+  source: 'gutenberg' | 'standardebooks' | 'openlibrary' | 'wikisource';
   /** Display label for the detail view ("Project Gutenberg"). */
   sourceLabel?: string;
   related?: { id: string; title: string; coverColor: string }[];
@@ -111,19 +116,36 @@ function pickCoverColor(id: string): string {
 }
 
 function fromApiBook(b: ApiBook): DiscoverBook {
-  // The lib uses `'standard-ebooks'` (hyphenated, follows id-prefix
-  // convention) while the import edge function expects the shorter
-  // `'standardebooks'` token. We translate at this boundary so the
-  // rest of the screen layer doesn't have to know about the
-  // discrepancy.
+  // The lib uses hyphenated source ids (follows the id-prefix
+  // convention `gutenberg:N` / `standard-ebooks:slug` /
+  // `open-library:key` / `wikisource:lang:title`) while the import
+  // edge function expects shorter tokens without hyphens. Translate
+  // once at this boundary so the rest of the screen layer doesn't
+  // have to know about the discrepancy.
   const source: DiscoverBook['source'] =
-    b.source === 'standard-ebooks' ? 'standardebooks' : 'gutenberg';
+    b.source === 'standard-ebooks'
+      ? 'standardebooks'
+      : b.source === 'open-library'
+        ? 'openlibrary'
+        : b.source === 'wikisource'
+          ? 'wikisource'
+          : 'gutenberg';
   const sourceLabel =
-    source === 'standardebooks' ? 'Standard Ebooks' : 'Project Gutenberg';
+    source === 'standardebooks'
+      ? 'Standard Ebooks'
+      : source === 'openlibrary'
+        ? 'Open Library'
+        : source === 'wikisource'
+          ? 'Wikisource'
+          : 'Project Gutenberg';
   const fallbackAbout =
     source === 'standardebooks'
       ? 'Hand-typeset public-domain edition from Standard Ebooks — free to read in your library.'
-      : 'Public-domain title from Project Gutenberg — free to read in your library.';
+      : source === 'openlibrary'
+        ? 'Public-domain edition via Internet Archive — free to read in your library.'
+        : source === 'wikisource'
+          ? 'Public-domain edition via Wikisource — EPUB generated on demand from the wiki source.'
+          : 'Public-domain title from Project Gutenberg — free to read in your library.';
   return {
     id: b.id,
     title: b.title,
@@ -279,6 +301,37 @@ export function DiscoverScreen({
       );
       if (seMatch) {
         set.add(`standard-ebooks:${seMatch[1]}`);
+        continue;
+      }
+      // Open Library:
+      //   URL    https://archive.org/download/{ia}/{ia}.epub
+      //   id     open-library:{ia}
+      // The edge function generates the discover id using the IA
+      // identifier (see discover-open-library/index.ts) precisely so
+      // we can do this reverse-match without an extra column.
+      const olMatch = url.match(/archive\.org\/download\/([^/]+)\//);
+      if (olMatch) {
+        set.add(`open-library:${olMatch[1]}`);
+        continue;
+      }
+      // Wikisource:
+      //   URL    https://ws-export.wmcloud.org/?lang=X&page=Title&format=...
+      //   id     wikisource:X:Title_underscored
+      // Pull lang + page out of the wsexport query string and
+      // rebuild the id the same way the discover-wikisource function
+      // constructs it (spaces → underscores).
+      try {
+        const wsUrl = new URL(url);
+        if (wsUrl.hostname === 'ws-export.wmcloud.org') {
+          const wsLang = wsUrl.searchParams.get('lang');
+          const wsPage = wsUrl.searchParams.get('page');
+          if (wsLang && wsPage) {
+            set.add(`wikisource:${wsLang}:${wsPage.replace(/\s+/g, '_')}`);
+          }
+        }
+      } catch {
+        // Malformed source_url — skip; the row won't be matchable
+        // but the rest of the library is unaffected.
       }
     }
     return set;
@@ -304,17 +357,54 @@ export function DiscoverScreen({
   // the Discover home so religious readers see relevant content
   // without having to find the Christianity category chip first.
   const [spiritualRail, setSpiritualRail] = useState<DiscoverBook[]>([]);
-  // "Polished classics" rail — Standard Ebooks' hand-typeset editions
-  // of public-domain titles. Smaller catalog (~1,200) but
-  // dramatically nicer typography than Gutenberg's auto-converted
-  // ebooks, so worth its own shelf for readers who care about
-  // presentation.
-  const [polishedRail, setPolishedRail] = useState<DiscoverBook[]>([]);
+  // "Validated by Wikisource" rail — public-domain texts that have
+  // been verified twice by Wikisource editors against the original
+  // scan. Replaces the previous Standard Ebooks rail (SE added auth
+  // to their OPDS feed in 2024 and we don't currently have account
+  // credentials). Smaller catalog than SE but no upstream friction.
+  const [wikisourceRail, setWikisourceRail] = useState<DiscoverBook[]>([]);
+  // Pull-to-refresh: bumping `refreshKey` re-runs the home-load
+  // useEffect (it's in its dep array), which triggers a fresh
+  // fetch of every rail + search pool. Brief `refreshing` flag
+  // drives the RefreshControl spinner — we clear it after the
+  // network calls have had a beat to settle.
+  const [refreshKey, setRefreshKey] = useState(0);
+  const [refreshing, setRefreshing] = useState(false);
+  const onPullToRefresh = useCallback(() => {
+    setRefreshing(true);
+    setRefreshKey((k) => k + 1);
+    // Hold the `refreshing` flag long enough that the user sees
+    // the skeleton phase visibly happen. Without this hold-time
+    // (or with the previous 1 s), the cache-pass inside loadShelf
+    // re-painted the cached rails ~50 ms later and the refresh
+    // gesture felt like nothing actually happened. 2 s is the
+    // minimum window where "I pulled, something refreshed, here
+    // are the new cards" reads cleanly — short enough not to
+    // annoy on fast networks, long enough that the skeleton phase
+    // registers as intentional UI. Rails downstream gate on this
+    // flag to swap their card list for a skeleton row.
+    setTimeout(() => setRefreshing(false), 2000);
+  }, []);
+  // Hidden Wikisource search pool, same pattern as the other library
+  // pools — bigger background slice that fuels the typeahead so a
+  // user can find Wikisource-only titles without waiting for the
+  // network search.
+  const [wikisourcePool, setWikisourcePool] = useState<DiscoverBook[]>([]);
+  // "Internet Archive" rail — Open Library / archive.org's public-
+  // domain catalog. The third source after Gutenberg and Standard
+  // Ebooks; lifts coverage from ~1,200 SE titles + Gutenberg's set
+  // into the millions, with the catalog server-side filtered to
+  // titles that have a downloadable EPUB.
+  const [openLibraryRail, setOpenLibraryRail] = useState<DiscoverBook[]>([]);
+  // Same background-pool pattern as `wikisourcePool` — hidden 200-book
+  // slice feeding localMatches for typeahead.
+  const [openLibraryPool, setOpenLibraryPool] = useState<DiscoverBook[]>([]);
+  const [openLibraryLoading, setOpenLibraryLoading] = useState(true);
   const [popularLoading, setPopularLoading] = useState(true);
   const [fictionLoading, setFictionLoading] = useState(true);
   const [shortLoading, setShortLoading] = useState(true);
   const [spiritualLoading, setSpiritualLoading] = useState(true);
-  const [polishedLoading, setPolishedLoading] = useState(true);
+  const [wikisourceLoading, setWikisourceLoading] = useState(true);
   const [homeError, setHomeError] = useState<string | null>(null);
   // "Loading" for the home view as a whole = popular hasn't shown up
   // yet (popular drives the featured card). Other rails can come later.
@@ -464,16 +554,134 @@ export function DiscoverScreen({
       DISCOVER_SEED,
     );
     void loadShelf(
-      'source:standard-ebooks',
-      () => fetchStandardEbooks({ limit: 8 }),
-      setPolishedRail,
-      setPolishedLoading,
-      // Use the same generic seed — by the time the user notices the
-      // shelf, the real Standard Ebooks list has usually landed (1
-      // edge function hit, ~300 ms). The seed avoids a "no shelf"
-      // gap during that brief window.
-      DISCOVER_SEED,
+      // Cache key carries a `:v3` suffix so app installs that already
+      // wrote stale Wikisource data to AsyncStorage (pre-cover-only
+      // filter, pre-image-proxy response shape) skip that old slot
+      // entirely and rebuild from a fresh fetch. The old
+      // `source:wikisource:v2` and `:source:wikisource` entries are
+      // harmlessly orphaned — they'll get garbage-collected the next
+      // time `getCachedShelf` reads them with a 30-min TTL miss.
+      // Bump again if a future change to the Wikisource response
+      // shape needs the same forced refresh.
+      'source:wikisource:v3',
+      // Wikisource's validated-texts category — public-domain books
+      // that have been verified twice by Wikisource editors against
+      // the original scan. 24 ≈ a couple of swipe pages, matching
+      // the visual density of the other rails. `coversOnly` drops
+      // entries without a Wikimedia pageimage so every visible card
+      // has artwork — the function compensates by widening its
+      // upstream candidate pool.
+      async () => {
+        const result = await fetchWikisource({
+          limit: 24,
+          feed: 'validated',
+          coversOnly: true,
+        });
+        // Diagnostic — surfaces in Metro so a silent fetch failure
+        // is visible without having to add a probe each time.
+        if (result.ok) {
+          console.log(
+            '[Discover] Wikisource rail fetch ok, books:',
+            result.books.length,
+          );
+        } else {
+          console.warn(
+            '[Discover] Wikisource rail fetch FAILED:',
+            result.error,
+          );
+        }
+        return result;
+      },
+      setWikisourceRail,
+      setWikisourceLoading,
+      // No seed fallback — the seed list is all Project Gutenberg,
+      // and painting Gutenberg books under a "From Wikisource"
+      // header would be misleading. If the Wikisource fetch fails,
+      // the rail simply doesn't render (gated by the
+      // `wikisourceRail.length > 0` conditional below).
     );
+
+    // Background fetch of the FULL Standard Ebooks catalog (~1200
+    // entries) into the search pool. NOT rendered as a rail — its
+    // only job is to feed localMatches so search across "all the
+    // libraries" actually works even when Gutendex search misses a
+    // Standard Ebooks-only title.
+    //
+    // Depends on the edge function's MAX_LIMIT being ≥1200; we
+    // bumped it from 100 → 1500 alongside this. If the deploy of
+    // `discover-standard-ebooks` hasn't shipped, the function will
+    // silently cap at 100 and the pool will be smaller — still
+    // works, just less coverage.
+    void (async () => {
+      // Bigger background slice of Wikisource validated texts for the
+      // local search pool. Capped at the edge function's MAX_LIMIT
+      // (200). Combined with the Open Library pool below, this gives
+      // the typeahead meaningful coverage across all three sources.
+      const result = await fetchWikisource({ limit: 200, feed: 'validated' });
+      if (result.ok) {
+        console.log(
+          '[Discover] Wikisource search pool fetch ok, books:',
+          result.books.length,
+        );
+        // Reshape to screen-shape (adds coverColor / coverLabel) so
+        // typeahead matches against the pool render the same fields
+        // as the rails. Without this, pool entries flowed in as
+        // ApiBook and the type union was wider-than-state — TS
+        // flagged it and the runtime render fell back to `undefined`
+        // for `coverColor`, which manifested as black-cover cards in
+        // search results.
+        setWikisourcePool(result.books.map(fromApiBook));
+      } else {
+        console.warn(
+          '[Discover] Wikisource search pool fetch FAILED:',
+          result.error,
+        );
+      }
+    })();
+
+    // ─── Open Library rail + search pool ────────────────────────────
+    // Same pattern as Standard Ebooks above: one foreground fetch for
+    // the visible rail (24 books, sorted by edition count = popular
+    // classics), one larger background fetch for the search pool.
+    // Open Library's catalog has millions of records, but we cap the
+    // pool at the edge function's MAX_LIMIT (500) — that's plenty of
+    // typeahead coverage without ballooning the bridge payload.
+    void loadShelf(
+      'source:open-library',
+      async () => {
+        const result = await fetchOpenLibrary({ limit: 24, feed: 'classics' });
+        if (result.ok) {
+          console.log(
+            '[Discover] Open Library rail fetch ok, books:',
+            result.books.length,
+          );
+        } else {
+          console.warn(
+            '[Discover] Open Library rail fetch FAILED:',
+            result.error,
+          );
+        }
+        return result;
+      },
+      setOpenLibraryRail,
+      setOpenLibraryLoading,
+    );
+    void (async () => {
+      const result = await fetchOpenLibrary({ limit: 500, feed: 'classics' });
+      if (result.ok) {
+        console.log(
+          '[Discover] Open Library search pool fetch ok, books:',
+          result.books.length,
+        );
+        // Reshape — see comment on the Wikisource pool setter above.
+        setOpenLibraryPool(result.books.map(fromApiBook));
+      } else {
+        console.warn(
+          '[Discover] Open Library search pool fetch FAILED:',
+          result.error,
+        );
+      }
+    })();
 
     // Pre-warm the category caches in the background so the first time
     // the user taps a category chip / "See all" the data is already
@@ -520,7 +728,7 @@ export function DiscoverScreen({
       cancelled = true;
       clearInterval(prewarmIntervalId);
     };
-  }, []);
+  }, [refreshKey]);
 
   // Category fetch — runs whenever the category view opens with a
   // non-"For you" pick. Layered SWR:
@@ -617,7 +825,18 @@ export function DiscoverScreen({
       fictionRail,
       shortReads,
       spiritualRail,
-      polishedRail,
+      wikisourceRail,
+      openLibraryRail,
+      // Big Standard Ebooks slice — invisible to the user, fuels the
+      // typeahead so a search for a Standard Ebooks-only title hits
+      // immediately instead of waiting for the Gutendex network call
+      // to come back empty.
+      wikisourcePool,
+      // Same logic for Open Library — a 500-book invisible slice
+      // fuels typeahead against titles that aren't on the visible
+      // rail. Combined with the SE pool this covers a healthy
+      // chunk of the multi-library search space.
+      openLibraryPool,
     ]) {
       for (const b of list) if (!seen.has(b.id)) seen.set(b.id, b);
     }
@@ -635,7 +854,16 @@ export function DiscoverScreen({
       }
     }
     return Array.from(seen.values());
-  }, [popular, fictionRail, shortReads, spiritualRail, polishedRail]);
+  }, [
+    popular,
+    fictionRail,
+    shortReads,
+    spiritualRail,
+    wikisourceRail,
+    openLibraryRail,
+    wikisourcePool,
+    openLibraryPool,
+  ]);
 
   // Filter the local pool by substring match against title + author +
   // tags. Cheap (~40-200 books, single pass). Returns at most 8 so
@@ -847,14 +1075,13 @@ export function DiscoverScreen({
                     .delete()
                     .eq('id', match.id);
                   if (error) {
-                    Alert.alert("Couldn't remove", error.message);
+                    console.warn('[Discover] removeBook delete failed:', error);
+                    Alert.alert("Couldn't remove", formatNetworkError(error, 'removing this book'));
                   }
                   // realtime in useBooks() updates libraryIds for us
                 } catch (err) {
-                  Alert.alert(
-                    "Couldn't remove",
-                    err instanceof Error ? err.message : String(err),
-                  );
+                  console.warn('[Discover] removeBook threw:', err);
+                  Alert.alert("Couldn't remove", formatNetworkError(err, 'removing this book'));
                 }
               })();
             },
@@ -937,7 +1164,8 @@ export function DiscoverScreen({
       gatsbyRail={fictionRail}
       shortReads={shortReads}
       spiritualRail={spiritualRail}
-      polishedRail={polishedRail}
+      wikisourceRail={wikisourceRail}
+      openLibraryRail={openLibraryRail}
       libraryIds={libraryIds}
       pendingIds={pendingIds}
       loading={homeLoading}
@@ -951,6 +1179,8 @@ export function DiscoverScreen({
       onCategory={openCategory}
       onBook={(b) => openDetail(b, 'home')}
       onTabChange={onTabChange}
+      refreshing={refreshing}
+      onRefresh={onPullToRefresh}
     />
   );
 }
@@ -963,7 +1193,8 @@ function HomeView({
   gatsbyRail,
   shortReads,
   spiritualRail,
-  polishedRail,
+  wikisourceRail,
+  openLibraryRail,
   libraryIds,
   pendingIds,
   loading,
@@ -977,13 +1208,16 @@ function HomeView({
   onCategory,
   onBook,
   onTabChange,
+  refreshing,
+  onRefresh,
 }: {
   activeCategory: Category;
   featured: DiscoverBook | null;
   gatsbyRail: DiscoverBook[];
   shortReads: DiscoverBook[];
   spiritualRail: DiscoverBook[];
-  polishedRail: DiscoverBook[];
+  wikisourceRail: DiscoverBook[];
+  openLibraryRail: DiscoverBook[];
   libraryIds: Set<string>;
   pendingIds: Set<string>;
   loading: boolean;
@@ -991,6 +1225,8 @@ function HomeView({
   searchQuery: string;
   onSearchChange: (q: string) => void;
   searchResults: DiscoverBook[] | null;
+  refreshing: boolean;
+  onRefresh: () => void;
   searching: boolean;
   onAdd: (book: DiscoverBook) => void;
   /** Remove handler — when present, "In library" pills become tappable. */
@@ -1014,11 +1250,37 @@ function HomeView({
     return false;
   });
 
+  // Slow-network surface. The home rails fetch from Gutendex (and
+  // soon other libraries) on first paint, and search fires a fresh
+  // network query per term. If either is still pending after 5s,
+  // the user is almost certainly on a flaky connection — show the
+  // banner so they're not staring at an empty screen wondering if
+  // the app is broken.
+  const isHomeSlow = useSlowOp(loading);
+  const isSearchSlow = useSlowOp(showSearchResults && searching);
+
   return (
     <SafeAreaView style={s.safe} edges={['top', 'left', 'right']}>
+      {(isHomeSlow || isSearchSlow) && (
+        <SlowNetworkBanner
+          label={
+            isSearchSlow
+              ? 'Searching is taking longer than usual — check your connection.'
+              : 'Loading is taking longer than usual — check your connection.'
+          }
+        />
+      )}
       <ScrollView
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={tokens.colors.forest[800]}
+            colors={[tokens.colors.forest[800]]}
+          />
+        }
       >
         {/* Header */}
         <View style={s.homeHeader}>
@@ -1096,8 +1358,12 @@ function HomeView({
               <View style={s.errorZone}>
                 <Text style={s.errorTitle}>Couldn't reach the catalog</Text>
                 <Text style={s.errorBody}>
-                  {error}. Pull down to retry, or upload a book manually
-                  from the Library.
+                  {/* Map the raw fetcher error through the shared
+                      friendly formatter so the user never sees stack-
+                      trace-shaped strings here. Append the retry hint
+                      separately so it survives the message swap. */}
+                  {formatNetworkError(error, 'reaching the catalog')} Pull
+                  down to retry, or upload a book manually from the Library.
                 </Text>
               </View>
             ) : (
@@ -1118,8 +1384,12 @@ function HomeView({
                   </>
                 )}
 
-                {/* Popular fiction */}
-                {gatsbyRail.length > 0 && (
+                {/* Popular fiction. Mid-refresh, swap the real
+                    cards for skeleton placeholders even when we
+                    have cached books — gives the user visible
+                    feedback that the pull-to-refresh actually
+                    refreshed something rather than no-oping. */}
+                {(refreshing || gatsbyRail.length > 0) && (
                   <>
                     <View style={s.sectionRow}>
                       <Text style={s.sectionTitle}>Popular fiction</Text>
@@ -1130,20 +1400,24 @@ function HomeView({
                         <Text style={s.seeAll}>See all →</Text>
                       </Pressable>
                     </View>
-                    <ScrollView
-                      horizontal
-                      showsHorizontalScrollIndicator={false}
-                      contentContainerStyle={s.railScroll}
-                    >
-                      {gatsbyRail.map((book) => (
-                        <RailCard
-                          key={book.id}
-                          book={book}
-                          inLibrary={libraryIds.has(book.id)}
-                          onPress={() => onBook(book)}
-                        />
-                      ))}
-                    </ScrollView>
+                    {refreshing ? (
+                      <RailSkeletonRow />
+                    ) : (
+                      <ScrollView
+                        horizontal
+                        showsHorizontalScrollIndicator={false}
+                        contentContainerStyle={s.railScroll}
+                      >
+                        {gatsbyRail.map((book) => (
+                          <RailCard
+                            key={book.id}
+                            book={book}
+                            inLibrary={libraryIds.has(book.id)}
+                            onPress={() => onBook(book)}
+                          />
+                        ))}
+                      </ScrollView>
+                    )}
                   </>
                 )}
 
@@ -1152,7 +1426,7 @@ function HomeView({
                  *  + theology and church history. Renders before "Short
                  *  reads" so the rhythm goes long-form → long-form →
                  *  short-form down the page. */}
-                {spiritualRail.length > 0 && (
+                {(refreshing || spiritualRail.length > 0) && (
                   <>
                     <View style={s.sectionRow}>
                       <Text style={s.sectionTitle}>Spiritual classics</Text>
@@ -1163,55 +1437,97 @@ function HomeView({
                         <Text style={s.seeAll}>See all →</Text>
                       </Pressable>
                     </View>
-                    <ScrollView
-                      horizontal
-                      showsHorizontalScrollIndicator={false}
-                      contentContainerStyle={s.railScroll}
-                    >
-                      {spiritualRail.map((book) => (
-                        <RailCard
-                          key={book.id}
-                          book={book}
-                          inLibrary={libraryIds.has(book.id)}
-                          onPress={() => onBook(book)}
-                        />
-                      ))}
-                    </ScrollView>
+                    {refreshing ? (
+                      <RailSkeletonRow />
+                    ) : (
+                      <ScrollView
+                        horizontal
+                        showsHorizontalScrollIndicator={false}
+                        contentContainerStyle={s.railScroll}
+                      >
+                        {spiritualRail.map((book) => (
+                          <RailCard
+                            key={book.id}
+                            book={book}
+                            inLibrary={libraryIds.has(book.id)}
+                            onPress={() => onBook(book)}
+                          />
+                        ))}
+                      </ScrollView>
+                    )}
                   </>
                 )}
 
-                {/* Polished classics — Standard Ebooks' hand-typeset
-                 *  editions. Surfaces under its own shelf so users who
-                 *  care about typography (the David persona) can find
-                 *  better-presented versions of the same titles
-                 *  Gutenberg also has. */}
-                {polishedRail.length > 0 && (
+                {/* Curated classics — Wikisource validated texts
+                 *  with the obvious non-books (legislative bills,
+                 *  war posters, regulatory orders) filtered out via
+                 *  a title-pattern heuristic in the edge function. */}
+                {(refreshing || wikisourceRail.length > 0) && (
                   <>
                     <View style={s.sectionRow}>
-                      <Text style={s.sectionTitle}>Polished classics</Text>
+                      <Text style={s.sectionTitle}>Curated classics</Text>
                       <Text style={s.sectionSubLabel}>
-                        From Standard Ebooks
+                        From Wikisource
                       </Text>
                     </View>
-                    <ScrollView
-                      horizontal
-                      showsHorizontalScrollIndicator={false}
-                      contentContainerStyle={s.railScroll}
-                    >
-                      {polishedRail.map((book) => (
-                        <RailCard
-                          key={book.id}
-                          book={book}
-                          inLibrary={libraryIds.has(book.id)}
-                          onPress={() => onBook(book)}
-                        />
-                      ))}
-                    </ScrollView>
+                    {refreshing ? (
+                      <RailSkeletonRow />
+                    ) : (
+                      <ScrollView
+                        horizontal
+                        showsHorizontalScrollIndicator={false}
+                        contentContainerStyle={s.railScroll}
+                      >
+                        {wikisourceRail.map((book) => (
+                          <RailCard
+                            key={book.id}
+                            book={book}
+                            inLibrary={libraryIds.has(book.id)}
+                            onPress={() => onBook(book)}
+                          />
+                        ))}
+                      </ScrollView>
+                    )}
+                  </>
+                )}
+
+                {/* Internet Archive classics — Open Library's catalog
+                 *  filtered to public-domain titles with downloadable
+                 *  EPUBs on archive.org. Sorted by edition count so the
+                 *  most-republished works (often the genuine classics)
+                 *  lead the rail. Third source after Gutenberg + SE;
+                 *  fills coverage gaps for everything those two miss. */}
+                {(refreshing || openLibraryRail.length > 0) && (
+                  <>
+                    <View style={s.sectionRow}>
+                      <Text style={s.sectionTitle}>From the Internet Archive</Text>
+                      <Text style={s.sectionSubLabel}>
+                        Via Open Library
+                      </Text>
+                    </View>
+                    {refreshing ? (
+                      <RailSkeletonRow />
+                    ) : (
+                      <ScrollView
+                        horizontal
+                        showsHorizontalScrollIndicator={false}
+                        contentContainerStyle={s.railScroll}
+                      >
+                        {openLibraryRail.map((book) => (
+                          <RailCard
+                            key={book.id}
+                            book={book}
+                            inLibrary={libraryIds.has(book.id)}
+                            onPress={() => onBook(book)}
+                          />
+                        ))}
+                      </ScrollView>
+                    )}
                   </>
                 )}
 
                 {/* Short reads */}
-                {shortReads.length > 0 && (
+                {(refreshing || shortReads.length > 0) && (
                   <>
                     <View style={s.sectionRow}>
                       <Text style={s.sectionTitle}>Short reads</Text>
@@ -1222,19 +1538,23 @@ function HomeView({
                         <Text style={s.seeAll}>See all →</Text>
                       </Pressable>
                     </View>
-                    <ScrollView
-                      horizontal
-                      showsHorizontalScrollIndicator={false}
-                      contentContainerStyle={[s.railScroll, { paddingBottom: 28 }]}
-                    >
-                      {shortReads.map((book) => (
-                        <ShortCard
-                          key={book.id}
-                          book={book}
-                          onPress={() => onBook(book)}
-                        />
-                      ))}
-                    </ScrollView>
+                    {refreshing ? (
+                      <RailSkeletonRow />
+                    ) : (
+                      <ScrollView
+                        horizontal
+                        showsHorizontalScrollIndicator={false}
+                        contentContainerStyle={[s.railScroll, { paddingBottom: 28 }]}
+                      >
+                        {shortReads.map((book) => (
+                          <ShortCard
+                            key={book.id}
+                            book={book}
+                            onPress={() => onBook(book)}
+                          />
+                        ))}
+                      </ScrollView>
+                    )}
                   </>
                 )}
               </>
@@ -1686,6 +2006,45 @@ function RailCard({ book, inLibrary, onPress }: { book: DiscoverBook; inLibrary:
   );
 }
 
+/**
+ * Placeholder card shown in rail rows while content is loading or
+ * mid-refresh. Matches the real RailCard's outer dimensions so the
+ * row doesn't reflow when actual books arrive — same width, same
+ * cover height, same line spacing for the title + author. Just
+ * shaded blocks where the content will land. Used by the home view
+ * on initial cold-start (no cache) and on pull-to-refresh (the
+ * user expects something visibly happening while we re-fetch).
+ */
+function RailCardSkeleton() {
+  return (
+    <View style={s.railCard}>
+      <View style={[s.railCover, s.skeletonBlock]} />
+      <View style={[s.skeletonLine, { width: '90%' }]} />
+      <View style={[s.skeletonLine, { width: '60%' }]} />
+    </View>
+  );
+}
+
+/**
+ * Renders 6 RailCardSkeleton cards inside a horizontal scroll — the
+ * same layout shape the real rails use. We hard-code 6 because
+ * that's roughly the visible-card budget at the standard 108pt
+ * card width; rendering more is wasted DOM.
+ */
+function RailSkeletonRow() {
+  return (
+    <ScrollView
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      contentContainerStyle={s.railScroll}
+    >
+      {Array.from({ length: 6 }).map((_, i) => (
+        <RailCardSkeleton key={i} />
+      ))}
+    </ScrollView>
+  );
+}
+
 function ShortCard({ book, onPress }: { book: DiscoverBook; onPress: () => void }) {
   return (
     <Pressable onPress={onPress} style={s.shortCard}>
@@ -1815,6 +2174,14 @@ function DetailView({
   onRemove: () => void;
   onTabChange: (tab: TabKey) => void;
 }) {
+  // Hardware back returns to whichever Discover view the user came
+  // from (home rails or a category list) — same as the in-screen
+  // chevron. Without this, Android's default back behaviour fell
+  // through to the root "Press back again to exit" handler.
+  useBackHandler(() => {
+    onBack();
+    return true;
+  });
   return (
     <SafeAreaView style={s.safe} edges={['top', 'left', 'right']}>
       <View style={s.detailHeader}>
@@ -1964,9 +2331,19 @@ function DetailView({
                 : 'Add to library'}
           </Text>
         </Pressable>
-        <Pressable style={s.detailSampleBtn}>
-          <Icon name="Play" size={14} color={tokens.colors.ink[700]} />
-        </Pressable>
+        {/* Listen-sample button — only shown for books already in
+            the user's library. Playback runs against the user's
+            books table row (page extraction, signed audio URLs,
+            etc) and isn't wired up for un-added Discover books;
+            the play affordance previously misled the user into
+            thinking they could preview before adding. We hide
+            rather than disable so the layout doesn't carry a dead
+            control around. */}
+        {inLibrary ? (
+          <Pressable style={s.detailSampleBtn}>
+            <Icon name="Play" size={14} color={tokens.colors.ink[700]} />
+          </Pressable>
+        ) : null}
       </View>
 
       <TabBar activeTab="discover" onChange={onTabChange} />
@@ -2242,6 +2619,19 @@ const s = StyleSheet.create({
   railCard: {
     width: 108,
     gap: 7,
+  },
+  // Skeleton block styles — used by RailCardSkeleton above. The
+  // background is a neutral surface tone so the shimmer reads as
+  // "loading content" rather than "missing cover" (the colored
+  // CoverBox fallback). Matches the real RailCard layout
+  // dimensions so the row doesn't reflow when real cards land.
+  skeletonBlock: {
+    backgroundColor: tokens.bgColors.surface,
+  },
+  skeletonLine: {
+    height: 10,
+    borderRadius: 4,
+    backgroundColor: tokens.bgColors.surface,
   },
   railCover: {
     width: 108,

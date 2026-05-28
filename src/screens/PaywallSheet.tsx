@@ -34,10 +34,10 @@ type Tint = {
   fillBar: string;
 };
 
-const WARN_FG = '#A0692A';
-const WARN_BG = '#FDF3E3';
-const ERROR_FG = '#B5453A';
-const ERROR_BG = '#FBEAE7';
+const WARN_FG = tokens.colors.warn;
+const WARN_BG = tokens.colors.warnBg;
+const ERROR_FG = tokens.colors.error;
+const ERROR_BG = tokens.colors.errorBg;
 
 const TINTS: Record<PaywallVariant, Tint> = {
   'book-limit': {

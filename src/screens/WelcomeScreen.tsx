@@ -13,6 +13,7 @@ import { Button } from '~/components/Button';
 import { Lockup } from '~/components/Lockup';
 import { Text } from '~/components/Text';
 import { tokens } from '~/design/tokens';
+import { PRIVACY_POLICY_URL, TERMS_OF_SERVICE_URL } from '~/lib/legalUrls';
 
 export type WelcomeScreenProps = {
   onGetStarted: () => void;
@@ -61,14 +62,14 @@ export function WelcomeScreen({ onGetStarted, onSignIn }: WelcomeScreenProps) {
           By continuing, you agree to our{' '}
           <RNText
             style={styles.legalLink}
-            onPress={() => Linking.openURL('https://bookflow.app/terms')}
+            onPress={() => Linking.openURL(TERMS_OF_SERVICE_URL)}
           >
             Terms
           </RNText>{' '}
           and{' '}
           <RNText
             style={styles.legalLink}
-            onPress={() => Linking.openURL('https://bookflow.app/privacy')}
+            onPress={() => Linking.openURL(PRIVACY_POLICY_URL)}
           >
             Privacy Policy
           </RNText>

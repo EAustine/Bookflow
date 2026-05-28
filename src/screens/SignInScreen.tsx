@@ -15,7 +15,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Linking,
-  Platform,
   Pressable,
   StyleSheet,
   Text as RNText,
@@ -30,6 +29,7 @@ import { Input } from '~/components/Input';
 import { Text } from '~/components/Text';
 import { tokens } from '~/design/tokens';
 import { sendMagicLink, type SendMagicLinkResult } from '~/lib/auth';
+import { PRIVACY_POLICY_URL, TERMS_OF_SERVICE_URL } from '~/lib/legalUrls';
 
 const RESEND_COOLDOWN_S = 30;
 
@@ -249,14 +249,14 @@ function SignInForm({
           By creating an account, you agree to our{' '}
           <RNText
             style={styles.legalLink}
-            onPress={() => Linking.openURL('https://bookflow.app/terms')}
+            onPress={() => Linking.openURL(TERMS_OF_SERVICE_URL)}
           >
             Terms
           </RNText>{' '}
           and{' '}
           <RNText
             style={styles.legalLink}
-            onPress={() => Linking.openURL('https://bookflow.app/privacy')}
+            onPress={() => Linking.openURL(PRIVACY_POLICY_URL)}
           >
             Privacy Policy
           </RNText>
@@ -316,12 +316,6 @@ function SignInSuccess({ variant, email, fullName, onBack, onComplete, onResend 
     }
   };
 
-  const handleOpenEmail = () => {
-    if (Platform.OS === 'ios') Linking.openURL('message://');
-    else Linking.openURL('mailto:');
-    onComplete(variant === 'signup' ? fullName : undefined);
-  };
-
   return (
     <View style={styles.content}>
       <Header onBack={onBack} />
@@ -341,17 +335,17 @@ function SignInSuccess({ variant, email, fullName, onBack, onComplete, onResend 
       </View>
 
       <View style={styles.successActions}>
-        <Button
-          label="Open email app"
-          variant="primary"
-          size="large"
-          fullWidth
-          onPress={handleOpenEmail}
-        />
+        {/* "Open email app" button removed — many Android devices in
+            the closed-test cohort have no app registered for the
+            `message://` or `mailto:` schemes (Gmail-web users), so
+            the button silently did nothing for those testers. The
+            primary affordance is now the Resend button below, which
+            always works, and the in-copy hint already tells the user
+            to check their inbox. */}
         <Button
           label={secondsLeft > 0 ? `Resend link · ${secondsLeft}s` : 'Resend link'}
-          variant="tertiary"
-          size="standard"
+          variant="primary"
+          size="large"
           fullWidth
           loading={resending}
           disabled={secondsLeft > 0 || resending}

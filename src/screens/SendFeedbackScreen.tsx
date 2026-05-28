@@ -159,7 +159,7 @@ export function SendFeedbackScreen({
         <Text
           style={[
             styles.charCount,
-            charCount > 0 && charCount < MIN_LEN && { color: '#A0692A' },
+            charCount > 0 && charCount < MIN_LEN && { color: tokens.colors.warn },
           ]}
         >
           {charCount} / {MAX_LEN}

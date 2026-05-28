@@ -13,9 +13,8 @@
  * window and refresh on remount, which is plenty for typical reading
  * sessions.
  *
- * State persisted: `last_read_chapter` carries the current page (we
- * repurpose the column rather than add a per-format `last_read_page`
- * since the data shape is the same); `last_read_at` updates on debounce.
+ * State persisted: `last_read_page` carries the current page;
+ * `last_read_at` updates on debounce.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -37,6 +36,7 @@ import {
 } from '~/components';
 import { tokens } from '~/design/tokens';
 import type { Book } from '~/types/book';
+import { formatNetworkError } from '~/lib/networkErrors';
 import { supabase } from '~/lib/supabase';
 import { persistReadingPosition } from '~/lib/useBookChapters';
 import { useBackHandler } from '~/lib/useBackHandler';
@@ -116,15 +116,15 @@ export function PdfReaderScreen({ book, onBack, onListen }: PdfReaderScreenProps
   // outer's padding is on the BORDER box, not the absolute child.
   const insets = useSafeAreaInsets();
 
-  // Sheet refs for the four extra-features (Listen / AI tools / Chapters /
-  // Highlights). Each is the same component the EPUB reader uses, so the
-  // sheets are visually identical across formats.
+  // Sheet refs for the action-bar items (AI tools / Reading options).
+  // Each is the same component the EPUB reader uses, so the sheets
+  // are visually identical across formats.
   const aiSheetRef = useRef<BottomSheetRef>(null);
-  // Reading options sheet — replaces the prior chapter list. PDFs have
-  // few customisable options today (no font / theme since the rendering
-  // is fixed); the sheet is a placeholder so the action bar slot is
-  // consistent across readers. We can flesh it out with PDF-specific
-  // toggles (continuous vs single-page, brightness wash) later.
+  // Reading options sheet — placeholder. PDFs have few customisable
+  // options today (no font / theme since rendering is fixed); kept
+  // for action-bar consistency across readers. Can be fleshed out
+  // with PDF-specific toggles (continuous vs single-page, brightness
+  // wash) later.
   const readingOptionsSheetRef = useRef<BottomSheetRef>(null);
   const [aiMode, setAIMode] = useState<'summary' | 'chat' | 'practice' | 'translate' | null>(null);
   const [showHighlights, setShowHighlights] = useState(false);
@@ -135,10 +135,6 @@ export function PdfReaderScreen({ book, onBack, onListen }: PdfReaderScreenProps
   // on rendered PDF pages because we have no text-coordinate mapping.
   // Same affordance Apple Books gives for some PDFs.
   const [textMode, setTextMode] = useState(false);
-
-  // Real chapter list from Supabase. We fetch it whether or not the user
-  // opens the chapter sheet — the cost is one cheap query — so the
-  // chapter→PDF-page jump approximation has the chapter count it needs.
 
   // The pdf-source URL. Resolved once on mount; if the user is on the
   // reader for >1 h the URL would expire mid-read. Acceptable for
@@ -152,9 +148,8 @@ export function PdfReaderScreen({ book, onBack, onListen }: PdfReaderScreenProps
   );
   const [loadError, setLoadError] = useState<string | null>(null);
 
-  // Initial page: persisted last_read_chapter (we repurpose the column
-  // for PDFs as "last page"). Defaults to 1 — the column is 0-indexed
-  // for chapters but we shift by 1 because PDF pages are 1-indexed.
+  // Initial page from the persisted last_read_page column. PDF
+  // pages are 1-indexed by the renderer, so we floor at 1.
   const initialPage = Math.max(
     1,
     (book as { last_read_page?: number }).last_read_page || 1,
@@ -257,6 +252,16 @@ export function PdfReaderScreen({ book, onBack, onListen }: PdfReaderScreenProps
     };
   }, [showChrome]);
 
+  // Re-summon chrome whenever loadError appears. Without this, an
+  // error that fires AFTER the initial 3.5 s auto-hide window
+  // would land in a fully-faded chrome state and the user couldn't
+  // see the back button to leave. Pairs with the Pressable wrap
+  // around the error view below — that handles the case where the
+  // chrome fades AGAIN while the user is still on the error page.
+  useEffect(() => {
+    if (loadError) showChrome();
+  }, [loadError, showChrome]);
+
   // Sign the storage URL. We always look up the auth uid + build the
   // path rather than trusting a passed-in path — the storage layout
   // convention is `{user_id}/{book_id}/original.{ext}`.
@@ -271,9 +276,19 @@ export function PdfReaderScreen({ book, onBack, onListen }: PdfReaderScreenProps
     let cancelled = false;
     void (async () => {
       try {
+        // Use getSession (local AsyncStorage) so we don't mis-
+        // diagnose "offline" as "signed out". The original
+        // getUser() call hit the /auth/v1/user endpoint, which
+        // throws on offline — the catch below would then set
+        // "You need to be signed in" (or generic friendly error)
+        // even for a fully authenticated user who just lost
+        // their connection. getSession reads the persisted JWT
+        // locally, so the only path to a null user is a real
+        // sign-out.
         const {
-          data: { user },
-        } = await supabase.auth.getUser();
+          data: { session },
+        } = await supabase.auth.getSession();
+        const user = session?.user ?? null;
         if (!user) {
           if (!cancelled) setLoadError('You need to be signed in.');
           return;
@@ -284,14 +299,20 @@ export function PdfReaderScreen({ book, onBack, onListen }: PdfReaderScreenProps
           .createSignedUrl(path, PDF_SIGNED_URL_TTL_S);
         if (cancelled) return;
         if (error || !data?.signedUrl) {
-          setLoadError(error?.message ?? 'Could not load the PDF.');
+          // Run the storage error through the shared friendly mapper
+          // so offline / timeout never surface as raw "TypeError:
+          // Network request failed" to the user. Raw error still
+          // goes to Metro logs for debugging.
+          if (error) console.warn('[PdfReader] signed URL failed:', error);
+          setLoadError(formatNetworkError(error, 'loading the PDF'));
           return;
         }
         rememberPdfUrl(book.id, data.signedUrl);
         setPdfUri(data.signedUrl);
       } catch (err) {
         if (!cancelled) {
-          setLoadError(err instanceof Error ? err.message : 'Could not load the PDF.');
+          console.warn('[PdfReader] signed URL threw:', err);
+          setLoadError(formatNetworkError(err, 'loading the PDF'));
         }
       }
     })();
@@ -300,10 +321,10 @@ export function PdfReaderScreen({ book, onBack, onListen }: PdfReaderScreenProps
     };
   }, [book.id]);
 
-  // Persist current page to `books.last_read_chapter` on a debounce
-  // (1.5 s). Same pattern as the EPUB reader — discrete state changes,
-  // small write rate, but a debounce protects against a user thumb-
-  // drumming through pages.
+  // Persist current page to `books.last_read_page` on a 1.5 s
+  // debounce. Same pattern as the EPUB reader — discrete state
+  // changes, small write rate, but a debounce protects against a
+  // user thumb-drumming through pages.
   useEffect(() => {
     if (currentPage <= 0) return;
     const id = setTimeout(() => {
@@ -337,7 +358,21 @@ export function PdfReaderScreen({ book, onBack, onListen }: PdfReaderScreenProps
   });
 
   const pdfSource = useMemo(
-    () => (pdfUri ? { uri: pdfUri, cache: true } : null),
+    // cache: false. react-native-pdf's on-disk cache writes the PDF
+    // to a hashed `.tmp` file in the app's cache directory, then
+    // renames to `.pdf` on completion. On Android the OS occasionally
+    // garbage-collects the cache directory mid-session (low storage,
+    // pause-resume cycles, app standby), and the next render that
+    // tries to re-open the cached path crashes with
+    //   ENOENT (No such file or directory)
+    //   /data/user/0/.../cache/<hash>.pdf.tmp
+    // Disabling the library's own cache makes it download fresh into
+    // a managed temp directory per mount. We already cache the signed
+    // URL in memory (pdfUrlCache above), so re-opens within a session
+    // still skip the Supabase round-trip — the actual PDF bytes
+    // re-download from Storage, which is fast over WiFi and avoids
+    // the .tmp race entirely.
+    () => (pdfUri ? { uri: pdfUri, cache: false } : null),
     [pdfUri],
   );
   // Memoised style object so the Pdf component doesn't see a fresh
@@ -523,9 +558,15 @@ export function PdfReaderScreen({ book, onBack, onListen }: PdfReaderScreenProps
               showChromeThrottled();
             }}
             onError={(error) => {
-              const msg =
-                error instanceof Error ? error.message : 'Could not display this PDF.';
-              setLoadError(msg);
+              // react-native-pdf's onError fires for both network
+              // (signed-URL expired, fetch failed mid-render) and
+              // render-time issues (encrypted file, malformed PDF).
+              // Route through the friendly mapper — the network
+              // patterns surface a real "you're offline" message,
+              // everything else falls back to a generic friendly
+              // string. Raw stays in Metro logs.
+              console.warn('[PdfReader] pdf onError:', error);
+              setLoadError(formatNetworkError(error, 'displaying this PDF'));
             }}
             onPressLink={() => {
               // We don't follow embedded links yet — surface the chrome
@@ -545,7 +586,14 @@ export function PdfReaderScreen({ book, onBack, onListen }: PdfReaderScreenProps
             style={pdfStyle}
           />
         ) : loadError ? (
-          <View style={styles.errorWrap}>
+          // Wrap in Pressable so a tap anywhere on the error
+          // surface re-shows the top + bottom chrome. The chrome
+          // auto-hides 3.5 s after `showChrome` fires, so without
+          // a tap-target here the user could land in the error
+          // state, watch the chrome fade out, and have no way to
+          // navigate back — there's no PDF underneath to receive
+          // `onPageSingleTap`.
+          <Pressable style={styles.errorWrap} onPress={showChrome}>
             <Icon
               name="X"
               size={20}
@@ -554,12 +602,15 @@ export function PdfReaderScreen({ book, onBack, onListen }: PdfReaderScreenProps
             />
             <Text style={styles.errorTitle}>Could not open this PDF</Text>
             <Text style={styles.errorBody}>{loadError}</Text>
-          </View>
+          </Pressable>
         ) : (
-          <View style={styles.loadingWrap}>
+          // Same Pressable wrap — if loading lingers past the
+          // 3.5 s auto-hide window the user shouldn't get stuck
+          // without back-button access.
+          <Pressable style={styles.loadingWrap} onPress={showChrome}>
             <ActivityIndicator size="small" color={tokens.colors.forest[800]} />
             <Text style={styles.loadingLabel}>Loading…</Text>
-          </View>
+          </Pressable>
         )}
       </View>
 
@@ -929,14 +980,6 @@ const styles = StyleSheet.create({
     fontFamily: tokens.fonts.ui,
     fontSize: 11,
     color: tokens.textColors.subtle,
-  },
-
-  tapToShow: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    height: 56,
   },
 
   // Bottom chrome (action bar) — light, matching the text-mode reader.

@@ -114,7 +114,15 @@ export function ReaderSkeleton({ onBack }: { onBack: () => void }) {
         </View>
       </View>
 
-      {/* Action bar — Listen is always ready; others skeleton */}
+      {/* Action bar — mirrors the real text-mode ReaderScreen ActionBar
+       * exactly: 5 items (Listen / AI tools / Search / Highlights /
+       * Reading options), 44×44 circular icon backgrounds, label
+       * underneath. Listen is rendered "live" because the user can tap
+       * it immediately even while the page is loading; the other four
+       * tabs are skeleton placeholders sized roughly to their final
+       * label widths so the transition into the loaded state doesn't
+       * jolt their position. Keep this list in sync with the ACTIONS
+       * array in ReaderScreen.tsx → ActionBar. */}
       <View style={styles.readerActionBar}>
         <View style={styles.readerActionItem}>
           <View style={styles.readerListenBtn}>
@@ -122,10 +130,15 @@ export function ReaderSkeleton({ onBack }: { onBack: () => void }) {
           </View>
           <Text style={styles.readerActionLabel}>Listen</Text>
         </View>
-        {['AI tools', 'Chapters', 'Search'].map((label) => (
-          <View key={label} style={styles.readerActionItem}>
+        {[
+          { key: 'AI tools', labelWidth: 42 },
+          { key: 'Search', labelWidth: 36 },
+          { key: 'Highlights', labelWidth: 52 },
+          { key: 'Reading options', labelWidth: 80 },
+        ].map(({ key, labelWidth }) => (
+          <View key={key} style={styles.readerActionItem}>
             <Skeleton width={44} height={44} borderRadius={22} />
-            <Skeleton width={32} height={9} borderRadius={99} style={{ marginTop: 6 }} />
+            <Skeleton width={labelWidth} height={9} borderRadius={99} style={{ marginTop: 6 }} />
           </View>
         ))}
       </View>

@@ -155,7 +155,7 @@ const styles = StyleSheet.create({
     width: 48,
     height: 48,
     borderRadius: 24,
-    backgroundColor: '#FDF3E3',
+    backgroundColor: tokens.colors.warnBg,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 14,
@@ -192,7 +192,7 @@ const styles = StyleSheet.create({
     maxWidth: 300,
   },
   followUpMuted: {
-    color: '#A0692A',
+    color: tokens.colors.warn,
   },
 
   cta: {

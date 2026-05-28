@@ -6,7 +6,7 @@
  * with a chevron rotation. Bottom card surfaces the support email.
  */
 
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import {
   Pressable,
   ScrollView,
@@ -14,6 +14,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import * as Clipboard from 'expo-clipboard';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Icon, Text } from '~/components';
 import { tokens } from '~/design/tokens';
@@ -230,6 +231,30 @@ export function HelpFAQScreen({
   });
   const [query, setQuery] = useState('');
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  // Footer "support email" button: tapping it copies the address to
+  // the clipboard so the user can paste it into Gmail / Outlook /
+  // web mail without needing a native mail app registered. Same
+  // pattern as the Send feedback screen so the affordance reads
+  // consistently across the app.
+  const [emailCopied, setEmailCopied] = useState(false);
+  const handleContactPress = useCallback(async () => {
+    // Honour the legacy `onContactSupport` prop if the parent wired
+    // one (e.g. some future flow that opens a structured help form);
+    // otherwise default to the copy-to-clipboard affordance.
+    if (onContactSupport) {
+      onContactSupport();
+      return;
+    }
+    try {
+      await Clipboard.setStringAsync(supportEmail);
+      setEmailCopied(true);
+      setTimeout(() => setEmailCopied(false), 1800);
+    } catch {
+      // Clipboard set is essentially infallible on modern Android /
+      // iOS; if it ever fails the user can long-press the visible
+      // address to select + copy manually.
+    }
+  }, [onContactSupport, supportEmail]);
 
   const filtered = useMemo(() => {
     if (!query.trim()) return SECTIONS;
@@ -346,12 +371,24 @@ export function HelpFAQScreen({
             Email our support team — we usually respond within a day.
           </Text>
           <Pressable
-            onPress={onContactSupport ?? (() => {})}
+            onPress={handleContactPress}
             style={({ pressed }) => [styles.contactBtn, pressed && { opacity: 0.85 }]}
             accessibilityRole="button"
+            accessibilityLabel={
+              emailCopied
+                ? `${supportEmail} copied to clipboard`
+                : `Copy ${supportEmail} to clipboard`
+            }
           >
-            <Icon name="Mail" size={13} color={tokens.colors.cream[50]} strokeWidth={1.75} />
-            <Text style={styles.contactBtnLabel}>{supportEmail}</Text>
+            <Icon
+              name={emailCopied ? 'Check' : 'Mail'}
+              size={13}
+              color={tokens.colors.cream[50]}
+              strokeWidth={1.75}
+            />
+            <Text style={styles.contactBtnLabel}>
+              {emailCopied ? 'Copied — paste into your mail app' : supportEmail}
+            </Text>
           </Pressable>
         </View>
       </ScrollView>

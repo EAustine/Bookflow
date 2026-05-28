@@ -21,6 +21,7 @@ import { Pressable, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Icon, TabBar, type TabKey, Text } from '~/components';
 import { tokens } from '~/design/tokens';
+import type { Book } from '~/types/book';
 import {
   ListenNowPlayingScreen,
   type ListenNowPlayingScreenProps,
@@ -36,6 +37,15 @@ export type ListenHomeScreenProps = {
   onTabChange: (tab: TabKey) => void;
   /** Tapped from the empty state's "Browse library" CTA. */
   onBrowseLibrary?: () => void;
+  /**
+   * The user's most recently read/listened book, used to power the
+   * "Resume listening" affordance when there's no live audio session.
+   * Tap → starts a session on that book at its persisted page index.
+   * `null` falls back to the generic empty state.
+   */
+  lastListenedBook?: Book | null;
+  /** Called with the book when the user taps the resume card. */
+  onResumeListening?: (book: Book) => void;
 };
 
 // ─── Screen ───────────────────────────────────────────────────────────────────
@@ -45,6 +55,8 @@ export function ListenHomeScreen({
   nowPlaying,
   onTabChange,
   onBrowseLibrary,
+  lastListenedBook,
+  onResumeListening,
 }: ListenHomeScreenProps) {
   // Active path: defer to the dedicated now-playing surface, then add a
   // TabBar underneath. ListenNowPlayingScreen already wraps in its own
@@ -63,7 +75,83 @@ export function ListenHomeScreen({
     );
   }
 
-  // Empty state.
+  // Idle state — the user has no active audio session. If we know the
+  // book they last opened (read or listened), surface a "Resume
+  // listening" hero card so a single tap restores the session. Falls
+  // back to the generic empty state for first-time users.
+  if (lastListenedBook && onResumeListening) {
+    const lastReadPage =
+      (lastListenedBook as { last_read_page?: number }).last_read_page ?? 0;
+    const progressPercent = lastListenedBook.progressPercent ?? 0;
+    return (
+      <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
+        <View style={styles.resumeWrap}>
+          <Text style={styles.eyebrow}>Last session</Text>
+          <Pressable
+            onPress={() => onResumeListening(lastListenedBook)}
+            style={({ pressed }) => [
+              styles.resumeCard,
+              pressed && { opacity: 0.92 },
+            ]}
+            accessibilityRole="button"
+            accessibilityLabel={`Resume listening to ${lastListenedBook.title}`}
+          >
+            <View
+              style={[
+                styles.resumeCover,
+                { backgroundColor: lastListenedBook.coverColor },
+              ]}
+            >
+              <Text style={styles.resumeCoverInitial}>
+                {lastListenedBook.title.charAt(0).toUpperCase()}
+              </Text>
+            </View>
+            <View style={styles.resumeBody}>
+              <Text style={styles.resumeTitle} numberOfLines={2}>
+                {lastListenedBook.title}
+              </Text>
+              {lastListenedBook.author ? (
+                <Text style={styles.resumeAuthor} numberOfLines={1}>
+                  {lastListenedBook.author}
+                </Text>
+              ) : null}
+              <View style={styles.resumeProgressTrack}>
+                <View
+                  style={[
+                    styles.resumeProgressFill,
+                    { width: `${Math.min(100, Math.max(0, progressPercent))}%` },
+                  ]}
+                />
+              </View>
+              <Text style={styles.resumeMeta}>
+                Page {lastReadPage + 1} · {progressPercent}% complete
+              </Text>
+            </View>
+            <View style={styles.resumePlayBubble}>
+              <Icon
+                name="Headphones"
+                size={16}
+                color={tokens.colors.cream[50]}
+                strokeWidth={1.75}
+              />
+            </View>
+          </Pressable>
+
+          <Pressable
+            onPress={onBrowseLibrary ?? (() => onTabChange('library'))}
+            style={({ pressed }) => [styles.secondaryCta, pressed && { opacity: 0.7 }]}
+            accessibilityRole="button"
+          >
+            <Icon name="Book" size={13} color={tokens.colors.forest[800]} strokeWidth={1.75} />
+            <Text style={styles.secondaryCtaLabel}>Pick a different book</Text>
+          </Pressable>
+        </View>
+        <TabBar activeTab="listen" onChange={onTabChange} />
+      </SafeAreaView>
+    );
+  }
+
+  // First-time / no-history empty state.
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
       <View style={styles.emptyWrap}>
@@ -151,5 +239,98 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '500',
     color: tokens.colors.cream[50],
+  },
+
+  // Resume-listening hero card. Shown on the Listen tab when there's
+  // no live session but the user has a book they were previously
+  // reading. Tap → restart that session.
+  resumeWrap: {
+    flex: 1,
+    paddingHorizontal: 22,
+    paddingTop: 36,
+    gap: 18,
+  },
+  eyebrow: {
+    fontFamily: tokens.fonts.uiMedium,
+    fontSize: 11,
+    fontWeight: '500',
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
+    color: tokens.textColors.muted,
+  },
+  resumeCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: tokens.bgColors.surface,
+    borderRadius: 16,
+    padding: 14,
+    gap: 14,
+  },
+  resumeCover: {
+    width: 56,
+    height: 80,
+    borderRadius: 6,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  resumeCoverInitial: {
+    fontFamily: tokens.fonts.display,
+    fontSize: 28,
+    fontWeight: '500',
+    color: tokens.colors.cream[50],
+  },
+  resumeBody: {
+    flex: 1,
+    gap: 4,
+  },
+  resumeTitle: {
+    fontFamily: tokens.fonts.display,
+    fontSize: 15,
+    fontWeight: '500',
+    color: tokens.textColors.primary,
+    lineHeight: 19,
+  },
+  resumeAuthor: {
+    fontFamily: tokens.fonts.ui,
+    fontSize: 12,
+    color: tokens.textColors.muted,
+  },
+  resumeProgressTrack: {
+    height: 3,
+    borderRadius: 2,
+    backgroundColor: tokens.borderColors.subtle,
+    marginTop: 6,
+    overflow: 'hidden',
+  },
+  resumeProgressFill: {
+    height: 3,
+    backgroundColor: tokens.colors.forest[800],
+  },
+  resumeMeta: {
+    fontFamily: tokens.fonts.ui,
+    fontSize: 11,
+    color: tokens.textColors.subtle,
+    marginTop: 4,
+  },
+  resumePlayBubble: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: tokens.colors.forest[800],
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  secondaryCta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 10,
+  },
+  secondaryCtaLabel: {
+    fontFamily: tokens.fonts.uiMedium,
+    fontSize: 13,
+    fontWeight: '500',
+    color: tokens.colors.forest[800],
   },
 });

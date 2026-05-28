@@ -71,6 +71,19 @@ export async function sendMagicLink({
   });
 
   if (error) {
+    // Log the raw error so it shows up in device logs + Sentry. The
+    // user-facing message is intentionally vague; without this log,
+    // every misconfiguration (rate limit, SMTP fail, redirect not in
+    // allowlist) looks identical to the operator and is impossible
+    // to triage.
+    console.warn(
+      '[auth] signInWithOtp failed',
+      JSON.stringify({
+        status: (error as { status?: number }).status,
+        name: error.name,
+        message: error.message,
+      }),
+    );
     return { ok: false, message: humanizeAuthError(error, variant) };
   }
   return { ok: true };
@@ -83,8 +96,17 @@ export async function sendMagicLink({
 function humanizeAuthError(error: AuthError, variant: 'signin' | 'signup'): string {
   const msg = error.message.toLowerCase();
 
-  if (msg.includes('rate limit') || msg.includes('too many')) {
-    return 'Too many requests. Try again in about a minute.';
+  // Rate limits — Supabase's default SMTP allows ~3 emails per hour
+  // across the project. Hitting this is common during closed-test
+  // surges before custom SMTP is wired. The 429 status from Supabase
+  // sometimes returns a generic "request rate limit reached" string.
+  if (
+    msg.includes('rate limit') ||
+    msg.includes('too many') ||
+    msg.includes('over_email_send_rate_limit') ||
+    (error as { status?: number }).status === 429
+  ) {
+    return 'We sent too many emails recently. Try again in about 10 minutes.';
   }
   if (msg.includes('user not found') || msg.includes('signups not allowed')) {
     return variant === 'signin'
@@ -96,6 +118,22 @@ function humanizeAuthError(error: AuthError, variant: 'signin' | 'signup'): stri
   }
   if (msg.includes('network') || msg.includes('fetch')) {
     return "Couldn't reach our servers. Check your connection and try again.";
+  }
+  // Email-send specific failures — most common cause is unconfigured
+  // SMTP, an exhausted email provider quota, or the sender domain
+  // not being verified. The literal error from Supabase is usually
+  // "Error sending magic link email" or "smtp connection error".
+  if (
+    msg.includes('email') &&
+    (msg.includes('send') || msg.includes('smtp') || msg.includes('confirmation'))
+  ) {
+    return "We couldn't send the email right now. Try again in a few minutes or contact support.";
+  }
+  // Redirect-URL allowlist failures — happens when the
+  // `emailRedirectTo` value (bookflow://auth/callback) isn't in
+  // Supabase Auth → URL Configuration → Redirect URLs.
+  if (msg.includes('redirect') && msg.includes('allow')) {
+    return 'Sign-in is temporarily misconfigured. Please contact support.';
   }
   return "Something went wrong sending your link. Try again in a moment.";
 }
@@ -195,7 +233,15 @@ export async function completeAuthCallback(
   if (payload.kind === 'code') {
     const { data, error } = await supabase.auth.exchangeCodeForSession(payload.code);
     if (error) {
-      console.warn('[auth] exchangeCodeForSession failed:', error.message, error);
+      // Log only the message and status — the full AuthError object
+      // carries the raw response body which can include the JWT
+      // fragment, refresh token, and email. None of that needs to
+      // land in device logs / crash reporting.
+      console.warn(
+        '[auth] exchangeCodeForSession failed:',
+        error.message,
+        error.status ?? '',
+      );
       return { ok: false, error: categorizeExchangeError(error) };
     }
     if (!data.session?.user) return { ok: false, error: 'unknown' };
@@ -208,7 +254,11 @@ export async function completeAuthCallback(
     refresh_token: payload.refreshToken,
   });
   if (error) {
-    console.warn('[auth] setSession failed:', error.message, error);
+    console.warn(
+      '[auth] setSession failed:',
+      error.message,
+      error.status ?? '',
+    );
     return { ok: false, error: categorizeExchangeError(error) };
   }
   if (!data.session?.user) return { ok: false, error: 'unknown' };

@@ -5,6 +5,7 @@ import {
   type AudioPlayer,
   type AudioStatus,
 } from 'expo-audio';
+import { formatNetworkError } from '~/lib/networkErrors';
 import { supabase } from '~/lib/supabase';
 
 /**
@@ -335,9 +336,46 @@ export function useAudio(args: {
       const result = await fetchPageAudio({ bookId, pageIndex, voiceId });
       if (token !== loadTokenRef.current) return; // stale
       if (!result.ok) {
+        // Error-message priority:
+        //   1. Any network-shaped failure (raw text matches network
+        //      pattern, OR error code is the generic
+        //      request_failed / function_failed which Supabase
+        //      surfaces on transport-layer failures) → use a
+        //      network-focused friendly message. This is the most
+        //      common failure mode and the most actionable
+        //      surface — "audio playback failed" without a network
+        //      hint left users guessing why.
+        //   2. Otherwise prefer the audio code map — covers
+        //      domain-specific cases like page_too_short.
+        //   3. Final fallback: friendly mapper on the raw message
+        //      so we never store stack-trace-shaped text in
+        //      `status.errorMessage` (it gets read by both the
+        //      Listen banner and the lock-screen MediaSession).
+        const raw = result.message;
+        const isNetworkRaw =
+          !!raw && /network request failed|network error|failed to fetch|abort|timeout/i.test(raw);
+        const isNetworkCode =
+          result.error === 'request_failed' || result.error === 'function_failed';
+        let friendly: string;
+        if (isNetworkRaw || isNetworkCode) {
+          // Hard-code a clear "audio + connection" message rather
+          // than letting formatNetworkError fall through to its
+          // generic "Something went wrong preparing audio" string,
+          // which the user reported as unhelpful — they didn't
+          // know it was a network issue. This copy names the
+          // suspect and the remedy in one line.
+          friendly =
+            "Couldn't load audio. Check your connection and try again.";
+        } else if (result.error) {
+          friendly = audioErrorCodeToMessage(result.error);
+        } else if (raw) {
+          friendly = formatNetworkError(raw, 'preparing audio');
+        } else {
+          friendly = "Couldn't load audio. Try again in a moment.";
+        }
         setStatus({
           ...INITIAL_STATUS,
-          errorMessage: result.message ?? audioErrorCodeToMessage(result.error),
+          errorMessage: friendly,
         });
         return;
       }
@@ -348,9 +386,16 @@ export function useAudio(args: {
       try {
         player = createAudioPlayer({ uri: result.data.url });
       } catch (err) {
+        console.warn('[aiAudio] createAudioPlayer threw:', err);
+        // The signed audio URL came back fine but expo-audio
+        // couldn't wire it up — usually a transient native-side
+        // issue OR a download failure (signed URL race). Either
+        // way the user can act on "try again", so phrase it that
+        // way directly.
         setStatus({
           ...INITIAL_STATUS,
-          errorMessage: err instanceof Error ? err.message : 'Could not create audio player',
+          errorMessage:
+            "Couldn't load audio. Check your connection and try again.",
         });
         return;
       }
@@ -541,9 +586,11 @@ export function useAudio(args: {
     try {
       p.play();
     } catch (err) {
+      console.warn('[aiAudio] play threw:', err);
       setStatus((s) => ({
         ...s,
-        errorMessage: err instanceof Error ? err.message : 'Playback failed',
+        // Pre-formatted — see loadTrack comment for the why.
+        errorMessage: formatNetworkError(err, 'playing audio'),
       }));
     }
   }, []);

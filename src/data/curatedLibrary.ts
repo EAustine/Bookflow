@@ -23,6 +23,10 @@ export type CuratedBook = {
   author: string;
   /** Last name (or short form) for the small caption under the cover. */
   shortAuthor: string;
+  /** Project Gutenberg ID — used to import the EPUB into the user's
+   * library on selection from onboarding. The URL pattern is the
+   * stable per-book convention (`ebooks/{id}.epub.images`). */
+  gutenbergId: number;
   /** Cover gradient — rendered as a 135deg LinearGradient (top-left → bottom-right). */
   cover: {
     from: string;
@@ -43,6 +47,7 @@ export const CURATED_LIBRARY: readonly CuratedBook[] = [
     shortTitle: 'The Great Gatsby',
     author: 'F. Scott Fitzgerald',
     shortAuthor: 'Fitzgerald',
+    gutenbergId: 64317,
     cover: {
       from: '#2D5A3F',
       to: '#1B4332',
@@ -56,6 +61,7 @@ export const CURATED_LIBRARY: readonly CuratedBook[] = [
     shortTitle: 'Pride and Prejudice',
     author: 'Jane Austen',
     shortAuthor: 'Austen',
+    gutenbergId: 1342,
     cover: {
       from: '#ECE5D5',
       to: '#D8D5CC',
@@ -69,6 +75,7 @@ export const CURATED_LIBRARY: readonly CuratedBook[] = [
     shortTitle: 'Dorian Gray',
     author: 'Oscar Wilde',
     shortAuthor: 'Wilde',
+    gutenbergId: 174,
     cover: {
       from: '#1A1A1A',
       to: '#3D3A36',
@@ -82,6 +89,7 @@ export const CURATED_LIBRARY: readonly CuratedBook[] = [
     shortTitle: 'Frankenstein',
     author: 'Mary Shelley',
     shortAuthor: 'Shelley',
+    gutenbergId: 84,
     cover: {
       from: '#D4A574',
       to: '#B8895A',
@@ -95,6 +103,7 @@ export const CURATED_LIBRARY: readonly CuratedBook[] = [
     shortTitle: 'Meditations',
     author: 'Marcus Aurelius',
     shortAuthor: 'Aurelius',
+    gutenbergId: 2680,
     cover: {
       from: '#FAF7F2',
       to: '#F5F1E8',
@@ -109,6 +118,7 @@ export const CURATED_LIBRARY: readonly CuratedBook[] = [
     shortTitle: 'Walden',
     author: 'H.D. Thoreau',
     shortAuthor: 'Thoreau',
+    gutenbergId: 205,
     cover: {
       from: '#234D38',
       to: '#0E2A21',

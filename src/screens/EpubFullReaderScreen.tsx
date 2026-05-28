@@ -41,9 +41,12 @@ import {
 } from '~/components';
 import { tokens } from '~/design/tokens';
 import { useBackHandler } from '~/lib/useBackHandler';
+import { useSlowOp } from '~/hooks/useSlowOp';
+import { SlowNetworkBanner } from '~/components/SlowNetworkBanner';
 import type { Book } from '~/types/book';
+import { formatNetworkError } from '~/lib/networkErrors';
 import { supabase } from '~/lib/supabase';
-import { persistReadingPosition } from '~/lib/useBookChapters';
+import { persistReadingPosition, touchLastReadAt } from '~/lib/useBookChapters';
 import { useReadingSession } from '~/lib/readingSessions';
 import {
   AIToolsSheet,
@@ -230,18 +233,29 @@ export function EpubFullReaderScreen({
     (fraction: number) => {
       progressFractionRef.current = fraction;
       const total = book.totalPages ?? 0;
+      let computedIdx = 0;
       if (total > 0) {
-        const idx = Math.min(
+        computedIdx = Math.min(
           total - 1,
           Math.max(0, Math.floor(fraction * total)),
         );
-        setLivePageIndex((prev) => (prev === idx ? prev : idx));
+        setLivePageIndex((prev) =>
+          prev === computedIdx ? prev : computedIdx,
+        );
       }
       if (persistTimerRef.current) clearTimeout(persistTimerRef.current);
+      // Use the computed page index, NOT a hardcoded 0. The
+      // previous shape silently reset every reader's saved page
+      // to 0 on every WebView scroll. We use Math.floor(fraction
+      // * totalPages) as a fair approximation — Full mode has
+      // no per-page DOM markers we can hit from the WebView
+      // bridge today, so scroll-fraction-to-page is the best
+      // mapping we have. Accurate within a page or two for any
+      // reasonably-uniform-density book.
       persistTimerRef.current = setTimeout(() => {
         void persistReadingPosition({
           bookId: book.id,
-          pageIndex: 0,
+          pageIndex: computedIdx,
           position: fraction,
         });
       }, 800);
@@ -307,7 +321,13 @@ export function EpubFullReaderScreen({
 
         if (cancelled) return;
         if (error) {
-          setResolveError(error.message);
+          // The catch block below already maps fetch-thrown errors
+          // to friendly copy, but Supabase frequently surfaces row-
+          // query failures here without throwing — the raw
+          // `error.message` would land in the empty-state UI as
+          // stack-trace-shaped text. Same mapper for parity.
+          console.warn('[EpubFullReader] pages query failed:', error);
+          setResolveError(formatNetworkError(error, 'opening this book'));
           return;
         }
 
@@ -363,7 +383,13 @@ export function EpubFullReaderScreen({
         setResolvedHtml(fullHtml);
       } catch (err) {
         if (!cancelled) {
-          setResolveError(err instanceof Error ? err.message : 'Could not load book.');
+          // Centralised friendly-message mapping. Was an inline
+          // branch before this refactor — now lives in
+          // `formatNetworkError` so the same offline / timeout /
+          // generic copy is used across Reader, PDF reader, AI
+          // panels, Library, and Discover.
+          console.warn('[EpubFullReader] resolve failed:', err);
+          setResolveError(formatNetworkError(err, 'opening this book'));
         }
       }
     })();
@@ -373,12 +399,17 @@ export function EpubFullReaderScreen({
     };
   }, [book.id, book.title]);
 
-  // Persist a single "opened full mode" position write so the library's
-  // last-read time updates. Subsequent scroll progress isn't tracked
-  // (would require WebView↔JS bridging — a follow-up).
+  // Bump `last_read_at` only — so the library's "Continue
+  // reading" surface knows this book was just touched, but we
+  // DON'T overwrite the user's saved page. The previous shape
+  // called persistReadingPosition with pageIndex: 0, which
+  // silently destroyed the saved page each time the user opened
+  // the book in Full mode (Full mode has no scroll-position
+  // bridging from the WebView yet, so we genuinely don't know
+  // their current page from this surface).
   useEffect(() => {
     if (resolvedHtml) {
-      void persistReadingPosition({ bookId: book.id, pageIndex: 0, position: 0 });
+      void touchLastReadAt(book.id);
     }
   }, [book.id, resolvedHtml]);
 
@@ -432,9 +463,15 @@ export function EpubFullReaderScreen({
   }
 
   const showLoadingOverlay = !resolvedHtml && !resolveError && hasContent !== false;
+  // Flip to true once the resolve has been pending >5s — tells the
+  // user the wait is on the network, not the app.
+  const isSlowLoad = useSlowOp(showLoadingOverlay);
 
   return (
     <SafeAreaView style={styles.safe} edges={['left', 'right']}>
+      {isSlowLoad && (
+        <SlowNetworkBanner label="Loading this book is taking longer than usual — check your connection." />
+      )}
       {/*
         The WebView used to be wrapped in a <Pressable onPress={showChrome}>
         so any tap surfaced the toolbar back. That broke two interactions
@@ -1018,14 +1055,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  topIconBtn: {
-    width: 32,
-    height: 32,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: 16,
-    backgroundColor: tokens.bgColors.surface,
-  },
   topCenter: {
     flex: 1,
     alignItems: 'center',
@@ -1036,12 +1065,6 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '500',
     color: tokens.textColors.primary,
-  },
-  topMeta: {
-    fontFamily: tokens.fonts.ui,
-    fontSize: 10,
-    color: tokens.textColors.muted,
-    marginTop: 1,
   },
   bottomChrome: {
     position: 'absolute',

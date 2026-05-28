@@ -1,7 +1,11 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
+  ActivityIndicator,
+  Alert,
+  Image,
   Pressable,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   TextInput,
@@ -27,19 +31,27 @@ import {
   Text,
 } from '~/components';
 import { tokens } from '~/design/tokens';
-import { mockBooks } from '~/data/mockBooks';
+import { useBooks } from '~/hooks/useBooks';
+import { peekCachedCoverUrl, resolveCoverUrl } from '~/lib/bookCovers';
+import { formatNetworkError } from '~/lib/networkErrors';
+import { supabase } from '~/lib/supabase';
 import type { Book } from '~/types/book';
 import { ReaderScreen } from '~/screens/ReaderScreen';
-import { ListenScreen, MiniPlayer } from '~/screens/ListenScreen';
 import { SoftWarningBanner } from '~/screens/PaywallScreen';
 import {
   AddBookSheet,
-  ConfirmSheet,
   ProcessingScreen,
+  type ProcessingStep,
   ScannedPdfErrorScreen,
 } from '~/screens/UploadFlowScreen';
+import { useBookUpload } from '~/lib/uploadBook';
+import { reprocessBook } from '~/lib/reprocessBook';
 import { useNetworkState } from '~/hooks/useNetworkState';
 import { LibrarySkeleton } from '~/screens/SkeletonScreens';
+import { HighlightsScreen } from '~/screens/HighlightsScreen';
+import { PdfReaderScreen } from '~/screens/PdfReaderScreen';
+import { EpubFullReaderScreen } from '~/screens/EpubFullReaderScreen';
+import { useReadingStats } from '~/lib/readingStats';
 
 /**
  * Flip to `true` to preview the library first-load skeleton.
@@ -47,14 +59,18 @@ import { LibrarySkeleton } from '~/screens/SkeletonScreens';
 const MOCK_LIBRARY_LOADING = false;
 
 // Offline banner colour constants (slate palette — not in design tokens)
-const OFFLINE_COLOR = '#4A5568';
-const OFFLINE_BG = '#F0F2F5';
-const OFFLINE_BORDER = '#CBD5E0';
+const OFFLINE_COLOR = tokens.colors.offline;
+const OFFLINE_BG = tokens.colors.offlineBg;
+const OFFLINE_BORDER = tokens.colors.offlineBorder;
 
 type SortKey = 'recent' | 'added' | 'title' | 'progress';
 type FilterKey = 'all' | 'in-progress' | 'not-started' | 'finished';
 
-const NOW = new Date('2026-04-28T10:00:00');
+// Wall-clock "now" used by relative-time helpers (e.g. "2h ago"). We
+// re-read this on every render rather than capturing a constant at module
+// load, so a long-running session doesn't drift. Was previously a hardcoded
+// preview date — that meant any real `lastReadAt` past the hardcoded value
+// produced negative diffs and nonsensical labels.
 const RECENT_SEARCHES_KEY = '@bookflow/recent_searches';
 const MAX_RECENT = 5;
 
@@ -69,25 +85,295 @@ export type LibraryScreenProps = {
   onTabChange: (tab: TabKey) => void;
   userName?: string;
   onUpgrade?: () => void;
+  /**
+   * Hand off a book to the global audio session. Owned by App.tsx so the
+   * Listen tab can reflect the active book and so a single useAudio
+   * instance owns playback (rather than each tab racing its own).
+   * Library no longer renders the player itself.
+   */
+  onStartListening: (book: Book) => void;
+  /**
+   * Fired whenever the library opens or closes a reader (PDF / EPUB
+   * full / EPUB text). App.tsx uses this to hide the global mini
+   * player while the user is reading — the mini bar overlapping the
+   * reader chrome was distracting and there's no need for it when
+   * the user is already on the book.
+   */
+  onReaderOpenChange?: (open: boolean) => void;
 };
 
-export function LibraryScreen({ onTabChange, userName, onUpgrade }: LibraryScreenProps) {
+export function LibraryScreen({
+  onTabChange,
+  userName,
+  onUpgrade,
+  onStartListening,
+  onReaderOpenChange,
+}: LibraryScreenProps) {
   const { isConnected } = useNetworkState();
   const isOffline = !isConnected;
 
   const [selectedBook, setSelectedBook] = useState<Book | null>(null);
-  const [listeningBook, setListeningBook] = useState<Book | null>(null);
+  // Notify the parent shell whenever a reader opens / closes so the
+  // global mini-player overlay can hide while the user is in a book.
+  // Effect-based so the callback fires for both directions without
+  // wrapping every setSelectedBook call site.
+  // (Effect that reports drill-in state to App is below the
+  // highlightsBook declaration so it can read both signals.)
   const [showBanner, setShowBanner] = useState(true);
-  const [miniPlayerBook, setMiniPlayerBook] = useState<Book | null>(null);
   const [appliedSort, setAppliedSort] = useState<SortKey>('recent');
   const [appliedFilter, setAppliedFilter] = useState<FilterKey>('all');
   const [pendingSort, setPendingSort] = useState<SortKey>('recent');
   const [pendingFilter, setPendingFilter] = useState<FilterKey>('all');
   const sheetRef = useRef<BottomSheetRef>(null);
   const addSheetRef = useRef<BottomSheetRef>(null);
-  const confirmSheetRef = useRef<BottomSheetRef>(null);
+  const bookActionSheetRef = useRef<BottomSheetRef>(null);
+  const removeConfirmSheetRef = useRef<BottomSheetRef>(null);
+  // Book selected by a long-press, used to populate the action sheet.
+  // Cleared on dismiss so the sheet doesn't flash with stale content next
+  // time it opens.
+  const [actionBook, setActionBook] = useState<Book | null>(null);
+  // Book staged for removal confirmation. Populated when the user taps
+  // "Remove from library" in the action sheet; cleared when the confirm
+  // sheet dismisses.
+  const [bookToRemove, setBookToRemove] = useState<Book | null>(null);
+  const [removing, setRemoving] = useState(false);
+  // Book staged for the highlights screen — shown as a full-screen overlay
+  // when the user taps "View highlights" from the action sheet.
+  const [highlightsBook, setHighlightsBook] = useState<Book | null>(null);
+
+  // Tell App.tsx whenever we drill INTO a focused surface (reader
+  // OR highlights). App.tsx uses this signal to hide the floating
+  // MiniPlayer overlay — both surfaces are full-screen focused
+  // views that shouldn't share their bottom edge with audio
+  // chrome.
+  useEffect(() => {
+    onReaderOpenChange?.(selectedBook !== null || highlightsBook !== null);
+  }, [selectedBook, highlightsBook, onReaderOpenChange]);
+  // EPUB reader mode preference. Defaults to 'full' (WebView with
+  // original-formatting HTML) so the user sees the book the way
+  // its designer laid it out — chapter headings, line breaks,
+  // images, the works. They can flip to 'text' via the toggle for
+  // the paginated-prose mode (tappable words, sentence saves,
+  // AI tools). The mode resets to 'full' between library entries
+  // so a fresh book always opens in the format-preserving view.
+  const [epubMode, setEpubMode] = useState<'text' | 'full'>('full');
   const [showProcessing, setShowProcessing] = useState(false);
   const [showScannedPdfError, setShowScannedPdfError] = useState(false);
+
+  // Reading-stats aggregate (minutes this week + streak). Refetched when
+  // we close the reader so a just-finished session shows up immediately.
+  const { stats: readingStats, refetch: refetchStats } = useReadingStats();
+
+  // Real library data — replaces the mockBooks fixture. The hook subscribes
+  // to postgres_changes so a successful upload auto-appears here without a
+  // manual refresh. Hoisted to the top of the component because the upload
+  // terminal-state effect below needs `refetch` as a fallback.
+  const { books, continueBook: continueBookFromHook, isLoading, refetch } = useBooks();
+
+  // Pull-to-refresh state. The hook's realtime subscription handles most
+  // updates automatically, but a manual pull is useful for catching
+  // anything realtime missed (network blips, RLS-filtered changes, etc.).
+  const [refreshing, setRefreshing] = useState(false);
+  const handleRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await refetch();
+    } finally {
+      setRefreshing(false);
+    }
+  }, [refetch]);
+
+  // Real upload pipeline. The hook handles pick → validate → insert →
+  // upload → invoke fn → poll. We just react to its phase to drive the UI.
+  const upload = useBookUpload();
+
+  // Drives the "processing" phase ring creep. Resets each time we re-enter
+  // processing; ticks once a second so the ring advances visibly without
+  // burning render cycles. Capped at 60s — past that we hold at 95%.
+  const [processingElapsedFraction, setProcessingElapsedFraction] = useState(0);
+  useEffect(() => {
+    if (upload.state.phase !== 'processing') {
+      setProcessingElapsedFraction(0);
+      return;
+    }
+    const startedAt = Date.now();
+    const id = setInterval(() => {
+      const elapsed = (Date.now() - startedAt) / 1000;
+      setProcessingElapsedFraction(Math.min(1, elapsed / 60));
+    }, 1000);
+    return () => clearInterval(id);
+  }, [upload.state.phase]);
+
+  const handleUploadTap = useCallback(() => {
+    setShowProcessing(true);
+    void (async () => {
+      await upload.startUpload();
+    })();
+  }, [upload]);
+
+  // React to terminal upload states.
+  //
+  // Subtlety: this effect must NOT depend on `upload` (the whole hook
+  // result) because the hook returns a fresh object on every render and
+  // that would cause the dismiss timer to be cleared and re-scheduled on
+  // every parent re-render. Realtime book updates re-render the parent
+  // frequently right after a successful upload (the new row arrives over
+  // postgres_changes, which triggers `useBooks` to setState), so an
+  // unstable dep here was preventing the 1.5s timer from ever firing —
+  // the upload screen would stay on "All set" forever.
+  //
+  // We also gate the dismiss with a ref so re-entries within the same
+  // terminal phase don't double-schedule.
+  const dismissScheduledRef = useRef(false);
+  const phase = upload.state.phase;
+  const failureReason = upload.state.failureReason;
+  const uploadReset = upload.reset;
+  useEffect(() => {
+    if (phase === 'failed' && failureReason === 'scanned_pdf') {
+      setShowProcessing(false);
+      setShowScannedPdfError(true);
+      uploadReset();
+      return;
+    }
+    if (phase === 'idle' && showProcessing) {
+      // Picker was cancelled before we got anywhere — close the screen.
+      setShowProcessing(false);
+      return;
+    }
+    if (phase === 'ready' || phase === 'partial') {
+      if (dismissScheduledRef.current) return;
+      dismissScheduledRef.current = true;
+      void refetch();
+      const t = setTimeout(() => {
+        setShowProcessing(false);
+        uploadReset();
+        dismissScheduledRef.current = false;
+      }, 1500);
+      return () => {
+        clearTimeout(t);
+        dismissScheduledRef.current = false;
+      };
+    }
+    // Any non-terminal phase: clear the latch so the next ready/partial
+    // re-arms the dismiss.
+    dismissScheduledRef.current = false;
+  }, [phase, failureReason, showProcessing, refetch, uploadReset]);
+
+  // Build the processing-screen step list from upload phase. Three rows
+  // mirror the design: upload → extract chapters → generate audio. Audio
+  // generation isn't wired yet (M2), so it stays pending on success.
+  const processingSteps: ProcessingStep[] = (() => {
+    const phase = upload.state.phase;
+    const sizeLabel = upload.state.fileSize
+      ? `${(upload.state.fileSize / 1024 / 1024).toFixed(1)} MB`
+      : '';
+    const uploadStep: ProcessingStep =
+      phase === 'uploading'
+        ? {
+            state: 'active',
+            label: 'Uploading file',
+            sublabel: `${Math.round(upload.state.progress * 100)}% · ${sizeLabel}`,
+          }
+        : phase === 'creating' || phase === 'picking'
+        ? { state: 'active', label: 'Preparing upload', sublabel: sizeLabel || 'Reading file…' }
+        : { state: 'done', label: 'File uploaded', sublabel: `${sizeLabel} · completed` };
+
+    const extractStep: ProcessingStep =
+      phase === 'processing'
+        ? {
+            state: 'active',
+            label: 'Extracting chapters',
+            // Prefer the live status hint from the edge function
+            // (e.g. "OCR'ing pages 1–100 of 250…") when available;
+            // fall back to the generic copy otherwise.
+            sublabel:
+              upload.state.processingMessage ?? 'Reading the file contents…',
+          }
+        : phase === 'ready' || phase === 'partial'
+        ? { state: 'done', label: 'Chapters extracted', sublabel: 'Completed' }
+        : phase === 'failed'
+        ? {
+            state: 'failed',
+            label: 'Extracting chapters',
+            // Run the upload's raw error through the shared friendly
+            // mapper so we never show stack-trace-shaped strings here
+            // ("TypeError: Network request failed"). Falls through to
+            // a generic "Failed" if the upload state has no error.
+            sublabel: upload.state.errorMessage
+              ? formatNetworkError(upload.state.errorMessage, 'extracting chapters')
+              : 'Failed',
+          }
+        : { state: 'pending', label: 'Extract chapters', sublabel: 'Waiting for upload' };
+
+    const audioStep: ProcessingStep = { state: 'pending', label: 'Generating audio', sublabel: 'Coming soon' };
+
+    return [uploadStep, extractStep, audioStep];
+  })();
+
+  const processingTitle = (() => {
+    const name = upload.state.fileName ?? 'your book';
+    if (upload.state.phase === 'uploading') return `Uploading ${name}`;
+    if (upload.state.phase === 'processing') return `Processing ${name}`;
+    if (upload.state.phase === 'ready') return 'All set';
+    if (upload.state.phase === 'partial') return 'Mostly ready';
+    if (upload.state.phase === 'failed') return 'Upload failed';
+    return `Preparing ${name}`;
+  })();
+
+  const processingSubtitle = (() => {
+    if (upload.state.phase === 'uploading') return 'Sending the file to your library.';
+    if (upload.state.phase === 'processing') {
+      // Prefer the live status hint when the edge function has shipped
+      // one (OCR / chunking can take minutes — the generic "under a
+      // minute" copy is misleading there).
+      return (
+        upload.state.processingMessage ??
+        'Reading the file and extracting chapters. This usually takes under a minute.'
+      );
+    }
+    if (upload.state.phase === 'ready') return 'Your book is in the library.';
+    if (upload.state.phase === 'partial') return 'Some optional steps failed, but the book is readable.';
+    if (upload.state.phase === 'failed') {
+      // Same friendly mapping as the per-step label above — keeps
+      // the header subtitle in the same voice as the pipeline UI.
+      return upload.state.errorMessage
+        ? formatNetworkError(upload.state.errorMessage, 'processing this book')
+        : 'Something went wrong.';
+    }
+    return 'Working…';
+  })();
+
+  // Unified 0..1 progress across the whole pipeline so the ring never
+  // overshoots and the user always sees forward motion. Phase budgets:
+  //   picking / creating   →  0–5%   (fixed checkpoints)
+  //   uploading            →  5–55%  (real XHR progress)
+  //   processing (server)  →  55–95% (creeps with elapsed time, indeterminate underneath)
+  //   ready / partial      →  100%
+  // Returning `undefined` would make the ring indeterminate — we avoid that
+  // here so the user always sees a number, but processing-phase advancement
+  // is just a time heuristic since the Edge Function doesn't stream progress.
+  const processingProgress = (() => {
+    switch (upload.state.phase) {
+      case 'picking':
+        return 0;
+      case 'creating':
+        return 0.05;
+      case 'uploading':
+        return 0.05 + Math.max(0, Math.min(1, upload.state.progress)) * 0.5;
+      case 'processing':
+        // Creep up to 95% over ~60s of polling. We don't have real signal
+        // from the function, so this is a UX heuristic — better than a
+        // ring stuck at one value while we wait.
+        return Math.min(0.95, 0.55 + processingElapsedFraction * 0.4);
+      case 'ready':
+      case 'partial':
+        return 1;
+      case 'failed':
+      case 'idle':
+      default:
+        return undefined;
+    }
+  })();
 
   // Search state
   const [searchMode, setSearchMode] = useState(false);
@@ -151,7 +437,91 @@ export function LibraryScreen({ onTabChange, userName, onUpgrade }: LibraryScree
     setPendingFilter(appliedFilter);
   }, [appliedSort, appliedFilter]);
 
-  const filtered = mockBooks.filter((b) => {
+  // Open the designed remove-confirmation sheet (replaces the old native
+  // Alert.alert). The actual delete runs from `confirmRemoveBook` below
+  // once the user taps the destructive button.
+  const handleRemoveBook = useCallback((book: Book) => {
+    setBookToRemove(book);
+    removeConfirmSheetRef.current?.present();
+  }, []);
+
+  const confirmRemoveBook = useCallback(async () => {
+    const book = bookToRemove;
+    if (!book || removing) return;
+    setRemoving(true);
+    try {
+      // Storage objects first (RLS lets the user list/delete their own).
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        const prefix = `${user.id}/${book.id}`;
+        const { data: objects } = await supabase.storage
+          .from('books')
+          .list(prefix);
+        if (objects?.length) {
+          await supabase.storage
+            .from('books')
+            .remove(objects.map((o) => `${prefix}/${o.name}`));
+        }
+      }
+      // Then the row — chapters / audio_cache / etc cascade.
+      const { error } = await supabase.from('books').delete().eq('id', book.id);
+      if (error) {
+        console.warn('[Library] removeBook delete failed:', error);
+        Alert.alert('Could not remove', formatNetworkError(error, 'removing this book'));
+      } else {
+        removeConfirmSheetRef.current?.dismiss();
+        setBookToRemove(null);
+        void refetch();
+      }
+    } catch (err) {
+      console.warn('[Library] removeBook threw:', err);
+      Alert.alert('Could not remove', formatNetworkError(err, 'removing this book'));
+    } finally {
+      setRemoving(false);
+    }
+  }, [bookToRemove, removing, refetch]);
+
+  // Long-press opens a designed bottom sheet with book actions. We stage
+  // the selected book in state so the sheet can render its title/cover
+  // header — the BottomSheet itself doesn't accept arguments through its
+  // imperative `present()` API.
+  const handleLongPressBook = useCallback((book: Book) => {
+    setActionBook(book);
+    bookActionSheetRef.current?.present();
+  }, []);
+
+  const handleReprocessFromSheet = useCallback(async () => {
+    if (!actionBook) return;
+    bookActionSheetRef.current?.dismiss();
+    try {
+      await reprocessBook(actionBook.id);
+      void refetch();
+    } catch (err) {
+      console.warn('[Library] reprocessBook threw:', err);
+      Alert.alert('Re-process failed', formatNetworkError(err, 'restarting processing'));
+    }
+  }, [actionBook, refetch]);
+
+  const handleRemoveFromSheet = useCallback(() => {
+    if (!actionBook) return;
+    bookActionSheetRef.current?.dismiss();
+    // Defer the remove-confirm sheet one tick so it presents after the
+    // action sheet finishes its dismiss animation rather than racing it
+    // — without this, iOS occasionally drops the second present.
+    setTimeout(() => handleRemoveBook(actionBook), 250);
+  }, [actionBook, handleRemoveBook]);
+
+  const handleViewHighlightsFromSheet = useCallback(() => {
+    if (!actionBook) return;
+    const target = actionBook;
+    bookActionSheetRef.current?.dismiss();
+    // Same dismiss-then-present staggering as the remove confirm — gives
+    // the action sheet's exit animation a tick before we mount the new
+    // full-screen view, otherwise the book cover/title flicker.
+    setTimeout(() => setHighlightsBook(target), 200);
+  }, [actionBook]);
+
+  const filtered = books.filter((b) => {
     if (appliedFilter === 'in-progress') return b.progressPercent > 0 && b.progressPercent < 100;
     if (appliedFilter === 'not-started') return b.progressPercent === 0;
     if (appliedFilter === 'finished') return b.progressPercent === 100;
@@ -171,21 +541,19 @@ export function LibraryScreen({ onTabChange, userName, onUpgrade }: LibraryScree
     }
   });
 
-  const continueBook = sorted.find(
-    (b) => b.lastReadAt && b.progressPercent > 0 && b.progressPercent < 100,
-  );
+  const continueBook = continueBookFromHook;
 
   const counts: Record<FilterKey, number> = {
-    all: mockBooks.length,
-    'in-progress': mockBooks.filter((b) => b.progressPercent > 0 && b.progressPercent < 100).length,
-    'not-started': mockBooks.filter((b) => b.progressPercent === 0).length,
-    finished: mockBooks.filter((b) => b.progressPercent === 100).length,
+    all: books.length,
+    'in-progress': books.filter((b) => b.progressPercent > 0 && b.progressPercent < 100).length,
+    'not-started': books.filter((b) => b.progressPercent === 0).length,
+    finished: books.filter((b) => b.progressPercent === 100).length,
   };
 
   // Search results
   const lq = searchQuery.trim().toLowerCase();
   const searchResults = lq
-    ? mockBooks.filter(
+    ? books.filter(
         (b) =>
           b.title.toLowerCase().includes(lq) ||
           b.author.toLowerCase().includes(lq),
@@ -196,22 +564,82 @@ export function LibraryScreen({ onTabChange, userName, onUpgrade }: LibraryScree
     return <LibrarySkeleton />;
   }
 
-  if (listeningBook) {
+  if (selectedBook) {
+    // PDFs go to the native PDF reader (full-fidelity Acrobat-style page
+    // rendering). Everything else (EPUB) goes to the paginated text
+    // reader. Deciding here keeps the reader components unaware of each
+    // other — each one is responsible only for its own format.
+    if (selectedBook.type === 'pdf') {
+      return (
+        <PdfReaderScreen
+          book={selectedBook}
+          onBack={() => {
+            setSelectedBook(null);
+            // Refetch the user's books so the Continue card +
+            // per-book progress percentages reflect the page
+            // they just closed on. The reader writes
+            // last_read_page synchronously on every page change,
+            // so by the time onBack fires the row is already
+            // updated server-side — we just need to re-read it.
+            void refetch();
+            void refetchStats();
+          }}
+          onListen={() => {
+            onStartListening(selectedBook);
+            setSelectedBook(null);
+          }}
+        />
+      );
+    }
+    // EPUB: route to the WebView "full" mode or the paginated text reader
+    // based on the user's session toggle. Each component knows how to
+    // request the other (via onRequestFullMode / onRequestTextMode), so
+    // the parent owns the mode state and they don't have to know about
+    // each other.
+    if (epubMode === 'full') {
+      return (
+        <EpubFullReaderScreen
+          book={selectedBook}
+          onBack={() => {
+            setSelectedBook(null);
+            setEpubMode('full');
+            // See PDF onBack above for the refetch rationale.
+            void refetch();
+            void refetchStats();
+          }}
+          onRequestTextMode={() => setEpubMode('text')}
+          onListen={() => {
+            onStartListening(selectedBook);
+            setSelectedBook(null);
+            setEpubMode('text');
+          }}
+        />
+      );
+    }
     return (
-      <ListenScreen
-        book={listeningBook}
-        onBack={() => { setListeningBook(null); setMiniPlayerBook(null); }}
-        onMinimize={() => { setMiniPlayerBook(listeningBook); setListeningBook(null); }}
+      <ReaderScreen
+        book={selectedBook}
+        onBack={() => {
+          setSelectedBook(null);
+          // The reader just closed — refetch books so the Continue
+          // card + per-book progress show the new last_read_page,
+          // and refetch stats to pick up any duration_seconds from
+          // this session.
+          void refetch();
+          void refetchStats();
+        }}
+        onRequestFullMode={() => setEpubMode('full')}
+        onListen={() => { onStartListening(selectedBook); setSelectedBook(null); }}
       />
     );
   }
 
-  if (selectedBook) {
+  if (highlightsBook) {
     return (
-      <ReaderScreen
-        book={selectedBook}
-        onBack={() => setSelectedBook(null)}
-        onListen={() => { setListeningBook(selectedBook); setSelectedBook(null); }}
+      <HighlightsScreen
+        book={highlightsBook}
+        onClose={() => setHighlightsBook(null)}
+        onJumpToPage={undefined}
       />
     );
   }
@@ -252,29 +680,56 @@ export function LibraryScreen({ onTabChange, userName, onUpgrade }: LibraryScree
             />
           )}
         </ScrollView>
-        {miniPlayerBook && (
-          <MiniPlayer
-            book={miniPlayerBook}
-            onExpand={() => { setListeningBook(miniPlayerBook); setMiniPlayerBook(null); }}
-          />
-        )}
         <TabBar activeTab="library" onChange={onTabChange} />
       </SafeAreaView>
     );
   }
 
   if (showProcessing) {
+    const sizeLabelForProcessing = upload.state.fileSize
+      ? `${(upload.state.fileSize / 1024 / 1024).toFixed(1)} MB`
+      : undefined;
     return (
       <ProcessingScreen
+        title={processingTitle}
+        subtitle={processingSubtitle}
+        progress={processingProgress}
+        steps={processingSteps}
+        failed={upload.state.phase === 'failed'}
+        bookTitle={upload.state.fileName ?? undefined}
+        fileSizeLabel={sizeLabelForProcessing}
         onBackground={() => setShowProcessing(false)}
-        onCancel={() => setShowProcessing(false)}
+        onCancel={() => {
+          upload.cancel();
+          setShowProcessing(false);
+          upload.reset();
+        }}
+        onRetryAudio={() => {
+          // Audio generation isn't wired yet — fall back to retrying the
+          // upload. M2 will replace this with a targeted audio retry.
+          setShowProcessing(false);
+          upload.reset();
+        }}
+        onReadWithoutAudio={() => {
+          setShowProcessing(false);
+          upload.reset();
+        }}
+        onRemoveBook={() => {
+          setShowProcessing(false);
+          upload.reset();
+        }}
       />
     );
   }
 
   if (showScannedPdfError) {
+    const sizeLabelForScanned = upload.state.fileSize
+      ? `${(upload.state.fileSize / 1024 / 1024).toFixed(1)} MB`
+      : undefined;
     return (
       <ScannedPdfErrorScreen
+        fileName={upload.state.fileName ?? undefined}
+        fileSizeLabel={sizeLabelForScanned}
         onTryAnother={() => {
           setShowScannedPdfError(false);
           // Re-open add sheet after a tick so the screen transition completes
@@ -288,7 +743,14 @@ export function LibraryScreen({ onTabChange, userName, onUpgrade }: LibraryScree
     );
   }
 
-  const isEmpty = mockBooks.length === 0;
+  // Show the skeleton while the first books fetch is in flight. Once
+  // resolved, an empty `books` array means the user genuinely has no
+  // library yet — render the empty state.
+  if (isLoading) {
+    return <LibrarySkeleton />;
+  }
+
+  const isEmpty = books.length === 0;
 
   if (isEmpty) {
     return (
@@ -297,6 +759,13 @@ export function LibraryScreen({ onTabChange, userName, onUpgrade }: LibraryScree
           style={styles.scroll}
           contentContainerStyle={styles.emptyScrollContent}
           showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={handleRefresh}
+              tintColor={tokens.textColors.subtle}
+            />
+          }
         >
           <Header onSearch={openSearch} onAdd={() => addSheetRef.current?.present()} />
           <LibraryEmptyContent
@@ -306,23 +775,11 @@ export function LibraryScreen({ onTabChange, userName, onUpgrade }: LibraryScree
             onBookPress={() => {}}
           />
         </ScrollView>
-        {miniPlayerBook && (
-          <MiniPlayer
-            book={miniPlayerBook}
-            onExpand={() => { setListeningBook(miniPlayerBook); setMiniPlayerBook(null); }}
-          />
-        )}
         <TabBar activeTab="library" onChange={onTabChange} />
         <AddBookSheet
           ref={addSheetRef}
-          onUpload={() => confirmSheetRef.current?.present()}
+          onUpload={handleUploadTap}
           onBrowse={() => onTabChange('discover')}
-        />
-        <ConfirmSheet
-          ref={confirmSheetRef}
-          onConfirm={() => setShowProcessing(true)}
-          onBack={() => addSheetRef.current?.present()}
-          onScannedPdf={() => setShowScannedPdfError(true)}
         />
       </SafeAreaView>
     );
@@ -342,22 +799,36 @@ export function LibraryScreen({ onTabChange, userName, onUpgrade }: LibraryScree
         style={styles.scroll}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={handleRefresh}
+            tintColor={tokens.textColors.subtle}
+          />
+        }
       >
         <Header onSearch={openSearch} onFilter={openSheet} onAdd={() => addSheetRef.current?.present()} isOffline={isOffline} />
-        {continueBook && <ContinueCard book={continueBook} onOpen={setSelectedBook} isOffline={isOffline} />}
+        <ReadingStatsCard stats={readingStats} weekDays={readingStats.weekDays} />
+        {continueBook && (
+          <ContinueCard
+            book={continueBook}
+            onListen={onStartListening}
+            onRead={setSelectedBook}
+            isOffline={isOffline}
+          />
+        )}
         <SectionHeader
           count={sorted.length}
           sortLabel={SORT_LABELS[appliedSort]}
           onSortPress={openSheet}
         />
-        <BookList books={sorted} onBookPress={setSelectedBook} />
-      </ScrollView>
-      {miniPlayerBook && (
-        <MiniPlayer
-          book={miniPlayerBook}
-          onExpand={() => { setListeningBook(miniPlayerBook); setMiniPlayerBook(null); }}
+        <BookList
+          books={sorted}
+          onBookPress={setSelectedBook}
+          onRemove={handleRemoveBook}
+          onLongPress={handleLongPressBook}
         />
-      )}
+      </ScrollView>
       <TabBar activeTab="library" onChange={onTabChange} />
 
       <BottomSheet ref={sheetRef} onDismiss={handleSheetDismiss}>
@@ -373,14 +844,34 @@ export function LibraryScreen({ onTabChange, userName, onUpgrade }: LibraryScree
       </BottomSheet>
       <AddBookSheet
         ref={addSheetRef}
-        onUpload={() => confirmSheetRef.current?.present()}
+        onUpload={handleUploadTap}
         onBrowse={() => onTabChange('discover')}
       />
-      <ConfirmSheet
-        ref={confirmSheetRef}
-        onConfirm={() => setShowProcessing(true)}
-        onBack={() => addSheetRef.current?.present()}
-      />
+      <BottomSheet
+        ref={bookActionSheetRef}
+        onDismiss={() => setActionBook(null)}
+      >
+        <BookActionSheetContent
+          book={actionBook}
+          onViewHighlights={handleViewHighlightsFromSheet}
+          onReprocess={handleReprocessFromSheet}
+          onRemove={handleRemoveFromSheet}
+          onCancel={() => bookActionSheetRef.current?.dismiss()}
+        />
+      </BottomSheet>
+      <BottomSheet
+        ref={removeConfirmSheetRef}
+        onDismiss={() => {
+          if (!removing) setBookToRemove(null);
+        }}
+      >
+        <RemoveBookSheetContent
+          book={bookToRemove}
+          removing={removing}
+          onConfirm={confirmRemoveBook}
+          onCancel={() => removeConfirmSheetRef.current?.dismiss()}
+        />
+      </BottomSheet>
     </SafeAreaView>
   );
 }
@@ -531,14 +1022,14 @@ function SearchResults({
 }
 
 function SearchResultRow({ book, query, onPress }: { book: Book; query: string; onPress: (book: Book) => void }) {
-  const chNum = book.currentChapter?.match(/\d+/)?.[0];
+  const pageNum = book.currentChapter?.match(/\d+/)?.[0];
   const progressLine =
     book.progressPercent === 0
       ? 'Not started'
       : book.progressPercent === 100
       ? 'Finished · 100%'
-      : chNum && book.totalChapters
-      ? `Ch. ${chNum} of ${book.totalChapters} · ${book.progressPercent}% done`
+      : pageNum
+      ? `Page ${pageNum} · ${book.progressPercent}% done`
       : `${book.progressPercent}% done`;
 
   return (
@@ -722,20 +1213,130 @@ function CircleIconButton({
   );
 }
 
+// ─── Reading-stats card ──────────────────────────────────────────────────────
+
+/**
+ * Compact stats card above the books grid. Shows this-week reading time
+ * with a clear primary metric, day-of-week dots that visually trace the
+ * user's reading pattern, and a streak badge.
+ *
+ * Hides entirely when there's no recorded reading yet — a fresh-install
+ * library shouldn't carry a "0m · 0-day streak" reminder of an empty
+ * state. As soon as the first session lands, the card appears.
+ *
+ * Day dots: one per weekday Mon–Sun. Filled (forest) for a day with any
+ * reading, hollow (subtle border) for an empty day, accented (amber)
+ * for today. This was the cheapest way to communicate consistency at a
+ * glance — a number alone hides whether the streak is fresh or about to
+ * break, but the dots show "you're at 4 days, today is empty so far".
+ *
+ * Stats are aggregated client-side from `reading_sessions` (see
+ * `lib/readingStats.ts`).
+ */
+function ReadingStatsCard({
+  stats,
+  weekDays,
+}: {
+  stats: { minutesThisWeek: number; minutesToday: number; streakDays: number };
+  /** 7 booleans, Mon → Sun, true if the user read on that day this week. */
+  weekDays: boolean[];
+}) {
+  if (stats.minutesThisWeek === 0 && stats.streakDays === 0) {
+    return null;
+  }
+  // Today's index in the weekDays array (Mon=0..Sun=6) so the highlighted
+  // dot tracks the device clock, not a hardcoded position.
+  const jsDay = new Date().getDay(); // 0 = Sun
+  const todayIndex = (jsDay + 6) % 7;
+
+  const headline = stats.minutesToday > 0
+    ? `${formatMinutes(stats.minutesToday)} today`
+    : `${formatMinutes(stats.minutesThisWeek)} this week`;
+  const subline = stats.minutesToday > 0
+    ? `${formatMinutes(stats.minutesThisWeek)} this week`
+    : 'No reading yet today';
+
+  return (
+    <View style={styles.statsCard}>
+      <View style={styles.statsCardLeft}>
+        <Text style={styles.statsCardHeadline}>{headline}</Text>
+        <Text style={styles.statsCardSubline}>{subline}</Text>
+        <View style={styles.statsDots}>
+          {WEEKDAYS.map((day, i) => {
+            const filled = weekDays[i];
+            const isToday = i === todayIndex;
+            return (
+              <View key={day.id} style={styles.statsDotColumn}>
+                <View
+                  style={[
+                    styles.statsDot,
+                    filled && styles.statsDotFilled,
+                    isToday && (filled ? styles.statsDotToday : styles.statsDotTodayEmpty),
+                  ]}
+                />
+                <Text
+                  style={[
+                    styles.statsDotLabel,
+                    isToday && styles.statsDotLabelToday,
+                  ]}
+                >
+                  {day.label}
+                </Text>
+              </View>
+            );
+          })}
+        </View>
+      </View>
+      {stats.streakDays > 0 ? (
+        <View style={styles.statsStreakBadge}>
+          <Text style={styles.statsStreakValue}>{stats.streakDays}</Text>
+          <Text style={styles.statsStreakLabel}>
+            {stats.streakDays === 1 ? 'day streak' : 'day streak'}
+          </Text>
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
+// Mon → Sun, with stable ids so React keys don't collide on the
+// repeated single-letter labels (T/T, S/S).
+const WEEKDAYS = [
+  { id: 'mon', label: 'M' },
+  { id: 'tue', label: 'T' },
+  { id: 'wed', label: 'W' },
+  { id: 'thu', label: 'T' },
+  { id: 'fri', label: 'F' },
+  { id: 'sat', label: 'S' },
+  { id: 'sun', label: 'S' },
+] as const;
+
+function formatMinutes(min: number): string {
+  if (min < 60) return `${min}m`;
+  const hours = Math.floor(min / 60);
+  const remaining = min % 60;
+  if (remaining === 0) return `${hours}h`;
+  return `${hours}h ${remaining}m`;
+}
+
 // ─── Continue card ───────────────────────────────────────────────────────────
 
 function ContinueCard({
   book,
-  onOpen,
+  onListen,
+  onRead,
   isOffline,
 }: {
   book: Book;
-  onOpen: (book: Book) => void;
+  /** Tapped when the user hits "Listen" — routes straight to the audio player. */
+  onListen: (book: Book) => void;
+  /** Tapped when the user hits "Read" — routes to the reader (PDF or EPUB). */
+  onRead: (book: Book) => void;
   isOffline?: boolean;
 }) {
-  const chapterNum = book.currentChapter?.match(/\d+/)?.[0];
-  const statusLine = chapterNum && book.totalChapters
-    ? `Chapter ${chapterNum} · ${book.progressPercent}% done`
+  const pageNum = book.currentChapter?.match(/\d+/)?.[0];
+  const statusLine = pageNum
+    ? `Page ${pageNum} · ${book.progressPercent}% done`
     : `${book.progressPercent}% done`;
 
   return (
@@ -765,14 +1366,14 @@ function ContinueCard({
                 leadingIcon="Play"
                 fullWidth
                 disabled={isOffline}
-                onPress={() => onOpen(book)}
+                onPress={() => onListen(book)}
               />
             </View>
             <Button
               label="Read"
               variant="secondary"
               size="compact"
-              onPress={() => onOpen(book)}
+              onPress={() => onRead(book)}
             />
           </View>
           {isOffline && (
@@ -823,12 +1424,27 @@ function SectionHeader({
 
 // ─── Book list ───────────────────────────────────────────────────────────────
 
-function BookList({ books, onBookPress }: { books: Book[]; onBookPress: (book: Book) => void }) {
+function BookList({
+  books,
+  onBookPress,
+  onRemove,
+  onLongPress,
+}: {
+  books: Book[];
+  onBookPress: (book: Book) => void;
+  onRemove?: (book: Book) => void;
+  onLongPress?: (book: Book) => void;
+}) {
   return (
     <View style={styles.bookList}>
       {books.map((book, index) => (
         <View key={book.id}>
-          <BookListItem book={book} onPress={onBookPress} />
+          <BookListItem
+            book={book}
+            onPress={onBookPress}
+            onRemove={onRemove}
+            onLongPress={onLongPress}
+          />
           {index < books.length - 1 && <View style={styles.bookDivider} />}
         </View>
       ))}
@@ -836,18 +1452,46 @@ function BookList({ books, onBookPress }: { books: Book[]; onBookPress: (book: B
   );
 }
 
-function BookListItem({ book, onPress }: { book: Book; onPress: (book: Book) => void }) {
+function BookListItem({
+  book,
+  onPress,
+  onRemove,
+  onLongPress,
+}: {
+  book: Book;
+  onPress: (book: Book) => void;
+  onRemove?: (book: Book) => void;
+  onLongPress?: (book: Book) => void;
+}) {
+  const status = book.processingStatus;
+  const isProcessing = status === 'pending' || status === 'processing';
+  const isFailed = typeof status === 'string' && status.startsWith('failed');
+
   const inProgress = book.progressPercent > 0 && book.progressPercent < 100;
   const finished = book.progressPercent === 100;
   const notStarted = book.progressPercent === 0;
 
+  // Processing rows: tap is a no-op (the book has nothing to read yet).
+  // Failed rows: tap routes to the remove flow so the user can recover.
+  const handlePress = () => {
+    if (isProcessing) return;
+    if (isFailed && onRemove) {
+      onRemove(book);
+      return;
+    }
+    onPress(book);
+  };
+
   return (
     <Pressable
       accessibilityRole="button"
-      onPress={() => onPress(book)}
+      onPress={handlePress}
+      onLongPress={onLongPress ? () => onLongPress(book) : undefined}
+      delayLongPress={350}
       style={({ pressed }) => [
         styles.bookRow,
-        pressed && { backgroundColor: tokens.bgColors.raised },
+        pressed && !isProcessing && { backgroundColor: tokens.bgColors.raised },
+        isProcessing && { opacity: 0.7 },
       ]}
     >
       <BookCover book={book} size="sm" />
@@ -858,21 +1502,38 @@ function BookListItem({ book, onPress }: { book: Book; onPress: (book: Book) => 
         <Text variant="body-xs" color="muted" numberOfLines={1}>
           {book.author}
         </Text>
-        {(inProgress || finished) && (
+        {!isProcessing && !isFailed && (inProgress || finished) && (
           <View style={styles.rowProgressWrap}>
             <ProgressBar percent={book.progressPercent} height={2} />
           </View>
         )}
-        {notStarted && <View style={styles.notStartedSpacer} />}
-        <Text
-          variant="body-xs"
-          color={notStarted ? 'disabled' : 'subtle'}
-          numberOfLines={1}
-        >
-          {bookStatusLine(book, NOW)}
-        </Text>
+        {!isProcessing && !isFailed && notStarted && <View style={styles.notStartedSpacer} />}
+        {isProcessing ? (
+          <View style={styles.processingRow}>
+            <ActivityIndicator size="small" color={tokens.textColors.subtle} />
+            <Text variant="body-xs" color="subtle" numberOfLines={1}>
+              Processing…
+            </Text>
+          </View>
+        ) : isFailed ? (
+          <Text variant="body-xs" color="error" numberOfLines={1}>
+            Upload failed · tap to remove
+          </Text>
+        ) : (
+          <Text
+            variant="body-xs"
+            color={notStarted ? 'disabled' : 'subtle'}
+            numberOfLines={1}
+          >
+            {bookStatusLine(book, new Date())}
+          </Text>
+        )}
       </View>
-      <Icon name="ChevronRight" size={16} color={tokens.textColors.disabled} />
+      {isProcessing ? null : isFailed ? (
+        <Icon name="X" size={16} color={tokens.textColors.disabled} />
+      ) : (
+        <Icon name="ChevronRight" size={16} color={tokens.textColors.disabled} />
+      )}
     </Pressable>
   );
 }
@@ -884,18 +1545,20 @@ function bookStatusLine(book: Book, now: Date): string {
   if (book.progressPercent === 0) {
     return `Not started · added ${formatRelativeTime(book.addedAt, now)}`;
   }
-  const chNum = book.currentChapter?.match(/\d+/)?.[0];
-  const chapterPart =
-    chNum && book.totalChapters ? `Ch. ${chNum} of ${book.totalChapters}` : null;
-  return [chapterPart, `read ${formatRelativeTime(book.lastReadAt, now)}`]
+  const pageNum = book.currentChapter?.match(/\d+/)?.[0];
+  const pagePart = pageNum ? `Page ${pageNum}` : null;
+  return [pagePart, `read ${formatRelativeTime(book.lastReadAt, now)}`]
     .filter(Boolean)
     .join(' · ');
 }
 
 function formatRelativeTime(date: Date | null, now: Date): string {
   if (!date) return 'never';
-  const diffMs = now.getTime() - date.getTime();
+  // Clamp to >= 0 so any clock skew (device behind server, or a stale `now`
+  // from a long-stationary screen) reads as "just now" instead of negative.
+  const diffMs = Math.max(0, now.getTime() - date.getTime());
   const minutes = Math.floor(diffMs / 60000);
+  if (minutes < 1) return 'just now';
   if (minutes < 60) return `${minutes}m ago`;
   const hours = Math.floor(minutes / 60);
   if (hours < 24) return `${hours}h ago`;
@@ -1007,7 +1670,274 @@ function RadioDot({ checked }: { checked: boolean }) {
   );
 }
 
+// ─── Book action sheet (long-press) ──────────────────────────────────────────
+
+/**
+ * Bottom sheet shown when a library row is long-pressed. Hosts the two
+ * destructive-ish actions on a book (re-process / remove) inside the same
+ * visual language as `AddBookSheet`: a header with a small book preview,
+ * a hairline divider, two icon-led action rows, and a cancel footer.
+ *
+ * The component is intentionally presentational — the parent owns the
+ * `actionBook` state and the action handlers, so the sheet can render an
+ * empty placeholder for one frame while the BottomSheet animates closed
+ * (state clears on dismiss).
+ */
+function BookActionSheetContent({
+  book,
+  onViewHighlights,
+  onReprocess,
+  onRemove,
+  onCancel,
+}: {
+  book: Book | null;
+  onViewHighlights: () => void;
+  onReprocess: () => void;
+  onRemove: () => void;
+  onCancel: () => void;
+}) {
+  // Render a tiny placeholder during the dismiss animation rather than
+  // returning null — null collapses the sheet's intrinsic height and makes
+  // it visibly snap.
+  if (!book) {
+    return <View style={styles.actionSheetPlaceholder} />;
+  }
+
+  const status = book.processingStatus;
+  const isProcessing = status === 'processing' || status === 'pending';
+
+  return (
+    <View>
+      <View style={styles.actionSheetHeader}>
+        <BookCover book={book} size="sm" />
+        <View style={styles.actionSheetHeaderText}>
+          <Text style={styles.actionSheetTitle} numberOfLines={2}>
+            {book.title}
+          </Text>
+          {book.author ? (
+            <Text style={styles.actionSheetAuthor} numberOfLines={1}>
+              {book.author}
+            </Text>
+          ) : null}
+        </View>
+      </View>
+
+      <View style={styles.actionSheetDivider} />
+
+      <ActionRow
+        iconBg={tokens.colors.amber[200]}
+        iconName="Notebook"
+        iconColor={tokens.colors.ink[700]}
+        title="View highlights"
+        desc="Browse saved words and sentences"
+        onPress={onViewHighlights}
+      />
+
+      <ActionRow
+        iconBg={tokens.colors.forest[50]}
+        iconName="Refresh"
+        iconColor={tokens.colors.forest[800]}
+        title="Re-process chapters"
+        desc={
+          isProcessing
+            ? 'Restart processing from the original file'
+            : 'Re-detect chapters from the original file'
+        }
+        onPress={onReprocess}
+      />
+
+      <ActionRow
+        iconBg={tokens.colors.errorBg}
+        iconName="Trash"
+        iconColor={tokens.colors.error}
+        title="Remove from library"
+        desc="Delete this book and its files"
+        destructive
+        onPress={onRemove}
+      />
+
+      <View style={styles.actionSheetFooter}>
+        <Pressable
+          accessibilityRole="button"
+          onPress={onCancel}
+          style={({ pressed }) => [
+            styles.actionSheetCancel,
+            pressed && { opacity: 0.7 },
+          ]}
+        >
+          <Text style={styles.actionSheetCancelLabel}>Cancel</Text>
+        </Pressable>
+      </View>
+    </View>
+  );
+}
+
+function ActionRow({
+  iconBg,
+  iconName,
+  iconColor,
+  title,
+  desc,
+  destructive,
+  onPress,
+}: {
+  iconBg: string;
+  iconName: 'Refresh' | 'Trash' | 'Notebook';
+  iconColor: string;
+  title: string;
+  desc: string;
+  destructive?: boolean;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.actionRow,
+        pressed && { backgroundColor: tokens.bgColors.raised },
+      ]}
+    >
+      <View style={[styles.actionRowIcon, { backgroundColor: iconBg }]}>
+        <Icon name={iconName} size={20} color={iconColor} strokeWidth={1.75} />
+      </View>
+      <View style={styles.actionRowText}>
+        <Text
+          style={[
+            styles.actionRowTitle,
+            destructive && { color: tokens.colors.error },
+          ]}
+        >
+          {title}
+        </Text>
+        <Text style={styles.actionRowDesc}>{desc}</Text>
+      </View>
+      <Icon name="ChevronRight" size={16} color={tokens.colors.ink[300]} />
+    </Pressable>
+  );
+}
+
+// ─── Remove-book confirm sheet ───────────────────────────────────────────────
+
+/**
+ * Designed destructive-confirmation sheet for removing a book. Replaces
+ * the native `Alert.alert` so the flow stays in our visual language
+ * (matches the action sheet styling) and so we can show the book's cover
+ * + title in the confirmation — easier to recognise the right book than
+ * a string in a system alert.
+ *
+ * Layout:
+ *   - Header: forward-loaded warning icon (red), short title.
+ *   - Body:   book cover + title/author + warning copy listing what gets
+ *             deleted (file, chapters, progress).
+ *   - Footer: stacked buttons — destructive "Remove book" on top (so the
+ *             primary CTA reads first on tall handsets) and a secondary
+ *             "Cancel" below it.
+ */
+function RemoveBookSheetContent({
+  book,
+  removing,
+  onConfirm,
+  onCancel,
+}: {
+  book: Book | null;
+  removing: boolean;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  if (!book) {
+    return <View style={styles.actionSheetPlaceholder} />;
+  }
+
+  return (
+    <View>
+      <View style={styles.removeSheetHeader}>
+        <View style={styles.removeSheetIcon}>
+          <Icon
+            name="Trash"
+            size={18}
+            color={tokens.colors.error}
+            strokeWidth={1.75}
+          />
+        </View>
+        <View style={styles.removeSheetHeaderText}>
+          <Text style={styles.removeSheetTitle}>Remove book?</Text>
+          <Text style={styles.removeSheetSubtitle}>
+            This can't be undone.
+          </Text>
+        </View>
+      </View>
+
+      <View style={styles.removeSheetBookRow}>
+        <BookCover book={book} size="sm" />
+        <View style={styles.removeSheetBookText}>
+          <Text style={styles.removeSheetBookTitle} numberOfLines={2}>
+            {book.title}
+          </Text>
+          {book.author ? (
+            <Text style={styles.removeSheetBookAuthor} numberOfLines={1}>
+              {book.author}
+            </Text>
+          ) : null}
+        </View>
+      </View>
+
+      <View style={styles.removeSheetWarning}>
+        <Text style={styles.removeSheetWarningText}>
+          Removing this book deletes the original file, all extracted
+          chapters, and your reading progress.
+        </Text>
+      </View>
+
+      <View style={styles.removeSheetFooter}>
+        <Pressable
+          accessibilityRole="button"
+          disabled={removing}
+          onPress={onConfirm}
+          style={({ pressed }) => [
+            styles.removeSheetDestructive,
+            pressed && { backgroundColor: tokens.colors.errorPressed },
+            removing && { opacity: 0.7 },
+          ]}
+        >
+          {removing ? (
+            <ActivityIndicator size="small" color={tokens.colors.cream[50]} />
+          ) : (
+            <>
+              <Icon
+                name="Trash"
+                size={14}
+                color={tokens.colors.cream[50]}
+                strokeWidth={2}
+              />
+              <Text style={styles.removeSheetDestructiveLabel}>Remove book</Text>
+            </>
+          )}
+        </Pressable>
+        <Pressable
+          accessibilityRole="button"
+          disabled={removing}
+          onPress={onCancel}
+          style={({ pressed }) => [
+            styles.removeSheetCancel,
+            pressed && { opacity: 0.7 },
+          ]}
+        >
+          <Text style={styles.removeSheetCancelLabel}>Cancel</Text>
+        </Pressable>
+      </View>
+    </View>
+  );
+}
+
 // ─── Shared primitives ───────────────────────────────────────────────────────
+
+// Signed-URL resolution + cache lives in `~/lib/bookCovers` so that
+// any screen rendering a cover (Library, Listen history, Now Playing,
+// etc.) shares one cache and we don't re-sign the same path across
+// surfaces. Re-exported under the legacy name for App.tsx — the
+// next-user-sign-in purge calls it from there.
+export { clearBookCoverCache as clearLibrarySignedUrlCache } from '~/lib/bookCovers';
 
 function BookCover({
   book,
@@ -1017,6 +1947,25 @@ function BookCover({
   size: 'sm' | 'hero' | 'result';
 }) {
   const dims = COVER_DIMS[size];
+  const path = book.coverStoragePath ?? null;
+  const [coverUrl, setCoverUrl] = useState<string | null>(() =>
+    path ? peekCachedCoverUrl(path) : null,
+  );
+
+  useEffect(() => {
+    if (!path) {
+      setCoverUrl(null);
+      return;
+    }
+    let cancelled = false;
+    void resolveCoverUrl(path).then((url) => {
+      if (!cancelled) setCoverUrl(url);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [path]);
+
   return (
     <View
       style={[
@@ -1026,12 +1975,21 @@ function BookCover({
           height: dims.height,
           backgroundColor: book.coverColor,
           borderRadius: dims.radius,
+          overflow: 'hidden',
         },
       ]}
     >
-      <Text style={[styles.coverInitial, { fontSize: dims.fontSize }]} color="inverse">
-        {book.title.charAt(0)}
-      </Text>
+      {coverUrl ? (
+        <Image
+          source={{ uri: coverUrl }}
+          style={{ width: dims.width, height: dims.height }}
+          resizeMode="cover"
+        />
+      ) : (
+        <Text style={[styles.coverInitial, { fontSize: dims.fontSize }]} color="inverse">
+          {book.title.charAt(0)}
+        </Text>
+      )}
       {book.downloaded && (
         <View style={[styles.downloadedBadge, size === 'sm' && styles.downloadedBadgeSm]}>
           <Icon name="Download" size={size === 'sm' ? 7 : 8} color={tokens.colors.cream[50]} strokeWidth={2.5} />
@@ -1366,6 +2324,7 @@ const styles = StyleSheet.create({
   },
   emptyScrollContent: {
     flexGrow: 1,
+    paddingHorizontal: tokens.space.lg,
     paddingBottom: tokens.space['2xl'],
   },
 
@@ -1708,6 +2667,12 @@ const styles = StyleSheet.create({
   notStartedSpacer: {
     height: 6,
   },
+  processingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 2,
+  },
 
   // Cover
   cover: {
@@ -1819,7 +2784,8 @@ const styles = StyleSheet.create({
 
   // Empty state
   emptyZone: {
-    paddingHorizontal: tokens.space.lg,
+    // Horizontal padding now lives on `emptyScrollContent` so the Header
+    // shares the same grid as the content below it.
   },
   greeting: {
     marginBottom: 28,
@@ -1921,5 +2887,288 @@ const styles = StyleSheet.create({
     fontFamily: tokens.fonts.ui,
     fontSize: 10,
     color: tokens.textColors.subtle,
+  },
+
+  // Long-press action sheet
+  actionSheetPlaceholder: {
+    height: 120,
+  },
+  actionSheetHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: tokens.space.md,
+    paddingHorizontal: tokens.space.lg,
+    paddingTop: tokens.space.md,
+    paddingBottom: tokens.space.md,
+  },
+  actionSheetHeaderText: {
+    flex: 1,
+  },
+  actionSheetTitle: {
+    fontFamily: tokens.fonts.display,
+    fontSize: 16,
+    fontWeight: '500',
+    color: tokens.textColors.primary,
+    marginBottom: 2,
+  },
+  actionSheetAuthor: {
+    fontFamily: tokens.fonts.ui,
+    fontSize: 12,
+    color: tokens.textColors.muted,
+  },
+  actionSheetDivider: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: tokens.borderColors.subtle,
+  },
+  actionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    paddingVertical: 16,
+    paddingHorizontal: tokens.space.lg,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: tokens.colors.ink[100],
+  },
+  actionRowIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+  actionRowText: {
+    flex: 1,
+  },
+  actionRowTitle: {
+    fontFamily: tokens.fonts.uiMedium,
+    fontSize: 15,
+    fontWeight: '500',
+    color: tokens.textColors.primary,
+    marginBottom: 2,
+  },
+  actionRowDesc: {
+    fontFamily: tokens.fonts.ui,
+    fontSize: 12,
+    color: tokens.textColors.muted,
+    lineHeight: 16,
+  },
+  actionSheetFooter: {
+    paddingHorizontal: tokens.space.lg,
+    paddingTop: tokens.space.md,
+    paddingBottom: tokens.space.xl,
+  },
+  actionSheetCancel: {
+    height: 44,
+    borderRadius: 10,
+    backgroundColor: tokens.bgColors.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  actionSheetCancelLabel: {
+    fontFamily: tokens.fonts.uiMedium,
+    fontSize: 14,
+    fontWeight: '500',
+    color: tokens.textColors.muted,
+  },
+
+  // Remove-book confirm sheet
+  removeSheetHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingHorizontal: tokens.space.lg,
+    paddingTop: tokens.space.lg,
+    paddingBottom: tokens.space.sm,
+  },
+  removeSheetIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: tokens.colors.errorBg,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+  removeSheetHeaderText: {
+    flex: 1,
+  },
+  removeSheetTitle: {
+    fontFamily: tokens.fonts.display,
+    fontSize: 17,
+    fontWeight: '500',
+    color: tokens.textColors.primary,
+    marginBottom: 2,
+  },
+  removeSheetSubtitle: {
+    fontFamily: tokens.fonts.ui,
+    fontSize: 12,
+    color: tokens.textColors.muted,
+  },
+  removeSheetBookRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: tokens.space.md,
+    backgroundColor: tokens.bgColors.surface,
+    borderRadius: tokens.radii.lg,
+    paddingVertical: tokens.space.md,
+    paddingHorizontal: tokens.space.md,
+    marginHorizontal: tokens.space.lg,
+    marginTop: tokens.space.sm,
+  },
+  removeSheetBookText: {
+    flex: 1,
+  },
+  removeSheetBookTitle: {
+    fontFamily: tokens.fonts.uiMedium,
+    fontSize: 14,
+    fontWeight: '500',
+    color: tokens.textColors.primary,
+    marginBottom: 2,
+  },
+  removeSheetBookAuthor: {
+    fontFamily: tokens.fonts.ui,
+    fontSize: 12,
+    color: tokens.textColors.muted,
+  },
+  removeSheetWarning: {
+    paddingHorizontal: tokens.space.lg,
+    paddingTop: tokens.space.md,
+    paddingBottom: tokens.space.lg,
+  },
+  removeSheetWarningText: {
+    fontFamily: tokens.fonts.ui,
+    fontSize: 13,
+    lineHeight: 19,
+    color: tokens.textColors.muted,
+  },
+  removeSheetFooter: {
+    paddingHorizontal: tokens.space.lg,
+    paddingBottom: tokens.space.xl,
+    gap: tokens.space.sm,
+  },
+  removeSheetDestructive: {
+    height: 48,
+    borderRadius: 12,
+    backgroundColor: tokens.colors.error,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  removeSheetDestructiveLabel: {
+    fontFamily: tokens.fonts.uiMedium,
+    fontSize: 15,
+    fontWeight: '500',
+    color: tokens.colors.cream[50],
+  },
+  removeSheetCancel: {
+    height: 48,
+    borderRadius: 12,
+    backgroundColor: tokens.bgColors.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  removeSheetCancelLabel: {
+    fontFamily: tokens.fonts.uiMedium,
+    fontSize: 15,
+    fontWeight: '500',
+    color: tokens.textColors.muted,
+  },
+
+  // Reading-stats card (above the book grid). Width-wise it sits inside
+  // the scroll container's existing horizontal padding (same as
+  // ContinueCard / BookList rows) so left/right edges align with the
+  // rest of the column. Adding marginHorizontal here would make it
+  // narrower than its neighbours.
+  statsCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: tokens.bgColors.surface,
+    borderRadius: tokens.radii['2xl'],
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    marginTop: tokens.space.xs,
+    marginBottom: tokens.space.md,
+    gap: 14,
+  },
+  statsCardLeft: {
+    flex: 1,
+  },
+  statsCardHeadline: {
+    fontFamily: tokens.fonts.display,
+    fontSize: 18,
+    fontWeight: '500',
+    color: tokens.textColors.primary,
+    lineHeight: 22,
+  },
+  statsCardSubline: {
+    fontFamily: tokens.fonts.ui,
+    fontSize: 12,
+    color: tokens.textColors.muted,
+    marginTop: 2,
+    marginBottom: 12,
+  },
+  statsDots: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  statsDotColumn: {
+    alignItems: 'center',
+    gap: 4,
+  },
+  statsDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    borderWidth: 1,
+    borderColor: tokens.borderColors.subtle,
+    backgroundColor: 'transparent',
+  },
+  statsDotFilled: {
+    backgroundColor: tokens.colors.forest[800],
+    borderColor: tokens.colors.forest[800],
+  },
+  statsDotToday: {
+    backgroundColor: tokens.colors.amber[500],
+    borderColor: tokens.colors.amber[500],
+  },
+  statsDotTodayEmpty: {
+    borderColor: tokens.colors.amber[500],
+    borderWidth: 1.5,
+  },
+  statsDotLabel: {
+    fontFamily: tokens.fonts.ui,
+    fontSize: 9,
+    color: tokens.textColors.subtle,
+    letterSpacing: 0.3,
+  },
+  statsDotLabelToday: {
+    color: tokens.textColors.secondary,
+    fontFamily: tokens.fonts.uiMedium,
+    fontWeight: '500',
+  },
+  statsStreakBadge: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    borderRadius: tokens.radii.md,
+    backgroundColor: tokens.bgColors.canvas,
+    minWidth: 68,
+  },
+  statsStreakValue: {
+    fontFamily: tokens.fonts.display,
+    fontSize: 22,
+    fontWeight: '500',
+    color: tokens.colors.amber[500],
+    lineHeight: 26,
+  },
+  statsStreakLabel: {
+    fontFamily: tokens.fonts.ui,
+    fontSize: 10,
+    color: tokens.textColors.muted,
+    marginTop: 2,
+    letterSpacing: 0.3,
   },
 });
