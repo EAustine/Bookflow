@@ -174,16 +174,19 @@ export function EpubFullReaderScreen({
       useNativeDriver: true,
     }).start();
   }, [chromeOpacity]);
-  // Toggle for the WebView tap bridge — show when hidden, hide when
-  // shown. Mirrors the PdfReaderScreen pattern so the two readers
-  // feel identical.
+  // Tap behaviour for the WebView bridge: always reveal chrome.
+  //
+  // Previously this toggled (hide if visible, show if hidden), which
+  // testers experienced as "works sometimes" — if the auto-hide timer
+  // had just fired (chrome hidden) a tap showed it, but if the user
+  // tapped while chrome was still up the same gesture hid it and the
+  // 3.5 s auto-hide wasn't long enough to feel like a reliable
+  // affordance. Always calling `showChrome()` makes the gesture
+  // discoverable: any tap brings the nav back, and the existing
+  // auto-hide timer (reset inside `showChrome`) handles fade-out.
   const toggleChrome = useCallback(() => {
-    if (chromeVisibleRef.current) {
-      hideChrome();
-    } else {
-      showChrome();
-    }
-  }, [hideChrome, showChrome]);
+    showChrome();
+  }, [showChrome]);
   useEffect(() => {
     showChrome();
     return () => {

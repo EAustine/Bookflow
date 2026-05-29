@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useReducer, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '~/lib/supabase';
 
@@ -271,6 +271,65 @@ export function usePageHighlights(bookId: string, pageIndex: number) {
 }
 
 /**
+ * Module-level shared store for `useBookHighlights`.
+ *
+ * Two surfaces render the same set of highlights for a single book:
+ * the reader (saved-word tinting in the text) and the highlights
+ * screen (vocab list + per-row delete). Each was independently
+ * calling `useBookHighlights(bookId)` and getting its own
+ * `useState`-backed list — so a delete in the highlights screen
+ * removed the row from THAT screen's state, but the reader's state
+ * still contained the entry and continued tinting the word. The
+ * server delete worked; the in-memory views just diverged.
+ *
+ * Lift the list into a module-level store keyed by bookId, with a
+ * per-book subscriber set. Every hook instance subscribes; every
+ * write notifies every subscriber so all consumers re-render in
+ * lockstep. Network refetches are deduped per-book so a second
+ * mount during an in-flight first fetch piggy-backs on the same
+ * promise instead of firing a duplicate query.
+ *
+ * Persistence to AsyncStorage happens inside the setter, so
+ * mutations from any hook instance hit the cache without each
+ * consumer needing its own persist effect.
+ */
+type BookStore = {
+  highlights: Highlight[];
+  subscribers: Set<() => void>;
+  inflight: Promise<void> | null;
+  hydrated: boolean;
+};
+const bookStores: Map<string, BookStore> = new Map();
+function getBookStore(bookId: string): BookStore {
+  let store = bookStores.get(bookId);
+  if (!store) {
+    store = {
+      highlights: [],
+      subscribers: new Set(),
+      inflight: null,
+      hydrated: false,
+    };
+    bookStores.set(bookId, store);
+  }
+  return store;
+}
+function setBookHighlights(
+  bookId: string,
+  update: Highlight[] | ((prev: Highlight[]) => Highlight[]),
+): void {
+  const store = getBookStore(bookId);
+  const next =
+    typeof update === 'function' ? update(store.highlights) : update;
+  if (next === store.highlights) return;
+  store.highlights = next;
+  // Persist non-optimistic rows for the next reader mount.
+  // Optimistic-id rows are transient client artifacts.
+  const persistable = next.filter((h) => !h.id.startsWith('optimistic-'));
+  void writeCachedHighlights(bookId, persistable);
+  for (const fn of store.subscribers) fn();
+}
+
+/**
  * All highlights for a book, across every page. Backs the per-book
  * highlights screen (vocab list + saved sentences).
  *
@@ -278,75 +337,126 @@ export function usePageHighlights(bookId: string, pageIndex: number) {
  * which matches how readers expect a "saved items" list to read.
  */
 export function useBookHighlights(bookId: string) {
-  const [highlights, setHighlights] = useState<Highlight[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [, forceRender] = useReducer((x: number) => x + 1, 0);
+  const [loading, setLoading] = useState<boolean>(
+    () => !getBookStore(bookId).hydrated,
+  );
+
+  // Subscribe to the per-book store. Any setBookHighlights call
+  // (from this hook instance OR another) re-renders us.
+  useEffect(() => {
+    const store = getBookStore(bookId);
+    store.subscribers.add(forceRender);
+    return () => {
+      store.subscribers.delete(forceRender);
+    };
+  }, [bookId]);
 
   const refetch = useCallback(async () => {
     if (!UUID_RE.test(bookId)) {
-      setHighlights([]);
+      setBookHighlights(bookId, []);
       setLoading(false);
       return;
     }
-    try {
-      const { data, error } = await supabase
-        .from('highlights')
-        .select('id, book_id, page_id, page_index, kind, text, note, color, created_at')
-        .eq('book_id', bookId)
-        .order('created_at', { ascending: false });
-      if (error) {
-        console.warn('[highlights] book fetch failed:', error.message);
-        setHighlights([]);
-      } else {
-        const fetched = (data ?? []).map((r) =>
-          rowToHighlight(r as HighlightRow),
-        );
-        // Merge fetched rows with any in-flight optimistic adds.
-        // The reader fires `addOptimistic` synchronously the
-        // moment the user taps Save — but the network insert
-        // takes a beat to land, and the initial-mount refetch
-        // (or any concurrent refetch) can complete in the same
-        // window. Without this merge, the refetch's
-        // `setHighlights(fetched)` would silently overwrite the
-        // optimistic entry and the user would see no highlight.
-        // Optimistic rows are tagged with `id: 'optimistic-...'`
-        // (see handleSaveWord) and they get dropped automatically
-        // once the next refetch round-trip returns the real
-        // server row — we de-dupe by lowercased (kind, text) so
-        // an optimistic and its real twin can't coexist.
-        setHighlights((prev) => {
-          const optimistic = prev.filter((p) => p.id.startsWith('optimistic-'));
-          if (optimistic.length === 0) return fetched;
-          const fetchedKeys = new Set(
-            fetched.map((f) => `${f.kind}:${f.text.toLowerCase()}`),
-          );
-          const stillOptimistic = optimistic.filter(
-            (p) => !fetchedKeys.has(`${p.kind}:${p.text.toLowerCase()}`),
-          );
-          return [...stillOptimistic, ...fetched];
-        });
+    const store = getBookStore(bookId);
+    // Dedupe concurrent refetches for the same book — a second
+    // mount during a first fetch piggy-backs instead of firing a
+    // duplicate query.
+    if (store.inflight) {
+      try {
+        await store.inflight;
+      } finally {
+        setLoading(false);
       }
-    } catch (err) {
-      console.warn('[highlights] book fetch threw:', err);
-      setHighlights([]);
+      return;
     }
-    setLoading(false);
+    store.inflight = (async () => {
+      try {
+        const { data, error } = await supabase
+          .from('highlights')
+          .select('id, book_id, page_id, page_index, kind, text, note, color, created_at')
+          .eq('book_id', bookId)
+          .order('created_at', { ascending: false });
+        if (error) {
+          console.warn('[highlights] book fetch failed:', error.message);
+          setBookHighlights(bookId, []);
+        } else {
+          const fetched = (data ?? []).map((r) =>
+            rowToHighlight(r as HighlightRow),
+          );
+          // Merge fetched rows with any in-flight optimistic
+          // adds. The reader fires `addOptimistic` synchronously
+          // the moment the user taps Save, but the network insert
+          // takes a beat to land and the initial-mount refetch can
+          // complete in the same window. Without this merge, the
+          // refetch's set would silently overwrite the optimistic
+          // entry and the user would see no highlight. Optimistic
+          // rows are tagged `id: 'optimistic-...'` (see
+          // handleSaveWord) and drop automatically once the next
+          // refetch returns the real server row.
+          //
+          // Dedupe key matches the SERVER's unique index
+          // `highlights_word_unique_per_page`:
+          // (kind, page_index, lower(text)). pageIndex MUST be
+          // part of the key — the same word on a different page
+          // is a legitimate separate row, not a duplicate.
+          setBookHighlights(bookId, (prev) => {
+            const optimistic = prev.filter((p) =>
+              p.id.startsWith('optimistic-'),
+            );
+            if (optimistic.length === 0) return fetched;
+            const keyOf = (h: Highlight): string =>
+              `${h.kind}:${h.pageIndex ?? 'null'}:${h.text.toLowerCase()}`;
+            const fetchedKeys = new Set(fetched.map(keyOf));
+            const stillOptimistic = optimistic.filter(
+              (p) => !fetchedKeys.has(keyOf(p)),
+            );
+            return [...stillOptimistic, ...fetched];
+          });
+        }
+      } catch (err) {
+        console.warn('[highlights] book fetch threw:', err);
+        setBookHighlights(bookId, []);
+      }
+    })();
+    try {
+      await store.inflight;
+      store.hydrated = true;
+    } finally {
+      store.inflight = null;
+      setLoading(false);
+    }
   }, [bookId]);
 
   // Hydrate from AsyncStorage cache FIRST, then kick the network
-  // refetch. The cache paint is synchronous-ish (one disk read,
-  // typically <10 ms), so the user sees their highlights at the
-  // first frame after the reader mounts even if the network is
-  // slow or offline. The refetch then reconciles when it lands.
+  // refetch. The cache paint is fast (one disk read, typically
+  // <10 ms), so the user sees their highlights at the first frame
+  // after the reader mounts even if the network is slow or
+  // offline. The refetch then reconciles when it lands.
+  //
+  // If the per-book store is already hydrated (a previous mount
+  // populated it), skip the cache+loading state and just kick a
+  // background refresh.
   useEffect(() => {
     let cancelled = false;
+    const store = getBookStore(bookId);
+    if (store.hydrated) {
+      void refetch();
+      return () => {
+        cancelled = true;
+      };
+    }
     setLoading(true);
     void (async () => {
       const cached = await readCachedHighlights(bookId);
       if (cancelled) return;
       if (cached && cached.length > 0) {
-        // Only paint cache if we don't already have something — an
-        // optimistic add fired before this hydrate could clobber it.
-        setHighlights((prev) => (prev.length === 0 ? cached : prev));
+        // Only paint cache if the store is empty — an optimistic
+        // add or another instance's refetch may have already
+        // populated it.
+        setBookHighlights(bookId, (prev) =>
+          prev.length === 0 ? cached : prev,
+        );
       }
       void refetch();
     })();
@@ -355,37 +465,52 @@ export function useBookHighlights(bookId: string) {
     };
   }, [bookId, refetch]);
 
-  // Persist highlights to AsyncStorage whenever they change so the
-  // next mount can hydrate from cache instantly. We DON'T persist
-  // optimistic-id rows — they're transient client-side artifacts
-  // that get replaced by the real row on the next refetch.
-  useEffect(() => {
-    const persistable = highlights.filter(
-      (h) => !h.id.startsWith('optimistic-'),
-    );
-    void writeCachedHighlights(bookId, persistable);
-  }, [bookId, highlights]);
-
-  const removeOptimistic = useCallback((id: string) => {
-    setHighlights((prev) => prev.filter((h) => h.id !== id));
-  }, []);
+  const removeOptimistic = useCallback(
+    (id: string) => {
+      setBookHighlights(bookId, (prev) => prev.filter((h) => h.id !== id));
+    },
+    [bookId],
+  );
 
   /**
    * Optimistic add. Mirrors `usePageHighlights.addOptimistic` so the
-   * reader (which now uses this book-wide hook to share highlight
-   * state across every visible PageSection) can show a freshly-saved
-   * word as highlighted on the very next render, without waiting for
-   * a refetch round-trip.
+   * reader (which uses this book-wide hook to share highlight state
+   * across every visible PageSection) can show a freshly-saved word
+   * as highlighted on the very next render, without waiting for a
+   * refetch round-trip.
+   *
+   * Dedupe key MUST include pageIndex — the server's unique index
+   * is `(user_id, book_id, page_index, lower(text))`, so the same
+   * word on a different page is a separate row and a separate
+   * highlight. The earlier dedupe used `(kind, lower(text))` and
+   * silently blocked legitimate cross-page saves: saving "memory"
+   * on page 10 was rejected client-side because "memory" already
+   * existed on page 5, so `bookHighlights` never updated,
+   * `savedWordsByPage[10]` stayed empty, and the new save appeared
+   * to "save but not highlight". The server insert succeeded — the
+   * local view just never reflected it until a refetch landed.
    */
-  const addOptimistic = useCallback((h: Highlight) => {
-    setHighlights((prev) => {
-      const key = `${h.kind}:${h.text.toLowerCase()}`;
-      if (prev.some((p) => `${p.kind}:${p.text.toLowerCase()}` === key)) {
-        return prev;
-      }
-      return [h, ...prev];
-    });
-  }, []);
+  const addOptimistic = useCallback(
+    (h: Highlight) => {
+      setBookHighlights(bookId, (prev) => {
+        const key = `${h.kind}:${h.pageIndex ?? 'null'}:${h.text.toLowerCase()}`;
+        const hit = prev.some(
+          (p) =>
+            `${p.kind}:${p.pageIndex ?? 'null'}:${p.text.toLowerCase()}` ===
+            key,
+        );
+        if (hit) return prev;
+        return [h, ...prev];
+      });
+    },
+    [bookId],
+  );
 
-  return { highlights, loading, refetch, removeOptimistic, addOptimistic };
+  return {
+    highlights: getBookStore(bookId).highlights,
+    loading,
+    refetch,
+    removeOptimistic,
+    addOptimistic,
+  };
 }

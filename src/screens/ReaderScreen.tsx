@@ -475,12 +475,44 @@ export function ReaderScreen({
       // sharply down).
       if (height > 100) {
         pageHeightsRef.current.set(pageIdx, height);
-        // Mark the saved-page landing point AND clear the
-        // restoration target — we've reached it, so the
-        // onContentSizeChange handler should stop firing
-        // scrollToOffset calls.
+        // Target page just measured — two responsibilities here.
         if (pageIdx === anchorPageRef.current) {
           savedPageMeasuredRef.current = true;
+          // Final fine-tune using scrollToIndex with
+          // viewPosition: 0. The converge loop above used
+          // scrollToOffset with a computed offset that sums
+          // measured-or-avg heights for pages 0..target-1 —
+          // accurate when every intermediate page was rendered
+          // (initial open), inaccurate when some pages used
+          // avg-fallback (mid-session jump from highlights:
+          // pages outside the previous viewport window were
+          // never measured, so a stretch of avg-heights landed
+          // us 1–2 pages off).
+          //
+          // scrollToIndex is unreliable for OUT-of-window
+          // targets — that was the original bug behind the
+          // jumpToPage rewrite — but here the target IS in
+          // window, because its onLayout just fired into this
+          // very callback. With viewPosition: 0 it puts the
+          // target's top exactly at the top of the viewport,
+          // correcting whatever residual offset the scrollToOffset
+          // approximation left behind.
+          //
+          // requestAnimationFrame defers by one frame so React's
+          // commit (which contained this onLayout) completes
+          // before we issue the scroll command. Synchronously
+          // scrolling from inside onLayout races FlatList's own
+          // layout integration.
+          if (restoreTargetRef.current === pageIdx) {
+            const idx = pageIdx;
+            requestAnimationFrame(() => {
+              listRef.current?.scrollToIndex({
+                index: idx,
+                viewPosition: 0,
+                animated: false,
+              });
+            });
+          }
           restoreTargetRef.current = null;
         }
       }
@@ -795,22 +827,53 @@ export function ReaderScreen({
 
   // External jump (search hit, highlight tap, page picker). Updates
   // pageIndex and asks FlatList to scroll the matching section into
-  // view. `scrollToIndex` may fail if the target is outside the
-  // virtualisation window — variable-height items don't support
-  // exact scrollToIndex restoration, so we re-arm the saved-page
-  // restore loop instead (onContentSizeChange below converges).
+  // view.
   //
   // Re-arm the anchor so the page tracker computes deltas from
   // here, not from the previous anchor point. Without this, jumping
   // from page 130 to page 800 would leave the tracker anchored at
   // page 130 and it would compute (800 + scroll delta from old
   // anchor) ≈ a nonsense large number on the next scroll.
+  //
+  // Scroll mechanism — `scrollToOffset`, not `scrollToIndex`:
+  //   scrollToIndex is unreliable for variable-height items. When
+  //   the target is outside the current virtualisation window —
+  //   which is true for almost any non-trivial jump from a
+  //   highlight row — the call either silently no-ops or fires
+  //   `onScrollToIndexFailed`, which can leave the user back at
+  //   offset 0 ("page 1") while `pageIndex` state says they're at
+  //   the target. The earlier implementation used scrollToIndex
+  //   even though its own comment block warned against it; this
+  //   shape is what the comment originally promised.
+  //
+  //   The complication: both call sites in this file
+  //   (HighlightsScreen at line ~1126 and BookSearchScreen at
+  //   ~1140) are rendered via `return <Overlay />` early-returns,
+  //   which UNMOUNTS the FlatList while the overlay is shown.
+  //   When the overlay closes the FlatList remounts FRESH at
+  //   offset 0 — and the `listRef.current?.scrollToOffset` we
+  //   just fired went to the now-stale (or null) old ref. The
+  //   user lands on page 1 of the new FlatList.
+  //
+  //   So we ALWAYS arm `restoreTargetRef`, even when the target
+  //   is already measured. The converge loop runs once on the
+  //   new FlatList's first `onContentSizeChange`, scrollToOffset
+  //   lands us on the target, and `recordPageHeight` clears the
+  //   target when the destination's onLayout fires (which it
+  //   does on the remount — every section is mounting fresh).
+  //   The direct `scrollToOffset` below is a best-effort head
+  //   start for the no-remount case (e.g. future call sites
+  //   that don't gate behind an overlay); harmless if the ref
+  //   is stale because the loop catches us either way.
   const jumpToPage = useCallback((idx: number) => {
     setPageIndex(idx);
     anchorPageRef.current = idx;
     anchorReadyRef.current = false; // re-lock on the next scrollBegin
-    listRef.current?.scrollToIndex({ index: idx, animated: true });
-  }, []);
+    savedPageMeasuredRef.current = false;
+    restoreTargetRef.current = idx;
+    const offset = computeOffsetForPage(idx);
+    listRef.current?.scrollToOffset({ offset, animated: true });
+  }, [computeOffsetForPage]);
 
   // Persist the page-change immediately so reopening lands on the
   // right page even if the user closes the reader before scrolling
@@ -1080,24 +1143,49 @@ export function ReaderScreen({
     );
   }
 
+  // Every overlay in this screen is rendered via an early-return
+  // `if (...) return <Overlay />`, which UNMOUNTS the FlatList
+  // while the overlay is up. On close the FlatList remounts fresh
+  // at offset 0 — leaving the user (who was reading page 38 before
+  // tapping Highlights / Search / AI tools) staring at page 1. The
+  // reader's `pageIndex` state survives the toggle, but the
+  // FlatList doesn't know to scroll there until something arms the
+  // restore loop.
+  //
+  // `closeOverlayPreservingPosition` calls `jumpToPage(pageIndex)`
+  // synchronously inside the close callback. That mutates
+  // `restoreTargetRef` BEFORE React commits the new render — so
+  // by the time the remounted FlatList's first onContentSizeChange
+  // fires, the target is already armed and the loop lands the user
+  // back where they were. No visible flash of page 1.
+  const closeOverlayPreservingPosition = (close: () => void) => {
+    jumpToPage(pageIndex);
+    close();
+  };
+
   if (aiMode === 'summary') {
     return (
       <SummaryScreen
         book={book}
         pageIndex={pageIndex}
-        onBack={() => setAIMode(null)}
+        onBack={() => closeOverlayPreservingPosition(() => setAIMode(null))}
       />
     );
   }
   if (aiMode === 'chat') {
-    return <ChatScreen book={book} onBack={() => setAIMode(null)} />;
+    return (
+      <ChatScreen
+        book={book}
+        onBack={() => closeOverlayPreservingPosition(() => setAIMode(null))}
+      />
+    );
   }
   if (aiMode === 'practice') {
     return (
       <PracticeQuestionsScreen
         book={book}
         pageIndex={pageIndex}
-        onBack={() => setAIMode(null)}
+        onBack={() => closeOverlayPreservingPosition(() => setAIMode(null))}
       />
     );
   }
@@ -1106,7 +1194,7 @@ export function ReaderScreen({
       <TranslateChapterScreen
         book={book}
         pageIndex={pageIndex}
-        onBack={() => setAIMode(null)}
+        onBack={() => closeOverlayPreservingPosition(() => setAIMode(null))}
       />
     );
   }
@@ -1114,7 +1202,9 @@ export function ReaderScreen({
     return (
       <HighlightsScreen
         book={book}
-        onClose={() => setShowHighlights(false)}
+        onClose={() =>
+          closeOverlayPreservingPosition(() => setShowHighlights(false))
+        }
         onJumpToPage={(idx) => {
           jumpToPage(idx);
           setShowHighlights(false);
@@ -1126,7 +1216,9 @@ export function ReaderScreen({
     return (
       <BookSearchScreen
         book={book}
-        onClose={() => setShowSearch(false)}
+        onClose={() =>
+          closeOverlayPreservingPosition(() => setShowSearch(false))
+        }
         onJumpToPage={(idx) => {
           jumpToPage(idx);
           setShowSearch(false);
@@ -1278,6 +1370,16 @@ export function ReaderScreen({
           // The list starts at the top and converges on the saved
           // page over a few render cycles as more sections mount.
           onContentSizeChange={onContentSizeChange}
+          // Safety net for the final scrollToIndex inside
+          // recordPageHeight. The target is in-window by the time
+          // we call it (its own onLayout just fired), so this
+          // shouldn't trip — but if FlatList briefly disagrees
+          // about layout, fall back to a scrollToOffset with the
+          // best-available computed offset and swallow the warning.
+          onScrollToIndexFailed={(info) => {
+            const offset = computeOffsetForPage(info.index);
+            listRef.current?.scrollToOffset({ offset, animated: false });
+          }}
           // Track which section is currently most-visible to keep
           // pageIndex (and progress bar / page label) in sync with
           // where the user actually is.
@@ -1797,7 +1899,20 @@ const PageSection = memo(function PageSection({
             style={[styles.pageBreakLine, { backgroundColor: palette.border }]}
           />
           <Text style={[styles.pageBreakLabel, { color: palette.subtle }]}>
-            Page {pageIndex + 1} of {totalBookPages}
+            {/*
+              In-content divider deliberately omits the "of N"
+              denominator. `totalBookPages` here is the count of 200-
+              word slices we generated when processing the book, not
+              the publisher's page count — for a typical novel that's
+              "of 1200" against a real page count of ~160, which
+              testers (rightly) found confusing. Showing just the
+              slice index keeps reading-position context without
+              implying a count that doesn't match the physical book.
+              Highlights screen and the library's last-read label
+              still use the slice index — both already render it
+              without an "of" so they're unaffected.
+            */}
+            Page {pageIndex + 1}
           </Text>
           <View
             style={[styles.pageBreakLine, { backgroundColor: palette.border }]}
