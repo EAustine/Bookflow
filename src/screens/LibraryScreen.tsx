@@ -140,6 +140,15 @@ export function LibraryScreen({
   // Book staged for the highlights screen — shown as a full-screen overlay
   // when the user taps "View highlights" from the action sheet.
   const [highlightsBook, setHighlightsBook] = useState<Book | null>(null);
+  // One-shot initial page index used when opening a book from a
+  // tapped highlight row. The Reader / PDF reader reads its
+  // starting page from `book.last_read_page` by default; passing a
+  // separate `initialPageIndex` prop overrides that for this open
+  // only. We clear it back to null when the reader closes so the
+  // NEXT manual open reverts to the last-read page.
+  const [pendingInitialPageIndex, setPendingInitialPageIndex] = useState<
+    number | null
+  >(null);
 
   // Tell App.tsx whenever we drill INTO a focused surface (reader
   // OR highlights). App.tsx uses this signal to hide the floating
@@ -573,20 +582,17 @@ export function LibraryScreen({
       return (
         <PdfReaderScreen
           book={selectedBook}
+          initialPageIndex={pendingInitialPageIndex ?? undefined}
           onBack={() => {
             setSelectedBook(null);
-            // Refetch the user's books so the Continue card +
-            // per-book progress percentages reflect the page
-            // they just closed on. The reader writes
-            // last_read_page synchronously on every page change,
-            // so by the time onBack fires the row is already
-            // updated server-side — we just need to re-read it.
+            setPendingInitialPageIndex(null);
             void refetch();
             void refetchStats();
           }}
           onListen={() => {
             onStartListening(selectedBook);
             setSelectedBook(null);
+            setPendingInitialPageIndex(null);
           }}
         />
       );
@@ -619,8 +625,10 @@ export function LibraryScreen({
     return (
       <ReaderScreen
         book={selectedBook}
+        initialPageIndex={pendingInitialPageIndex ?? undefined}
         onBack={() => {
           setSelectedBook(null);
+          setPendingInitialPageIndex(null);
           // The reader just closed — refetch books so the Continue
           // card + per-book progress show the new last_read_page,
           // and refetch stats to pick up any duration_seconds from
@@ -629,7 +637,11 @@ export function LibraryScreen({
           void refetchStats();
         }}
         onRequestFullMode={() => setEpubMode('full')}
-        onListen={() => { onStartListening(selectedBook); setSelectedBook(null); }}
+        onListen={() => {
+          onStartListening(selectedBook);
+          setSelectedBook(null);
+          setPendingInitialPageIndex(null);
+        }}
       />
     );
   }
@@ -639,7 +651,26 @@ export function LibraryScreen({
       <HighlightsScreen
         book={highlightsBook}
         onClose={() => setHighlightsBook(null)}
-        onJumpToPage={undefined}
+        onJumpToPage={(pageIndex) => {
+          // Jump from a tapped highlight row → open the same book
+          // in the reader at the highlight's page.
+          //
+          // For EPUBs we force Text mode because that's where
+          // tappable words / sentence-press / saved highlights are
+          // visible — Full mode (the default) is a WebView that
+          // doesn't expose those affordances. The user explicitly
+          // saved this highlight via the text reader, so it's the
+          // surface they expect to be returned to.
+          //
+          // pendingInitialPageIndex flows through to the reader as
+          // the `initialPageIndex` prop, which overrides the
+          // persisted last_read_page for this open only.
+          const target = highlightsBook;
+          setHighlightsBook(null);
+          setPendingInitialPageIndex(pageIndex);
+          if (target.type !== 'pdf') setEpubMode('text');
+          setSelectedBook(target);
+        }}
       />
     );
   }

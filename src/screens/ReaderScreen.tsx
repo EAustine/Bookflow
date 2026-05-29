@@ -820,22 +820,33 @@ export function ReaderScreen({
     void persistReadingPosition({ bookId: book.id, pageIndex, position: 0 });
   }, [book.id, pageIndex]);
 
-  // Throttled within-page scroll persistence. Updates `last_read_position`
-  // (0..1 fraction through the visible page) every 1.5s of idle scroll.
-  // Keyed off the position ref + a tick state so we re-run on actual
-  // movement, not every render.
-  const [scrollTick, setScrollTick] = useState(0);
-  useEffect(() => {
-    if (scrollTick === 0) return;
-    const id = setTimeout(() => {
+  // Throttled within-page scroll persistence. Debounced 1.5 s after
+  // the last scroll event so a thumb-drag through twenty pages
+  // doesn't fan out twenty position writes. Held in a ref so we
+  // don't re-render ReaderScreen on every scroll just to bump the
+  // timer — the previous `scrollTick` state churned the React tree
+  // 8× per second during reading, which combined with FlatList's
+  // already-tight render budget produced visible flicker on the
+  // text content. Ref-only is functionally identical and free.
+  const persistTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const schedulePersist = useCallback(() => {
+    if (persistTimerRef.current) clearTimeout(persistTimerRef.current);
+    persistTimerRef.current = setTimeout(() => {
       void persistReadingPosition({
         bookId: book.id,
         pageIndex,
         position: getProgressFraction(),
       });
     }, 1500);
-    return () => clearTimeout(id);
-  }, [book.id, pageIndex, scrollTick, getProgressFraction]);
+  }, [book.id, pageIndex, getProgressFraction]);
+  // Clear any pending persist on unmount so an in-flight timer
+  // doesn't fire against a stale book id after the user navigates
+  // away.
+  useEffect(() => {
+    return () => {
+      if (persistTimerRef.current) clearTimeout(persistTimerRef.current);
+    };
+  }, []);
 
   // Total page count is still threaded down to PageSection so the
   // in-content "PAGE X OF Y" dividers render correctly. Floor at 1
@@ -1286,8 +1297,10 @@ export function ReaderScreen({
           }}
           contentContainerStyle={styles.pagerContent}
           // Tap-driven scroll progress — FlatList exposes
-          // contentOffset via onScroll like ScrollView. We use it to
-          // bump scrollTick + estimate progress fraction.
+          // contentOffset via onScroll like ScrollView. We use it
+          // to update the progress-fraction ref and re-schedule
+          // the within-page persistence timer (both ref-based, no
+          // re-render).
           scrollEventThrottle={120}
           onScroll={(e: NativeSyntheticEvent<NativeScrollEvent>) => {
             const { contentOffset, contentSize, layoutMeasurement } =
@@ -1300,7 +1313,7 @@ export function ReaderScreen({
               0,
               Math.min(1, contentOffset.y / scrollable),
             );
-            setScrollTick((t) => t + 1);
+            schedulePersist();
 
             // Page tracker — anchor-relative scroll estimate.
             //

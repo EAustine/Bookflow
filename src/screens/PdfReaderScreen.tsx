@@ -57,6 +57,14 @@ export type PdfReaderScreenProps = {
   onBack: () => void;
   /** Optional jump to the audio listen mode for this book. */
   onListen?: () => void;
+  /**
+   * Override the starting page (0-based) for this open. Used when
+   * the user taps a saved highlight in the Highlights screen and
+   * we want to land them on the highlight's source page instead of
+   * `book.last_read_page`. One-shot — the parent clears it on
+   * close so the next manual open resumes from last_read_page.
+   */
+  initialPageIndex?: number;
 };
 
 const PDF_SIGNED_URL_TTL_S = 60 * 60; // 1 hour
@@ -99,7 +107,12 @@ function rememberPdfUrl(bookId: string, url: string): void {
   }
 }
 
-export function PdfReaderScreen({ book, onBack, onListen }: PdfReaderScreenProps) {
+export function PdfReaderScreen({
+  book,
+  onBack,
+  onListen,
+  initialPageIndex,
+}: PdfReaderScreenProps) {
   // Android hardware-back routes through the header chevron's onBack
   // (Library). Without this the user lands on the root "Press back
   // again to exit" handler, which is wrong for a sub-screen.
@@ -148,11 +161,17 @@ export function PdfReaderScreen({ book, onBack, onListen }: PdfReaderScreenProps
   );
   const [loadError, setLoadError] = useState<string | null>(null);
 
-  // Initial page from the persisted last_read_page column. PDF
-  // pages are 1-indexed by the renderer, so we floor at 1.
+  // Initial page resolution priority:
+  //   1. Explicit `initialPageIndex` prop (one-shot from a tapped
+  //      highlight in the Highlights screen). 0-indexed, so we
+  //      shift +1 to match the PDF renderer's 1-indexed pages.
+  //   2. Persisted `last_read_page` (1-indexed for PDFs).
+  //   3. Page 1.
   const initialPage = Math.max(
     1,
-    (book as { last_read_page?: number }).last_read_page || 1,
+    initialPageIndex !== undefined
+      ? initialPageIndex + 1
+      : (book as { last_read_page?: number }).last_read_page || 1,
   );
   const [currentPage, setCurrentPage] = useState<number>(initialPage);
   const [totalPages, setTotalPages] = useState<number>(book.totalPages ?? 0);

@@ -1,5 +1,37 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '~/lib/supabase';
+
+// AsyncStorage-backed highlight cache.
+//
+// useBookHighlights does a network refetch on mount. On a healthy
+// connection that lands in ~200 ms — but the user opens the book,
+// looks for their saved highlight, and if it isn't visible by the
+// time their eye reaches the page they read it as "the highlight
+// got lost". On a flaky or offline connection it stays missing for
+// much longer. Caching the last-known set per book gives us
+// instant-paint on every reopen + a graceful offline fallback.
+const HIGHLIGHTS_CACHE_PREFIX = 'bookflow:highlights:';
+async function readCachedHighlights(bookId: string): Promise<Highlight[] | null> {
+  try {
+    const raw = await AsyncStorage.getItem(HIGHLIGHTS_CACHE_PREFIX + bookId);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Highlight[];
+    return parsed.map((h) => ({ ...h, createdAt: new Date(h.createdAt) }));
+  } catch {
+    return null;
+  }
+}
+async function writeCachedHighlights(bookId: string, hs: Highlight[]): Promise<void> {
+  try {
+    await AsyncStorage.setItem(
+      HIGHLIGHTS_CACHE_PREFIX + bookId,
+      JSON.stringify(hs),
+    );
+  } catch {
+    // Cache write failure is non-fatal — refetch still populates state.
+  }
+}
 
 /**
  * User-saved highlights — both single words (saved from the dictionary
@@ -300,10 +332,39 @@ export function useBookHighlights(bookId: string) {
     setLoading(false);
   }, [bookId]);
 
+  // Hydrate from AsyncStorage cache FIRST, then kick the network
+  // refetch. The cache paint is synchronous-ish (one disk read,
+  // typically <10 ms), so the user sees their highlights at the
+  // first frame after the reader mounts even if the network is
+  // slow or offline. The refetch then reconciles when it lands.
   useEffect(() => {
+    let cancelled = false;
     setLoading(true);
-    void refetch();
-  }, [refetch]);
+    void (async () => {
+      const cached = await readCachedHighlights(bookId);
+      if (cancelled) return;
+      if (cached && cached.length > 0) {
+        // Only paint cache if we don't already have something — an
+        // optimistic add fired before this hydrate could clobber it.
+        setHighlights((prev) => (prev.length === 0 ? cached : prev));
+      }
+      void refetch();
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [bookId, refetch]);
+
+  // Persist highlights to AsyncStorage whenever they change so the
+  // next mount can hydrate from cache instantly. We DON'T persist
+  // optimistic-id rows — they're transient client-side artifacts
+  // that get replaced by the real row on the next refetch.
+  useEffect(() => {
+    const persistable = highlights.filter(
+      (h) => !h.id.startsWith('optimistic-'),
+    );
+    void writeCachedHighlights(bookId, persistable);
+  }, [bookId, highlights]);
 
   const removeOptimistic = useCallback((id: string) => {
     setHighlights((prev) => prev.filter((h) => h.id !== id));

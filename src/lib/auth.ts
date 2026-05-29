@@ -56,11 +56,72 @@ export async function sendMagicLink({
   fullName,
 }: SendMagicLinkArgs): Promise<SendMagicLinkResult> {
   const trimmed = email.trim().toLowerCase();
+
+  // Signup-with-existing-email guard.
+  //
+  // Supabase's `signInWithOtp` deliberately does NOT error when you
+  // sign up with an email that already has an account — it silently
+  // sends a magic-link email instead. That's their user-enumeration-
+  // prevention default. The result is that a user who has forgotten
+  // they signed up before goes through the "create account" flow,
+  // sees no error, and never understands why they're now logged in
+  // as their old account.
+  //
+  // Two-step approach:
+  //   1. Probe with `shouldCreateUser: false`. If this succeeds the
+  //      account exists and a sign-in magic link was just sent. We
+  //      surface a clear "you already have an account" error AND
+  //      acknowledge that we sent them a sign-in link (no wasted
+  //      email — they can use it to recover).
+  //   2. If the probe errors with "user not found", THEN do the real
+  //      signup with `shouldCreateUser: true`.
+  //
+  // For new signups this means ONE Supabase call (the probe errors
+  // immediately on user-not-found and we proceed). For
+  // existing-email signups it also means ONE call (the probe sent
+  // a sign-in link). So no rate-limit amplification.
+  if (variant === 'signup') {
+    const probe = await supabase.auth.signInWithOtp({
+      email: trimmed,
+      options: {
+        shouldCreateUser: false,
+        emailRedirectTo: AUTH_CALLBACK_URL,
+      },
+    });
+    if (!probe.error) {
+      return {
+        ok: false,
+        message:
+          "This email already has an account. We sent you a sign-in link instead — check your inbox.",
+      };
+    }
+    const probeMsg = probe.error.message.toLowerCase();
+    const looksLikeNoUser =
+      probeMsg.includes('user not found') ||
+      probeMsg.includes('signups not allowed') ||
+      probeMsg.includes('not found');
+    if (!looksLikeNoUser) {
+      // Some other error (rate limit, SMTP fail, etc) — surface it
+      // through the same humaniser the signin path uses.
+      console.warn(
+        '[auth] signup probe failed',
+        JSON.stringify({
+          status: (probe.error as { status?: number }).status,
+          name: probe.error.name,
+          message: probe.error.message,
+        }),
+      );
+      return { ok: false, message: humanizeAuthError(probe.error, 'signup') };
+    }
+    // User doesn't exist — go ahead with the real signup.
+  }
+
   const { error } = await supabase.auth.signInWithOtp({
     email: trimmed,
     options: {
       // signin: don't create unknown users (we want to fail loudly on typos).
-      // signup: default behaviour creates the user on first request.
+      // signup: at this point we've already confirmed the user doesn't
+      // exist via the probe above, so creating is correct.
       shouldCreateUser: variant === 'signup',
       data:
         variant === 'signup'

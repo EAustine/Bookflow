@@ -121,6 +121,12 @@ export function PracticeQuestionsScreen({ book, onBack, pageIndex }: PracticeQue
   );
   const [config, setConfig] = useState<QuizConfig>({ count: 5, qType: 'mcq', order: 'sequential' });
   const [activeQuestions, setActiveQuestions] = useState<Question[]>([]);
+  // The full original question set, separate from `activeQuestions`
+  // (which can be a missed-only subset after a "Retry missed" tap).
+  // Lets the Results screen offer a "Redo all questions" CTA that
+  // restores the original set even after the user has already
+  // narrowed down to the misses.
+  const [originalQuestions, setOriginalQuestions] = useState<Question[]>([]);
   const [questionIdx, setQuestionIdx] = useState(0);
   const [answers, setAnswers] = useState<Map<string, AnswerRecord>>(new Map());
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -195,6 +201,10 @@ export function PracticeQuestionsScreen({ book, onBack, pageIndex }: PracticeQue
     if (config.order === 'random') qs = [...qs].sort(() => Math.random() - 0.5);
     qs = qs.slice(0, config.count);
     setActiveQuestions(qs);
+    // Snapshot the original generated set so the Results screen's
+    // "Redo all questions" CTA can restore it after the user has
+    // narrowed to the missed-only subset via "Retry missed".
+    setOriginalQuestions(qs);
     setAnswers(new Map());
     setQuestionIdx(0);
     setPhase('quiz');
@@ -216,7 +226,23 @@ export function PracticeQuestionsScreen({ book, onBack, pageIndex }: PracticeQue
     }
   }, [questionIdx, activeQuestions.length]);
 
-  const retry = useCallback(() => {
+  // Re-run the FULL original question set. Uses originalQuestions
+  // (snapshot from startQuiz) so this still works after a previous
+  // "Retry missed" tap that narrowed activeQuestions down.
+  const retryAll = useCallback(() => {
+    if (originalQuestions.length > 0) setActiveQuestions(originalQuestions);
+    setAnswers(new Map());
+    setQuestionIdx(0);
+    setPhase('quiz');
+  }, [originalQuestions]);
+
+  // Re-run ONLY the questions the user got wrong (incorrect + partial).
+  // Backed by the Results screen's `missed` array — we receive it
+  // through the onRetryMissed callback so the slicing logic lives
+  // alongside the grading.
+  const retryMissed = useCallback((missedQuestions: Question[]) => {
+    if (missedQuestions.length === 0) return;
+    setActiveQuestions(missedQuestions);
     setAnswers(new Map());
     setQuestionIdx(0);
     setPhase('quiz');
@@ -322,7 +348,8 @@ export function PracticeQuestionsScreen({ book, onBack, pageIndex }: PracticeQue
       label={scoreLabel(pct)}
       missed={missed}
       missedCount={missed.length}
-      onRetry={retry}
+      onRetryMissed={() => retryMissed(missed)}
+      onRetryAll={retryAll}
       onDone={onBack}
     />
   );
@@ -831,7 +858,8 @@ function ResultsScreen({
   label,
   missed,
   missedCount,
-  onRetry,
+  onRetryMissed,
+  onRetryAll,
   onDone,
 }: {
   book: Book;
@@ -846,9 +874,18 @@ function ResultsScreen({
   label: string;
   missed: Question[];
   missedCount: number;
-  onRetry: () => void;
+  /** Primary CTA — runs JUST the missed/partial questions. */
+  onRetryMissed: () => void;
+  /** Secondary CTA — runs the original generated set again. */
+  onRetryAll: () => void;
   onDone: () => void;
 }) {
+  // Quality rating state. Tapping a thumb is exclusive — a second
+  // tap on the same thumb clears the rating. The current value is
+  // intentionally not persisted yet (server schema is TBD); we
+  // capture it locally so the icons show the user's last choice
+  // while the results screen is up.
+  const [quality, setQuality] = useState<'up' | 'down' | null>(null);
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'left', 'right', 'bottom']}>
       {/* Results header */}
@@ -933,28 +970,91 @@ function ResultsScreen({
           </>
         )}
 
-        {/* Quality rating */}
+        {/* Quality rating — interactive Tabler icons replace the
+            non-interactive emoji that earlier builds rendered.
+            Filled state on the selected thumb makes the choice
+            visually unambiguous; tapping the same thumb again
+            clears the rating. */}
         <View style={styles.qualityCard}>
           <Text style={styles.qualityLabel}>Were these questions useful?</Text>
           <View style={styles.qualityBtns}>
-            <Pressable style={styles.qualityBtn}>
-              <Text>👍</Text>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Mark as useful"
+              accessibilityState={{ selected: quality === 'up' }}
+              hitSlop={6}
+              style={[
+                styles.qualityBtn,
+                quality === 'up' && styles.qualityBtnActive,
+              ]}
+              onPress={() => setQuality((q) => (q === 'up' ? null : 'up'))}
+            >
+              <Icon
+                name={quality === 'up' ? 'ThumbUpFilled' : 'ThumbUp'}
+                size={22}
+                color={
+                  quality === 'up'
+                    ? tokens.colors.forest[800]
+                    : tokens.textColors.secondary
+                }
+                strokeWidth={1.75}
+              />
             </Pressable>
-            <Pressable style={styles.qualityBtn}>
-              <Text>👎</Text>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Mark as not useful"
+              accessibilityState={{ selected: quality === 'down' }}
+              hitSlop={6}
+              style={[
+                styles.qualityBtn,
+                quality === 'down' && styles.qualityBtnActive,
+              ]}
+              onPress={() => setQuality((q) => (q === 'down' ? null : 'down'))}
+            >
+              <Icon
+                name={quality === 'down' ? 'ThumbDownFilled' : 'ThumbDown'}
+                size={22}
+                color={
+                  quality === 'down'
+                    ? tokens.colors.error
+                    : tokens.textColors.secondary
+                }
+                strokeWidth={1.75}
+              />
             </Pressable>
           </View>
         </View>
 
-        {/* CTAs */}
+        {/* CTAs.
+            Primary: "Retry the N you missed" — only the missed
+            subset, mounted whenever the user missed at least one.
+            Secondary: "Redo all questions" — re-runs the original
+            generated set. Always present so the user can repeat the
+            full session even when they got everything right.
+            Tertiary: "Done" — exit the practice flow.
+            Order: primary → secondary → done. */}
         {missedCount > 0 && (
-          <Pressable style={styles.retryBtn} onPress={onRetry}>
-            <Icon name="PlayerSkipBack" size={14} color={tokens.colors.cream[50]} strokeWidth={1.5} />
+          <Pressable style={styles.retryBtn} onPress={onRetryMissed}>
+            <Icon
+              name="PlayerSkipBack"
+              size={14}
+              color={tokens.colors.cream[50]}
+              strokeWidth={1.5}
+            />
             <Text style={styles.retryBtnLabel}>
               Retry the {missedCount} you missed
             </Text>
           </Pressable>
         )}
+        <Pressable style={styles.redoAllBtn} onPress={onRetryAll}>
+          <Icon
+            name="Refresh"
+            size={14}
+            color={tokens.colors.forest[800]}
+            strokeWidth={1.75}
+          />
+          <Text style={styles.redoAllBtnLabel}>Redo all questions</Text>
+        </Pressable>
         <Pressable style={styles.doneBtn} onPress={onDone}>
           <Text style={styles.doneBtnLabel}>Done</Text>
         </Pressable>
@@ -1760,14 +1860,18 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   qualityBtn: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     backgroundColor: tokens.bgColors.canvas,
     borderWidth: 0.5,
     borderColor: tokens.borderColors.subtle,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  qualityBtnActive: {
+    backgroundColor: tokens.bgColors.surface,
+    borderColor: tokens.borderColors.default,
   },
   retryBtn: {
     flexDirection: 'row',
@@ -1783,6 +1887,24 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '500',
     color: tokens.colors.cream[50],
+  },
+  redoAllBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    height: 44,
+    marginTop: 10,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: tokens.colors.forest[800],
+    backgroundColor: 'transparent',
+  },
+  redoAllBtnLabel: {
+    fontFamily: tokens.fonts.uiMedium,
+    fontSize: 13,
+    fontWeight: '500',
+    color: tokens.colors.forest[800],
   },
   doneBtn: {
     height: 40,
