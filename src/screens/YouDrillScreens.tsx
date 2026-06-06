@@ -14,11 +14,17 @@
  * style sheets without much benefit.
  */
 
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Icon, Text } from '~/components';
+import {
+  BottomSheet,
+  type BottomSheetRef,
+  Icon,
+  ReminderTimePicker,
+  Text,
+} from '~/components';
 import { tokens } from '~/design/tokens';
 import {
   PLAYBACK_SPEEDS,
@@ -32,6 +38,11 @@ import { VOICE_OPTIONS } from '~/lib/aiAudio';
 import { presentPaywall, ENTITLEMENT_PRO } from '~/lib/revenuecat';
 import { SUPPORT_EMAIL } from '~/lib/legalUrls';
 import { useBackHandler } from '~/lib/useBackHandler';
+import {
+  fireReminderSetConfirmation,
+  formatReminderTime,
+  useNotificationPermission,
+} from '~/lib/notifications';
 
 // ─── Shell (back-and-title header used by every drill-in) ────────────────────
 
@@ -318,49 +329,154 @@ export function TranslationLanguageScreen({ onBack }: { onBack: () => void }) {
 // ─── Notifications ───────────────────────────────────────────────────────────
 
 /**
- * Notifications drill-in. The OS-level permission flow + push tokens
- * aren't wired yet — this screen just persists the user's preference
- * locally. When real notifications land, the toggles already reflect
- * the right intent.
+ * Notifications drill-in. Reads + writes the same `readerStore`
+ * fields as `SettingsScreen` so toggling here is immediately
+ * reflected there (and vice versa) — earlier this screen owned its
+ * own local `useState` which silently diverged from the Settings
+ * surface. The OS permission flow is shared via
+ * `useNotificationPermission`; `useDailyReminderSync` (mounted at
+ * the App root) takes care of scheduling/cancelling the OS-side
+ * reminder whenever the toggle, hour, or permission changes.
  */
 export function NotificationsScreen({ onBack }: { onBack: () => void }) {
-  const [reminder, setReminder] = useState(true);
-  const [warnings, setWarnings] = useState(true);
-  const [updates, setUpdates] = useState(false);
+  const reminder = useReaderStore((s) => s.notifReminderOn);
+  const setReminder = useReaderStore((s) => s.setNotifReminderOn);
+  const reminderHour = useReaderStore((s) => s.notifReminderHour);
+  const setReminderHour = useReaderStore((s) => s.setNotifReminderHour);
+  const reminderMinute = useReaderStore((s) => s.notifReminderMinute);
+  const setReminderMinute = useReaderStore((s) => s.setNotifReminderMinute);
+  const streakWarning = useReaderStore((s) => s.notifStreakWarningOn);
+  const setStreakWarning = useReaderStore((s) => s.setNotifStreakWarningOn);
+  const bookFinished = useReaderStore((s) => s.notifBookFinishedOn);
+  const setBookFinished = useReaderStore((s) => s.setNotifBookFinishedOn);
+  const warnings = useReaderStore((s) => s.notifWarningsOn);
+  const setWarnings = useReaderStore((s) => s.setNotifWarningsOn);
+  const updates = useReaderStore((s) => s.notifUpdatesOn);
+  const setUpdates = useReaderStore((s) => s.setNotifUpdatesOn);
+  const {
+    granted: osGranted,
+    request: requestOsPermission,
+    openSettings: openOsSettings,
+  } = useNotificationPermission();
+
+  const reminderTimeSheetRef = useRef<BottomSheetRef>(null);
+  const reminderLabel = formatReminderTime(reminderHour, reminderMinute);
+  // Streak warning fires one hour after the reminder (same minute,
+  // clamped at 23:xx). Mirror that here for the sublabel preview.
+  const streakLabel = formatReminderTime(
+    Math.min(23, reminderHour + 1),
+    reminderMinute,
+  );
+
+  async function handleToggle(
+    setter: (v: boolean) => void,
+    newValue: boolean,
+  ) {
+    if (newValue && !osGranted) {
+      const granted = await requestOsPermission();
+      if (!granted) {
+        // The OS prompt is one-shot on iOS — if the user already
+        // declined and we're re-asking, requestPermissionsAsync
+        // silently leaves status at 'denied'. Punt them to Settings
+        // so they can flip the OS switch directly.
+        openOsSettings();
+        return;
+      }
+    }
+    setter(newValue);
+  }
 
   return (
-    <SafeAreaView style={styles.safe} edges={['top', 'left', 'right', 'bottom']}>
-      <DrillHeader title="Notifications" onBack={onBack} />
-      <ScrollView contentContainerStyle={styles.body}>
-        <Section label="Reminders">
-          <ToggleRow
-            label="Daily reading reminder"
-            sublabel="A nudge at 8:00 PM to keep your streak alive"
-            value={reminder}
-            onChange={setReminder}
-          />
-        </Section>
-        <Section label="Account">
-          <ToggleRow
-            label="Usage warnings"
-            sublabel="When you're approaching your monthly limit"
-            value={warnings}
-            onChange={setWarnings}
-          />
-          <ToggleRow
-            label="Product updates"
-            sublabel="New features and announcements"
-            value={updates}
-            onChange={setUpdates}
-          />
-        </Section>
-        <Text style={styles.footnote}>
-          Push notifications require allowing Bookflow to send you alerts in
-          your phone settings. Open Settings → Notifications → Bookflow to
-          adjust.
-        </Text>
-      </ScrollView>
-    </SafeAreaView>
+    <>
+      <SafeAreaView style={styles.safe} edges={['top', 'left', 'right', 'bottom']}>
+        <DrillHeader title="Notifications" onBack={onBack} />
+        <ScrollView contentContainerStyle={styles.body}>
+          <Section label="Reminders">
+            <ToggleRow
+              label="Daily reading reminder"
+              sublabel={`A nudge at ${reminderLabel} to keep your streak alive`}
+              value={reminder}
+              onChange={(v) => void handleToggle(setReminder, v)}
+            />
+            {/* Time row — tappable when the reminder is on. Opens the
+                same shared time picker the Settings screen uses, so
+                the two surfaces behave identically. Dimmed + disabled
+                when the reminder toggle is off (no time to set). */}
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Change reminder time"
+              disabled={!reminder}
+              onPress={() => reminderTimeSheetRef.current?.present()}
+              style={({ pressed }) => [
+                styles.timeRow,
+                !reminder && { opacity: 0.45 },
+                pressed && reminder && { opacity: 0.7 },
+              ]}
+            >
+              <Text style={styles.timeRowLabel}>Reminder time</Text>
+              <View style={styles.timeRowValue}>
+                <Text style={styles.timeRowValueLabel}>{reminderLabel}</Text>
+                <Icon
+                  name="ChevronRight"
+                  size={14}
+                  color={tokens.colors.ink[300]}
+                />
+              </View>
+            </Pressable>
+            <ToggleRow
+              label="Streak warning"
+              sublabel={`An hour later (${streakLabel}) if you still haven't read`}
+              value={streakWarning}
+              onChange={(v) => void handleToggle(setStreakWarning, v)}
+            />
+          </Section>
+          <Section label="Library">
+            <ToggleRow
+              label="Book ready"
+              sublabel="When a book you uploaded finishes processing"
+              value={bookFinished}
+              onChange={(v) => void handleToggle(setBookFinished, v)}
+            />
+          </Section>
+          <Section label="Account">
+            <ToggleRow
+              label="Usage warnings"
+              sublabel="When you're approaching your monthly limit"
+              value={warnings}
+              onChange={(v) => void handleToggle(setWarnings, v)}
+            />
+            <ToggleRow
+              label="Product updates"
+              sublabel="New features and announcements"
+              value={updates}
+              onChange={(v) => void handleToggle(setUpdates, v)}
+            />
+          </Section>
+          <Text style={styles.footnote}>
+            {osGranted
+              ? 'Bookflow has permission to send notifications. Toggle individual types above to control what fires.'
+              : 'Push notifications require allowing Bookflow to send you alerts in your phone settings. Open Settings → Notifications → Bookflow to adjust.'}
+          </Text>
+        </ScrollView>
+      </SafeAreaView>
+
+      <BottomSheet ref={reminderTimeSheetRef}>
+        <ReminderTimePicker
+          hour={reminderHour}
+          minute={reminderMinute}
+          onConfirm={(hour, minute) => {
+            setReminderHour(hour);
+            setReminderMinute(minute);
+            reminderTimeSheetRef.current?.dismiss();
+            // Immediate confirmation notification (see Settings screen
+            // for rationale) — only when the reminder is on + granted.
+            if (reminder && osGranted) {
+              void fireReminderSetConfirmation(hour, minute, osGranted);
+            }
+          }}
+        />
+      </BottomSheet>
+    </>
   );
 }
 
@@ -794,6 +910,35 @@ const styles = StyleSheet.create({
     fontFamily: tokens.fonts.ui,
     fontSize: 12,
     color: tokens.textColors.muted,
+  },
+
+  // Reminder-time row — sits under the daily-reading-reminder toggle,
+  // tappable to open the shared time picker. Same row metrics as
+  // toggleRow so it lines up within the section.
+  timeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: tokens.borderColors.subtle,
+  },
+  timeRowLabel: {
+    fontFamily: tokens.fonts.uiMedium,
+    fontSize: 14,
+    color: tokens.textColors.primary,
+  },
+  timeRowValue: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  timeRowValueLabel: {
+    fontFamily: tokens.fonts.uiMedium,
+    fontSize: 14,
+    fontWeight: '500',
+    color: tokens.colors.forest[800],
   },
 
   // Custom toggle — matches the Settings-screen toggle shape (44×26

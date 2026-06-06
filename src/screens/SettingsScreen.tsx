@@ -2,7 +2,14 @@ import { useCallback, useRef, useState } from 'react';
 import { Alert, Linking, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { BottomSheet, type BottomSheetRef, Icon, type IconName, Text } from '~/components';
+import {
+  BottomSheet,
+  type BottomSheetRef,
+  Icon,
+  type IconName,
+  ReminderTimePicker,
+  Text,
+} from '~/components';
 import { tokens } from '~/design/tokens';
 import { useReaderStore, TRANSLATION_LANGUAGE_LABELS } from '~/stores/readerStore';
 import { VOICE_OPTIONS } from '~/lib/aiAudio';
@@ -13,6 +20,11 @@ import {
   TranslationLanguageScreen,
 } from '~/screens/YouDrillScreens';
 import { useBackHandler } from '~/lib/useBackHandler';
+import {
+  fireReminderSetConfirmation,
+  formatReminderTime,
+  useNotificationPermission,
+} from '~/lib/notifications';
 
 const WARN = tokens.colors.warn;
 const WARN_BG = tokens.colors.warnBg;
@@ -27,8 +39,17 @@ export type SettingsScreenProps = {
 // ─── Screen ───────────────────────────────────────────────────────────────────
 
 export function SettingsScreen({ onBack }: SettingsScreenProps) {
-  // Simulate OS notification permission state. True = granted, false = denied.
-  const [osNotifGranted] = useState(true);
+  // Real OS permission state — replaces the v1 hardcode that just
+  // pretended we always had permission. `granted` flips when the
+  // user grants in the system prompt OR returns from app-settings
+  // with the toggle flipped (the hook listens for foreground
+  // returns). `request()` triggers the system prompt; `openSettings`
+  // jumps to the OS app-settings page for users who declined once.
+  const {
+    granted: osNotifGranted,
+    request: requestOsPermission,
+    openSettings: openOsSettings,
+  } = useNotificationPermission();
   const [view, setView] = useState<
     'home' | 'reading' | 'voice' | 'speed' | 'language'
   >('home');
@@ -45,6 +66,10 @@ export function SettingsScreen({ onBack }: SettingsScreenProps) {
   const setResumeAfterCalls = useReaderStore((s) => s.setResumeAfterCalls);
   const reminderOn = useReaderStore((s) => s.notifReminderOn);
   const setReminderOn = useReaderStore((s) => s.setNotifReminderOn);
+  const reminderHour = useReaderStore((s) => s.notifReminderHour);
+  const setReminderHour = useReaderStore((s) => s.setNotifReminderHour);
+  const reminderMinute = useReaderStore((s) => s.notifReminderMinute);
+  const setReminderMinute = useReaderStore((s) => s.setNotifReminderMinute);
   const warningsOn = useReaderStore((s) => s.notifWarningsOn);
   const setWarningsOn = useReaderStore((s) => s.setNotifWarningsOn);
   const updatesOn = useReaderStore((s) => s.notifUpdatesOn);
@@ -64,11 +89,23 @@ export function SettingsScreen({ onBack }: SettingsScreenProps) {
   const translationHint = TRANSLATION_LANGUAGE_LABELS[translationLanguage];
 
   const notifSheetRef = useRef<BottomSheetRef>(null);
+  const reminderTimeSheetRef = useRef<BottomSheetRef>(null);
 
-  function handleNotifToggle(setter: (v: boolean) => void, newValue: boolean) {
+  async function handleNotifToggle(
+    setter: (v: boolean) => void,
+    newValue: boolean,
+  ) {
     if (newValue && !osNotifGranted) {
-      notifSheetRef.current?.present();
-      return;
+      // First-time on-flip without OS permission: try the system
+      // prompt. If iOS has already shown the prompt once and the
+      // user declined, requestPermissionsAsync returns silently
+      // (status stays 'denied') — at which point we present the
+      // explainer sheet so the user can open the OS settings.
+      const granted = await requestOsPermission();
+      if (!granted) {
+        notifSheetRef.current?.present();
+        return;
+      }
     }
     setter(newValue);
   }
@@ -201,12 +238,30 @@ export function SettingsScreen({ onBack }: SettingsScreenProps) {
               <SettingsRow
                 iconName="Bell"
                 label="Daily reading reminder"
-                sublabel="8:00 PM every day"
+                sublabel={`${formatReminderTime(reminderHour, reminderMinute)} every day`}
                 trailing={
                   <View style={styles.reminderTrailing}>
-                    <View style={[styles.timeChip, !osNotifGranted && styles.timeChipDimmed]}>
-                      <Text style={styles.timeChipLabel}>8:00 PM</Text>
-                    </View>
+                    {/* Tappable time chip → opens the time picker sheet.
+                        Reads the live `reminderHour` / `reminderMinute`
+                        from the store so the label tracks whatever the
+                        user last picked. Disabled (and dimmed) when
+                        notifications aren't granted, matching the row's
+                        pointerEvents gate. */}
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel="Change reminder time"
+                      disabled={!osNotifGranted}
+                      onPress={() => reminderTimeSheetRef.current?.present()}
+                      style={({ pressed }) => [
+                        styles.timeChip,
+                        !osNotifGranted && styles.timeChipDimmed,
+                        pressed && { opacity: 0.7 },
+                      ]}
+                    >
+                      <Text style={styles.timeChipLabel}>
+                        {formatReminderTime(reminderHour, reminderMinute)}
+                      </Text>
+                    </Pressable>
                     <Toggle
                       value={reminderOn}
                       onChange={(v) => handleNotifToggle(setReminderOn, v)}
@@ -266,6 +321,27 @@ export function SettingsScreen({ onBack }: SettingsScreenProps) {
 
       <BottomSheet ref={notifSheetRef}>
         <NotifPermissionSheet onAllow={() => notifSheetRef.current?.dismiss()} onDismiss={() => notifSheetRef.current?.dismiss()} />
+      </BottomSheet>
+
+      <BottomSheet ref={reminderTimeSheetRef}>
+        <ReminderTimePicker
+          hour={reminderHour}
+          minute={reminderMinute}
+          onConfirm={(hour, minute) => {
+            // Persist → the App-root useDailyReminderSync hook sees the
+            // new time and reschedules the OS notification automatically.
+            setReminderHour(hour);
+            setReminderMinute(minute);
+            reminderTimeSheetRef.current?.dismiss();
+            // Immediate confirmation so the user sees a notification
+            // right away — the daily reminder itself won't fire until
+            // that time of day, which would otherwise look like nothing
+            // happened. Only when the reminder is actually on + granted.
+            if (reminderOn && osNotifGranted) {
+              void fireReminderSetConfirmation(hour, minute, osNotifGranted);
+            }
+          }}
+        />
       </BottomSheet>
     </>
   );
@@ -475,9 +551,13 @@ function NotifPermissionSheet({
             Time for your daily reading. You're on Chapter 4 of The Great Gatsby. 📖
           </Text>
           <View style={styles.notifPreviewTimeRow}>
+            {/* Illustrative sample time in the permission-prompt
+                preview. The real reminder time is user-editable via
+                the time chip on the Settings row (tap → hour picker
+                sheet). Kept as a static "8:00 PM" example here since
+                this card is shown BEFORE the user has granted
+                permission / picked a time. */}
             <Text style={styles.notifPreviewTime}>Every day at 8:00 PM</Text>
-            {/* "Change" button removed — until we ship the time
-                picker the reminder time is locked at 8 PM. */}
           </View>
         </View>
       </View>
@@ -667,6 +747,9 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     color: tokens.textColors.secondary,
   },
+
+  // (Reminder time picker styles moved to the shared
+  // ReminderTimePicker component in src/components.)
 
   // Storage row
   storageContent: {

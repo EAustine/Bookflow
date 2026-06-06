@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useReducer, useState } from 'react';
+import { useCallback, useEffect, useReducer, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '~/lib/supabase';
 
@@ -166,108 +166,6 @@ export async function deleteHighlight(id: string): Promise<boolean> {
     console.warn('[highlights] delete threw:', err);
     return false;
   }
-}
-
-/**
- * Hook: stream the highlights for a single (book, page_index) pair.
- * The Reader subscribes per page so it only pays for what it renders.
- * Returns derived sets (words / sentences) for fast lookup during render —
- * tappable text checks "is this token in the saved-words set" on every
- * keystroke of typing prose, and a per-render re-derive is wasteful.
- */
-export function usePageHighlights(bookId: string, pageIndex: number) {
-  const [highlights, setHighlights] = useState<Highlight[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  const refetch = useCallback(async () => {
-    if (!UUID_RE.test(bookId)) {
-      setHighlights([]);
-      setLoading(false);
-      return;
-    }
-    // Wrap the Supabase call in try/catch — it throws on offline
-    // and the hook is called from `void refetch()` in the effect
-    // below, which means the rejection had nowhere to land and
-    // surfaced as "TypeError: Network request failed" in dev
-    // LogBox every time the user opened a book without a network.
-    // Treat offline same as a query error: clear the list and let
-    // the colored placeholders / no-highlights state render.
-    try {
-      const { data, error } = await supabase
-        .from('highlights')
-        .select('id, book_id, page_id, page_index, kind, text, note, color, created_at')
-        .eq('book_id', bookId)
-        .eq('page_index', pageIndex)
-        .order('created_at', { ascending: false });
-
-      if (error) {
-        console.warn('[highlights] fetch failed:', error.message);
-        setHighlights([]);
-      } else {
-        setHighlights((data ?? []).map((r) => rowToHighlight(r as HighlightRow)));
-      }
-    } catch (err) {
-      console.warn('[highlights] fetch threw:', err);
-      setHighlights([]);
-    }
-    setLoading(false);
-  }, [bookId, pageIndex]);
-
-  useEffect(() => {
-    setLoading(true);
-    void refetch();
-  }, [refetch]);
-
-  /**
-   * Optimistic add. Lets the reader show the highlight immediately on tap
-   * without waiting for the round-trip; the next refetch reconciles.
-   */
-  const addOptimistic = useCallback((h: Highlight) => {
-    setHighlights((prev) => {
-      // De-dupe by (kind, lowercased text) — the unique index does this on
-      // the server, but the optimistic list can race ahead of the insert.
-      const key = `${h.kind}:${h.text.toLowerCase()}`;
-      if (prev.some((p) => `${p.kind}:${p.text.toLowerCase()}` === key)) return prev;
-      return [h, ...prev];
-    });
-  }, []);
-
-  // Pre-compute the lookup sets the renderer needs. Words are matched
-  // case-insensitively; sentences are exact-match (post-trim) which is
-  // sufficient because we save the rendered sentence verbatim.
-  //
-  // Memoised so the Set identity is stable across re-renders when
-  // `highlights` hasn't changed. Without this, every parent render
-  // builds a new Set, which breaks React.memo and useMemo
-  // optimizations downstream — every TappableParagraph in the
-  // visible window re-rendered on any unrelated parent update.
-  const savedWords = useMemo(
-    () =>
-      new Set(
-        highlights
-          .filter((h) => h.kind === 'word')
-          .map((h) => h.text.toLowerCase()),
-      ),
-    [highlights],
-  );
-  const savedSentences = useMemo(
-    () =>
-      new Set(
-        highlights
-          .filter((h) => h.kind === 'sentence')
-          .map((h) => h.text.trim()),
-      ),
-    [highlights],
-  );
-
-  return {
-    highlights,
-    savedWords,
-    savedSentences,
-    loading,
-    refetch,
-    addOptimistic,
-  };
 }
 
 /**

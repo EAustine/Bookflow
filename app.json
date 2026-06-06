@@ -40,6 +40,26 @@
         {
           "photosPermission": "Bookflow needs access to your photos so you can set a profile picture."
         }
+      ],
+      [
+        "expo-share-intent",
+        {
+          "iosActivationRules": {
+            "NSExtensionActivationSupportsFileWithMaxCount": 10
+          },
+          "androidIntentFilters": [
+            "application/epub+zip",
+            "application/pdf"
+          ],
+          "iosShareExtensionName": "Save to Bookflow"
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/notification-icon.png",
+          "color": "#2D6A4F"
+        }
       ]
     ],
     "experiments": {

@@ -49,8 +49,26 @@ export type DiscoverBook = {
    * upstream gives us nothing useful. */
   about: string;
   /** Which catalog this book came from. Drives source badges and the
-   * `import-from-url` allowlist branch. */
-  source: 'gutenberg' | 'standard-ebooks' | 'open-library' | 'wikisource';
+   * `import-from-url` allowlist branch.
+   *
+   * The non-hyphenated OPDS sources (`feedbooks`, `manybooks`, `doab`,
+   * `oapen`) come through the generic `discover-opds` edge function;
+   * see `fetchOpdsLibrary` below. Add new OPDS catalogs by extending
+   * the library config in `supabase/functions/discover-opds/index.ts`
+   * AND the host allowlist in `supabase/functions/import-from-url`. */
+  source:
+    | 'gutenberg'
+    | 'standard-ebooks'
+    | 'open-library'
+    | 'wikisource'
+    | 'feedbooks'
+    | 'manybooks'
+    | 'doab'
+    | 'oapen';
+  /** Human-readable library name surfaced in detail/import UI ("From
+   * Feedbooks"). Only the OPDS sources emit this; older sources synthesise
+   * the label client-side. */
+  sourceLabel?: string;
   /** Popularity proxy — Gutenberg's lifetime download count, or 0 for
    * sources that don't expose one. Used to sort within shelves where
    * a download-count signal is meaningful. */
@@ -573,6 +591,193 @@ export async function fetchWikisource(
       return {
         ok: false,
         error: payload?.error ?? 'wikisource returned unexpected shape',
+      };
+    }
+    const books = payload.books.filter((b) => !!b.epubUrl);
+    return { ok: true, books };
+  } catch (err) {
+    return {
+      ok: false,
+      error: err instanceof Error ? err.message : String(err),
+    };
+  }
+}
+
+// ─── OPDS (generic adapter) ──────────────────────────────────────────────────
+
+/**
+ * Library identifier for the `discover-opds` edge function. Each id
+ * resolves to a feed URL + parser config server-side; the function
+ * returns the same `DiscoverBook` shape every other source produces.
+ *
+ * To add a new OPDS library:
+ *   1. Add a `LIBRARIES` entry in `supabase/functions/discover-opds`.
+ *   2. Add the source's host(s) to the `ALLOWED_HOSTS` in
+ *      `supabase/functions/import-from-url` so the EPUB download
+ *      passes the host-allowlist check.
+ *   3. Extend this union (and the matching unions in
+ *      `discoverImport.ts` + `DiscoverScreen.tsx`).
+ *   4. Wire a shelf in `DiscoverScreen` if you want it on the home page.
+ */
+export type OpdsLibraryId = 'feedbooks' | 'manybooks' | 'doab' | 'oapen';
+
+/**
+ * Fetch a slice of a configured OPDS catalog through the generic
+ * `discover-opds` edge function. `feed` lets you point at a sub-catalog
+ * URL for libraries that publish multiple (subject feeds, popular
+ * lists, recent additions) — when omitted, the function uses each
+ * library's curated landing feed.
+ *
+ * Error envelope mirrors the other discover sources so the calling UI
+ * can fall back identically regardless of which catalog is failing.
+ */
+export async function fetchOpdsLibrary(
+  library: OpdsLibraryId,
+  opts: { limit?: number; feed?: string } = {},
+): Promise<FetchDiscoverResult> {
+  const { limit = 24, feed } = opts;
+  try {
+    const params = new URLSearchParams();
+    params.set('library', library);
+    params.set('limit', String(limit));
+    if (feed) params.set('feed', feed);
+    // Cache-buster — see fetchWikisource for the why (stale-cache poison
+    // from earlier deploys that leaked aggressive Cache-Control headers).
+    params.set('_cb', String(Date.now()));
+    const { data, error } = await supabase.functions.invoke(
+      `discover-opds?${params.toString()}`,
+      { method: 'GET' },
+    );
+    if (error) {
+      let bodyText: string | undefined;
+      const ctx = (error as { context?: unknown }).context;
+      if (ctx && typeof (ctx as Response).text === 'function') {
+        try {
+          bodyText = await (ctx as Response).text();
+        } catch {
+          // body already consumed — ignore
+        }
+      }
+      console.warn(
+        `[fetchOpdsLibrary:${library}] invoke error:`,
+        error.message,
+        '— response body:',
+        bodyText ?? '(unavailable)',
+      );
+      return {
+        ok: false,
+        error: bodyText ?? error.message ?? `${library} fetch failed`,
+      };
+    }
+    const payload = data as
+      | { ok?: boolean; books?: DiscoverBook[]; error?: string }
+      | null;
+    if (!payload?.ok || !Array.isArray(payload.books)) {
+      console.warn(
+        `[fetchOpdsLibrary:${library}] unexpected response shape:`,
+        payload,
+      );
+      return {
+        ok: false,
+        error: payload?.error ?? `${library} returned unexpected shape`,
+      };
+    }
+    // Drop entries without an EPUB URL — same defensive filter the
+    // other source wrappers use. The edge function already filters
+    // these but a card with no Add target is worse than no card.
+    const books = payload.books.filter((b) => !!b.epubUrl);
+    return { ok: true, books };
+  } catch (err) {
+    return {
+      ok: false,
+      error: err instanceof Error ? err.message : String(err),
+    };
+  }
+}
+
+/** Convenience wrappers — one per known OPDS source. Tiny, but they
+ * keep the call sites in `DiscoverScreen` parallel to the older sources
+ * (`fetchStandardEbooks`, `fetchOpenLibrary`, etc.) and let us evolve
+ * each library's defaults independently without touching callers. */
+export const fetchFeedbooks = (opts: { limit?: number; feed?: string } = {}) =>
+  fetchOpdsLibrary('feedbooks', opts);
+export const fetchManyBooks = (opts: { limit?: number; feed?: string } = {}) =>
+  fetchOpdsLibrary('manybooks', opts);
+export const fetchDoab = (opts: { limit?: number; feed?: string } = {}) =>
+  fetchOpdsLibrary('doab', opts);
+export const fetchOapen = (opts: { limit?: number; feed?: string } = {}) =>
+  fetchOpdsLibrary('oapen', opts);
+
+// ─── DOAB (REST, separate from OPDS adapter) ─────────────────────────────────
+
+/**
+ * Fetch academic open-access titles from DOAB via its REST search API.
+ * The OPDS path was tried first (`fetchDoab` above, via the generic
+ * OPDS adapter) but DOAB removed their OPDS endpoint; their newer
+ * DSpace REST API at /rest/search is what's actually available.
+ * Records that come through here are PDFs hosted on library.oapen.org
+ * (single allowlisted domain); records with only publisher-hosted
+ * downloads are filtered out server-side.
+ *
+ * Optional `query` enables typeahead search across the DOAB catalog;
+ * unset or empty returns the wildcard/featured slice.
+ */
+export async function fetchDoabRest(
+  opts: { limit?: number; query?: string } = {},
+): Promise<FetchDiscoverResult> {
+  const { limit = 24, query } = opts;
+  try {
+    const params = new URLSearchParams();
+    params.set('limit', String(limit));
+    if (query && query.trim()) params.set('q', query.trim());
+    // Hourly cache bucket — NOT per-call Date.now().
+    //
+    // The other source wrappers (fetchWikisource, fetchOpenLibrary,
+    // etc.) use `_cb=Date.now()` as a legacy workaround for stale
+    // Cache-Control headers that earlier deploys leaked into React
+    // Native's native HTTP cache. DOAB is a brand-new function with
+    // no such legacy and a slow-moving academic catalog, so a unique
+    // URL per call was pure cargo cult — and it was destroying the
+    // edge-function CDN cache (set to 1h fresh + 4h SWR), making
+    // every rail load hit DOAB's upstream REST API rather than the
+    // edge cache. With an hourly bucket, calls within the same wall-
+    // clock hour share a URL → CDN serves from cache → ~50 ms first
+    // byte vs the ~1–2 s we were paying every load. Hour rotation
+    // still invalidates within an hour of any catalog update.
+    params.set('_cb', String(Math.floor(Date.now() / 3_600_000)));
+    const { data, error } = await supabase.functions.invoke(
+      `discover-doab?${params.toString()}`,
+      { method: 'GET' },
+    );
+    if (error) {
+      let bodyText: string | undefined;
+      const ctx = (error as { context?: unknown }).context;
+      if (ctx && typeof (ctx as Response).text === 'function') {
+        try {
+          bodyText = await (ctx as Response).text();
+        } catch {
+          // body already consumed
+        }
+      }
+      console.warn(
+        '[fetchDoabRest] invoke error:',
+        error.message,
+        '— response body:',
+        bodyText ?? '(unavailable)',
+      );
+      return {
+        ok: false,
+        error: bodyText ?? error.message ?? 'DOAB fetch failed',
+      };
+    }
+    const payload = data as
+      | { ok?: boolean; books?: DiscoverBook[]; error?: string }
+      | null;
+    if (!payload?.ok || !Array.isArray(payload.books)) {
+      console.warn('[fetchDoabRest] unexpected response shape:', payload);
+      return {
+        ok: false,
+        error: payload?.error ?? 'DOAB returned unexpected shape',
       };
     }
     const books = payload.books.filter((b) => !!b.epubUrl);

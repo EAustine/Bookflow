@@ -22,6 +22,7 @@ import { SlowNetworkBanner } from '~/components/SlowNetworkBanner';
 import {
   fetchOpenLibrary,
   fetchWikisource,
+  fetchDoabRest,
   popularGutenberg,
   searchGutenberg,
   topicGutenberg,
@@ -68,8 +69,18 @@ type DiscoverBook = {
   /** Optional — Gutendex doesn't ship chapter count. */
   chapters?: number;
   about: string;
-  /** Source identifier the edge function knows how to import from. */
-  source: 'gutenberg' | 'standardebooks' | 'openlibrary' | 'wikisource';
+  /** Source identifier the edge function knows how to import from.
+   * The OPDS sources (feedbooks, manybooks, doab, oapen) are served
+   * by the generic `discover-opds` edge function — see `discoverApi.ts`. */
+  source:
+    | 'gutenberg'
+    | 'standardebooks'
+    | 'openlibrary'
+    | 'wikisource'
+    | 'feedbooks'
+    | 'manybooks'
+    | 'doab'
+    | 'oapen';
   /** Display label for the detail view ("Project Gutenberg"). */
   sourceLabel?: string;
   related?: { id: string; title: string; coverColor: string }[];
@@ -122,6 +133,9 @@ function fromApiBook(b: ApiBook): DiscoverBook {
   // edge function expects shorter tokens without hyphens. Translate
   // once at this boundary so the rest of the screen layer doesn't
   // have to know about the discrepancy.
+  // Map the lib-shape source string to the screen-shape source string.
+  // OPDS sources (feedbooks, manybooks, doab, oapen) already use the
+  // non-hyphenated form server-side, so they pass through unchanged.
   const source: DiscoverBook['source'] =
     b.source === 'standard-ebooks'
       ? 'standardebooks'
@@ -129,7 +143,15 @@ function fromApiBook(b: ApiBook): DiscoverBook {
         ? 'openlibrary'
         : b.source === 'wikisource'
           ? 'wikisource'
-          : 'gutenberg';
+          : b.source === 'feedbooks'
+            ? 'feedbooks'
+            : b.source === 'manybooks'
+              ? 'manybooks'
+              : b.source === 'doab'
+                ? 'doab'
+                : b.source === 'oapen'
+                  ? 'oapen'
+                  : 'gutenberg';
   const sourceLabel =
     source === 'standardebooks'
       ? 'Standard Ebooks'
@@ -137,7 +159,15 @@ function fromApiBook(b: ApiBook): DiscoverBook {
         ? 'Open Library'
         : source === 'wikisource'
           ? 'Wikisource'
-          : 'Project Gutenberg';
+          : source === 'feedbooks'
+            ? 'Feedbooks'
+            : source === 'manybooks'
+              ? 'ManyBooks'
+              : source === 'doab'
+                ? 'DOAB'
+                : source === 'oapen'
+                  ? 'OAPEN'
+                  : 'Project Gutenberg';
   const fallbackAbout =
     source === 'standardebooks'
       ? 'Hand-typeset public-domain edition from Standard Ebooks — free to read in your library.'
@@ -145,7 +175,15 @@ function fromApiBook(b: ApiBook): DiscoverBook {
         ? 'Public-domain edition via Internet Archive — free to read in your library.'
         : source === 'wikisource'
           ? 'Public-domain edition via Wikisource — EPUB generated on demand from the wiki source.'
-          : 'Public-domain title from Project Gutenberg — free to read in your library.';
+          : source === 'feedbooks'
+            ? 'Curated public-domain edition via Feedbooks — free to read in your library.'
+            : source === 'manybooks'
+              ? 'Free public-domain title via ManyBooks — free to read in your library.'
+              : source === 'doab'
+                ? 'Open-access academic book via DOAB — free to read in your library.'
+                : source === 'oapen'
+                  ? 'Open-access scholarly book via OAPEN — free to read in your library.'
+                  : 'Public-domain title from Project Gutenberg — free to read in your library.';
   return {
     id: b.id,
     title: b.title,
@@ -333,6 +371,20 @@ export function DiscoverScreen({
         // Malformed source_url — skip; the row won't be matchable
         // but the rest of the library is unaffected.
       }
+      // DOAB (academic OA):
+      //   URL    https://library.oapen.org/bitstream/handle/{handlePrefix}/{bookId}/{filename}.pdf?sequence=N
+      //   id     doab:{bookId}
+      // The DOAB adapter intentionally builds its Discover id from
+      // the OAPEN bookId (the second numeric path segment) instead
+      // of the DOAB item UUID, precisely so this reverse-map can
+      // reconstruct it without any extra column.
+      const doabMatch = url.match(
+        /library\.oapen\.org\/bitstream\/handle\/[\w.]+\/(\d+)\//,
+      );
+      if (doabMatch) {
+        set.add(`doab:${doabMatch[1]}`);
+        continue;
+      }
     }
     return set;
   }, [userBooks]);
@@ -400,6 +452,13 @@ export function DiscoverScreen({
   // slice feeding localMatches for typeahead.
   const [openLibraryPool, setOpenLibraryPool] = useState<DiscoverBook[]>([]);
   const [openLibraryLoading, setOpenLibraryLoading] = useState(true);
+  // Feedbooks + ManyBooks OPDS feeds went behind Cloudflare bot
+  // challenges; the generic discover-opds adapter is still in place
+  // for any future working OPDS source. DOAB academic books reach us
+  // via a separate `discover-doab` edge function (DOAB's REST API,
+  // not OPDS) — see fetchDoabRest in discoverApi.ts.
+  const [doabRail, setDoabRail] = useState<DiscoverBook[]>([]);
+  const [doabLoading, setDoabLoading] = useState(true);
   const [popularLoading, setPopularLoading] = useState(true);
   const [fictionLoading, setFictionLoading] = useState(true);
   const [shortLoading, setShortLoading] = useState(true);
@@ -683,6 +742,40 @@ export function DiscoverScreen({
       }
     })();
 
+    // ─── DOAB rail (academic OA via REST adapter) ────────────────────
+    // Peer-reviewed open-access scholarly titles. Fills the
+    // contemporary-academic gap left by the pre-1928 public-domain
+    // sources. Served via discover-doab edge function, which queries
+    // DOAB's REST API and filters to records with OAPEN-hosted PDFs
+    // (single allowlisted host).
+    //
+    // Cache key bumped to :v2 — :v1 entries written by the first
+    // version of the adapter encoded card ids as `doab:{doab_uuid}`,
+    // which the reverse-mapping in `libraryIds` (above) can't
+    // reconstruct from `books.source_url`. The current adapter
+    // encodes `doab:{oapen_book_id}` so the reverse-map works, but
+    // any app install that already wrote a v1 cache entry would
+    // keep showing stale ids until the 30-min TTL expired —
+    // bumping the version skips that purgatory and rebuilds from
+    // a fresh fetch immediately.
+    void loadShelf(
+      'source:doab:v2',
+      async () => {
+        const result = await fetchDoabRest({ limit: 24 });
+        if (result.ok) {
+          console.log(
+            '[Discover] DOAB rail fetch ok, books:',
+            result.books.length,
+          );
+        } else {
+          console.warn('[Discover] DOAB rail fetch FAILED:', result.error);
+        }
+        return result;
+      },
+      setDoabRail,
+      setDoabLoading,
+    );
+
     // Pre-warm the category caches in the background so the first time
     // the user taps a category chip / "See all" the data is already
     // sitting in AsyncStorage AND the in-memory mirror. Each prefetch
@@ -837,6 +930,7 @@ export function DiscoverScreen({
       // rail. Combined with the SE pool this covers a healthy
       // chunk of the multi-library search space.
       openLibraryPool,
+      doabRail,
     ]) {
       for (const b of list) if (!seen.has(b.id)) seen.set(b.id, b);
     }
@@ -863,6 +957,7 @@ export function DiscoverScreen({
     openLibraryRail,
     wikisourcePool,
     openLibraryPool,
+    doabRail,
   ]);
 
   // Filter the local pool by substring match against title + author +
@@ -1166,6 +1261,7 @@ export function DiscoverScreen({
       spiritualRail={spiritualRail}
       wikisourceRail={wikisourceRail}
       openLibraryRail={openLibraryRail}
+      doabRail={doabRail}
       libraryIds={libraryIds}
       pendingIds={pendingIds}
       loading={homeLoading}
@@ -1195,6 +1291,7 @@ function HomeView({
   spiritualRail,
   wikisourceRail,
   openLibraryRail,
+  doabRail,
   libraryIds,
   pendingIds,
   loading,
@@ -1218,6 +1315,7 @@ function HomeView({
   spiritualRail: DiscoverBook[];
   wikisourceRail: DiscoverBook[];
   openLibraryRail: DiscoverBook[];
+  doabRail: DiscoverBook[];
   libraryIds: Set<string>;
   pendingIds: Set<string>;
   loading: boolean;
@@ -1514,6 +1612,39 @@ function HomeView({
                         contentContainerStyle={s.railScroll}
                       >
                         {openLibraryRail.map((book) => (
+                          <RailCard
+                            key={book.id}
+                            book={book}
+                            inLibrary={libraryIds.has(book.id)}
+                            onPress={() => onBook(book)}
+                          />
+                        ))}
+                      </ScrollView>
+                    )}
+                  </>
+                )}
+
+                {/* DOAB rail — peer-reviewed open-access academic
+                 *  titles via the DOAB REST adapter. Records that
+                 *  appear here have OAPEN-hosted PDFs that pass our
+                 *  import-from-url allowlist. */}
+                {(refreshing || doabRail.length > 0) && (
+                  <>
+                    <View style={s.sectionRow}>
+                      <Text style={s.sectionTitle}>Academic books</Text>
+                      <Text style={s.sectionSubLabel}>
+                        From DOAB (open access)
+                      </Text>
+                    </View>
+                    {refreshing ? (
+                      <RailSkeletonRow />
+                    ) : (
+                      <ScrollView
+                        horizontal
+                        showsHorizontalScrollIndicator={false}
+                        contentContainerStyle={s.railScroll}
+                      >
+                        {doabRail.map((book) => (
                           <RailCard
                             key={book.id}
                             book={book}

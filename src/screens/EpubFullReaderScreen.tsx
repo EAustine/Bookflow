@@ -62,8 +62,17 @@ export type EpubFullReaderScreenProps = {
   book: Book;
   onBack: () => void;
   onListen?: () => void;
-  /** Called when the user toggles back to text mode. */
-  onRequestTextMode: () => void;
+  /**
+   * Called when the user toggles back to text mode. The optional
+   * `pageIndex` argument lets callers ask the parent to also land
+   * on a specific page during the mode switch — used when the user
+   * taps a highlight row or search hit from Full mode, both of
+   * which already know the exact page index they want to jump to.
+   * Omitted on plain mode toggles (the mode-toggle pill, the
+   * empty-state "Switch to text mode" button) where the user's
+   * intent is just rendering-mode, not page navigation.
+   */
+  onRequestTextMode: (pageIndex?: number) => void;
 };
 
 const IMAGE_MARKER_RE = /\[\[BOOKFLOW_IMG:([^\]]+)\]\]/g;
@@ -444,22 +453,38 @@ export function EpubFullReaderScreen({
       <HighlightsScreen
         book={book}
         onClose={() => setShowHighlights(false)}
+        // Full mode renders the publisher's HTML in one continuous
+        // WebView, so we don't have per-page anchors to scroll to
+        // inside this surface. The user's intent when tapping a
+        // highlight row is "take me to the page where I saved this"
+        // — text mode is where that page concept exists and where
+        // saved-word tinting actually renders, so we drop them
+        // there at the exact page index the highlight was saved on.
+        // The previous shape passed no `onJumpToPage`, which made
+        // the row tap a silent no-op (HighlightsScreen.handleRowPress
+        // gates on the callback being defined).
+        onJumpToPage={(idx) => {
+          setShowHighlights(false);
+          onRequestTextMode(idx);
+        }}
       />
     );
   }
   if (showSearch) {
-    // Full mode renders the entire book in one WebView, so jumping to
-    // a specific DB page would require scrolling to the matching
-    // section. Without page-anchor IDs in the stitched HTML we don't
-    // have a precise target — for now we drop the user back into
-    // text mode at the matched page so they can continue from there.
+    // Same rationale as the Highlights handoff above: Full mode
+    // can't jump-scroll to a DB page without anchor IDs in the
+    // stitched HTML, so we drop the user into text mode at the
+    // matched page. Previously this dropped the `idx` argument
+    // and landed the user on their last-read page instead of the
+    // search result — fixed in the same round since the
+    // onRequestTextMode signature is being extended anyway.
     return (
       <BookSearchScreen
         book={book}
         onClose={() => setShowSearch(false)}
-        onJumpToPage={() => {
+        onJumpToPage={(idx) => {
           setShowSearch(false);
-          onRequestTextMode();
+          onRequestTextMode(idx);
         }}
       />
     );
@@ -559,7 +584,12 @@ export function EpubFullReaderScreen({
                   styles.switchTextBtn,
                   pressed && { opacity: 0.7 },
                 ]}
-                onPress={onRequestTextMode}
+                // Wrapped — handing `onRequestTextMode` directly to
+                // Pressable would coerce the GestureResponderEvent
+                // into the new optional `pageIndex` parameter. No
+                // specific page intent on this empty-state CTA: just
+                // switch modes and let last_read_page drive the open.
+                onPress={() => onRequestTextMode()}
               >
                 <Text style={styles.switchTextLabel}>Switch to text mode</Text>
               </Pressable>

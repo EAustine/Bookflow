@@ -1822,15 +1822,22 @@ type PageSectionProps = {
 };
 
 /**
- * One page of the book in the FlatList. Lazy-fetches its own row via
- * `usePage` — rendering happens once content lands, before that we
- * show a per-section skeleton so the list keeps a sensible vertical
- * rhythm while content streams in.
+ * One page of the book in the FlatList. Receives its `dbPage` row and
+ * `savedWords` / `savedSentences` sets as props — the parent
+ * `ReaderScreen` does the book-wide bulk fetch (one query for content,
+ * one for highlights) and slices the per-page data out by index.
+ * Before content lands, `dbPage === null` and we render a per-section
+ * skeleton so the list keeps a sensible vertical rhythm while pages
+ * stream in.
  *
- * Highlights are also fetched per-section: each `<PageSection>` reads
- * its own saved-words/sentences set from `usePageHighlights`. Cheap
- * because the hook caches per (bookId, pageIndex) and the FlatList
- * only mounts ~5 sections at a time.
+ * Highlights used to be fetched per-section via `usePageHighlights`,
+ * but that meant the popover's optimistic add (which lived in
+ * ReaderScreen's hook instance) didn't reach the section's hook
+ * instance — saving a word dismissed the popover but the paragraph
+ * stayed untinted until the next refetch. The book-wide
+ * `useBookHighlights` (lifted to ReaderScreen, threaded down as
+ * props) makes the optimistic update visible in every section on the
+ * very next commit.
  *
  * Memoised so the FlatList recycler can skip re-rendering off-screen
  * sections when ancestor state (auto-hide chrome, scroll tick, etc)

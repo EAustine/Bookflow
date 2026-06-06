@@ -418,6 +418,29 @@ export function PdfReaderScreen({
   // AI tools open as full-screen modals over the reader, same pattern
   // the EPUB reader uses. Returning early swaps the entire reader UI
   // for the tool — back from the tool returns here at the same page.
+  //
+  // Same closing-an-overlay-loses-your-position class of bug that
+  // bit the EPUB text reader (ReaderScreen): the early-return
+  // unmounts the entire reader render including the <Pdf> native
+  // view. `currentPage` (component state) survives the toggle, but
+  // when <Pdf> remounts on close it reads `pdfNavTarget.page`, which
+  // is DELIBERATELY decoupled from swipes (an Android stutter
+  // workaround — see the comment block above `pdfNavTarget`'s
+  // definition). After 25 swipes, `pdfNavTarget` still points at the
+  // initial page, so the user returns to page 1 instead of 25.
+  //
+  // `closeOverlayPreservingPosition` syncs `pdfNavTarget` to
+  // `currentPage` synchronously inside the close callback —
+  // jumpToPdfPage(currentPage) is a no-op in terms of native view
+  // movement (the Pdf is about to unmount anyway), but it bumps the
+  // nonce and sets the target so the REMOUNT lands at currentPage.
+  // The onJumpToPage callbacks (Highlights / Search) already call
+  // jumpToPdfPage with their target page, so they're unaffected.
+  const closeOverlayPreservingPosition = (close: () => void) => {
+    jumpToPdfPage(currentPage);
+    close();
+  };
+
   if (aiMode === 'summary') {
     // Map the user's current PDF page (1-based) to the corresponding DB
     // page index proportionally. Each PDF page produces ~ totalDbPages/
@@ -437,12 +460,17 @@ export function PdfReaderScreen({
       <SummaryScreen
         book={book}
         pageIndex={estimatedPageIndex}
-        onBack={() => setAIMode(null)}
+        onBack={() => closeOverlayPreservingPosition(() => setAIMode(null))}
       />
     );
   }
   if (aiMode === 'chat') {
-    return <ChatScreen book={book} onBack={() => setAIMode(null)} />;
+    return (
+      <ChatScreen
+        book={book}
+        onBack={() => closeOverlayPreservingPosition(() => setAIMode(null))}
+      />
+    );
   }
   if (aiMode === 'practice' || aiMode === 'translate') {
     // Same PDF-page → DB-page mapping as the Summary path so the
@@ -461,7 +489,7 @@ export function PdfReaderScreen({
         <PracticeQuestionsScreen
           book={book}
           pageIndex={estimatedPageIndex}
-          onBack={() => setAIMode(null)}
+          onBack={() => closeOverlayPreservingPosition(() => setAIMode(null))}
         />
       );
     }
@@ -469,7 +497,7 @@ export function PdfReaderScreen({
       <TranslateChapterScreen
         book={book}
         pageIndex={estimatedPageIndex}
-        onBack={() => setAIMode(null)}
+        onBack={() => closeOverlayPreservingPosition(() => setAIMode(null))}
       />
     );
   }
@@ -477,7 +505,9 @@ export function PdfReaderScreen({
     return (
       <HighlightsScreen
         book={book}
-        onClose={() => setShowHighlights(false)}
+        onClose={() =>
+          closeOverlayPreservingPosition(() => setShowHighlights(false))
+        }
         onJumpToPage={(pageIndex) => {
           setShowHighlights(false);
           // page_index in DB is 0-based DB-page index. We approximate
@@ -503,7 +533,9 @@ export function PdfReaderScreen({
     return (
       <BookSearchScreen
         book={book}
-        onClose={() => setShowSearch(false)}
+        onClose={() =>
+          closeOverlayPreservingPosition(() => setShowSearch(false))
+        }
         onJumpToPage={(pageIndex) => {
           setShowSearch(false);
           // Same DB-page → PDF-page proportional jump as Highlights.

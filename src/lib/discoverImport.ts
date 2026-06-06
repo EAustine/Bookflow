@@ -10,7 +10,15 @@ export type ImportableBook = {
   title: string;
   author?: string;
   epubUrl: string | null;
-  source: 'gutenberg' | 'standardebooks' | 'openlibrary' | 'wikisource';
+  source:
+    | 'gutenberg'
+    | 'standardebooks'
+    | 'openlibrary'
+    | 'wikisource'
+    | 'feedbooks'
+    | 'manybooks'
+    | 'doab'
+    | 'oapen';
 };
 
 /**

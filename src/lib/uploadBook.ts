@@ -79,6 +79,37 @@ const INITIAL_STATE: UploadState = {
   processingMessage: null,
 };
 
+/**
+ * Multi-file batch state, kept separate from the per-file `UploadState`
+ * so the existing single-file pipeline (every `setState({...INITIAL_STATE})`
+ * pattern) stays untouched. `processBatch` is the only thing that
+ * writes here. When `total` is 1, the UI ignores this slot and renders
+ * the existing single-file processing screen unchanged.
+ */
+export type BatchState = {
+  /** 0 when no batch is active. ≥1 = the size of the most recent (or
+   * in-flight) batch. >1 = batch mode for the UI. */
+  total: number;
+  /** 1-based index of the file currently in the pipeline. Equal to
+   * `total` when the loop is complete. */
+  index: number;
+  /** Files that successfully uploaded + invoked process-book. They
+   * may still be processing server-side; the library surfaces them
+   * via realtime as `process-book` finishes each one. */
+  completed: number;
+  /** Files that failed validation, upload, or processing-invoke. The
+   * batch keeps going past failures — one bad file doesn't poison
+   * the rest. */
+  failed: number;
+};
+
+const INITIAL_BATCH_STATE: BatchState = {
+  total: 0,
+  index: 0,
+  completed: 0,
+  failed: 0,
+};
+
 function detectFileType(name: string, mimeType?: string | null): 'pdf' | 'epub' | null {
   const lowered = name.toLowerCase();
   if (lowered.endsWith('.pdf') || mimeType === 'application/pdf') return 'pdf';
@@ -209,8 +240,40 @@ async function pollUntilTerminal(
 
 export type UseBookUploadResult = {
   state: UploadState;
-  /** Open the picker and run the full pipeline. Resolves when the flow ends. */
+  /** Batch progress when multiple files are queued. total === 0 outside
+   * batch mode; total === 1 means a single file (UI behaves as before);
+   * total > 1 means the processing UI should render an aggregate
+   * counter alongside the per-file phase. */
+  batchState: BatchState;
+  /** Open the picker (multi-select enabled) and run the pipeline for
+   * each chosen file. Resolves when every file has at least kicked
+   * off its `process-book` invocation. */
   startUpload: () => Promise<void>;
+  /**
+   * Skip the picker — run the pipeline with an asset the caller
+   * already picked. Used by:
+   *   - Onboarding step 2's "Upload" tab (App.tsx opens the picker
+   *     before routing to Library so the user finishes onboarding +
+   *     starts their first upload in a single flow).
+   *   - (Forthcoming) iOS Share Extension / Android Intent handler —
+   *     the OS hands us an asset directly when a user "shares" an
+   *     EPUB/PDF into Bookflow.
+   * Same validation + auth + upload + process pipeline as
+   * `startUpload`, just without the picker step.
+   */
+  startUploadFromAsset: (
+    asset: DocumentPicker.DocumentPickerAsset,
+  ) => Promise<void>;
+  /**
+   * Explicit batch entry point — run the pipeline for each asset
+   * sequentially. Per-file processing-poll is skipped for batches
+   * (length > 1) so the user isn't held hostage waiting on 30 s of
+   * upstream extraction × N files. Books surface in the library via
+   * realtime as each `process-book` invocation completes server-side.
+   */
+  startUploadFromAssets: (
+    assets: DocumentPicker.DocumentPickerAsset[],
+  ) => Promise<void>;
   /** Abort any in-flight upload or poll. The book row is left in place (status reflects last write). */
   cancel: () => void;
   /** Reset to idle (call after the user dismisses the processing/error UI). */
@@ -219,12 +282,14 @@ export type UseBookUploadResult = {
 
 export function useBookUpload(): UseBookUploadResult {
   const [state, setState] = useState<UploadState>(INITIAL_STATE);
+  const [batchState, setBatchState] = useState<BatchState>(INITIAL_BATCH_STATE);
   const abortRef = useRef<AbortController | null>(null);
 
   const reset = useCallback(() => {
     abortRef.current?.abort();
     abortRef.current = null;
     setState(INITIAL_STATE);
+    setBatchState(INITIAL_BATCH_STATE);
   }, []);
 
   const cancel = useCallback(() => {
@@ -232,39 +297,23 @@ export function useBookUpload(): UseBookUploadResult {
     abortRef.current = null;
   }, []);
 
-  const startUpload = useCallback(async () => {
-    // Tear down any previous run.
-    abortRef.current?.abort();
-    const controller = new AbortController();
-    abortRef.current = controller;
-    const { signal } = controller;
+  /**
+   * Run the full pipeline starting from an already-picked asset.
+   * Shared by `startUpload` (which picks first) and
+   * `startUploadFromAsset` (caller picked already, e.g. onboarding
+   * step 2 or a share-extension drop). Tears down any previous run.
+   */
+  const runPipelineFromAsset = useCallback(
+    async (
+      picked: DocumentPicker.DocumentPickerAsset,
+      options?: { skipFinalPoll?: boolean },
+    ): Promise<void> => {
+      abortRef.current?.abort();
+      const controller = new AbortController();
+      abortRef.current = controller;
+      const { signal } = controller;
 
-    setState({ ...INITIAL_STATE, phase: 'picking' });
-
-    // ── 1. Pick file ────────────────────────────────────────────────────────
-    let picked: DocumentPicker.DocumentPickerAsset;
-    try {
-      const result = await DocumentPicker.getDocumentAsync({
-        type: ACCEPTED_MIME,
-        multiple: false,
-        copyToCacheDirectory: true,
-      });
-      if (result.canceled || !result.assets?.[0]) {
-        setState(INITIAL_STATE);
-        return;
-      }
-      picked = result.assets[0];
-    } catch (err) {
-      setState({
-        ...INITIAL_STATE,
-        phase: 'failed',
-        errorMessage:
-          err instanceof Error ? err.message : 'Could not open the file picker.',
-      });
-      return;
-    }
-
-    const fileName = picked.name ?? 'Untitled';
+      const fileName = picked.name ?? 'Untitled';
     const fileSize = picked.size ?? 0;
     const fileType = detectFileType(fileName, picked.mimeType);
 
@@ -432,6 +481,14 @@ export function useBookUpload(): UseBookUploadResult {
       return;
     }
 
+    // Skip the poll for batch uploads. The caller (processBatch) has
+    // many files to push and the user shouldn't wait 30+ seconds per
+    // book for upstream extraction — process-book is already running
+    // server-side, and books surface in the library via realtime as
+    // each invocation completes. Single-file uploads keep the poll so
+    // the dedicated processing screen has a terminal state to render.
+    if (options?.skipFinalPoll) return;
+
     // ── 6. Poll until terminal ─────────────────────────────────────────────
     try {
       const { status, reason } = await pollUntilTerminal(
@@ -474,7 +531,131 @@ export function useBookUpload(): UseBookUploadResult {
     }
   }, []);
 
-  return { state, startUpload, cancel, reset };
+  /**
+   * Orchestrate a sequential batch of per-file uploads.
+   *
+   *   - When `assets.length === 1`: runs the existing single-file flow
+   *     with `skipFinalPoll: false` so the user sees the dedicated
+   *     processing screen reach a terminal state. Identical UX to the
+   *     pre-batch implementation.
+   *   - When `assets.length > 1`: runs each file with
+   *     `skipFinalPoll: true` so we don't hold the user for ~30 s × N
+   *     of upstream extraction. process-book runs server-side after
+   *     each invoke, and books appear in the library via realtime as
+   *     they finish processing. The aggregate progress UI surfaces
+   *     "uploading N of M" via `batchState`.
+   *
+   * Failures inside the per-file pipeline set their own per-file
+   * state (so the user sees the failure cause for the current item)
+   * but don't stop the batch — we count progress by the number of
+   * files processed, not by per-file outcome.
+   */
+  const processBatch = useCallback(
+    async (assets: DocumentPicker.DocumentPickerAsset[]) => {
+      if (assets.length === 0) return;
+      const skipFinalPoll = assets.length > 1;
+      setBatchState({
+        total: assets.length,
+        index: 0,
+        completed: 0,
+        failed: 0,
+      });
+      for (let i = 0; i < assets.length; i++) {
+        setBatchState((b) => ({ ...b, index: i + 1 }));
+        await runPipelineFromAsset(assets[i]!, { skipFinalPoll });
+        // We don't gate on per-file outcome — the per-file state UI
+        // already reflects success/failure. The batch counter just
+        // tracks "files we've finished pushing through the pipeline."
+        setBatchState((b) => ({ ...b, completed: b.completed + 1 }));
+      }
+      // Multi-file batches: settle to a terminal-ish state so the
+      // processing screen can render an "all done — books are
+      // processing in the library" message and the user can dismiss.
+      // Single-file batches already terminated inside the pipeline.
+      if (assets.length > 1) {
+        setState((s) => ({ ...s, phase: 'ready', progress: 1 }));
+      }
+    },
+    [runPipelineFromAsset],
+  );
+
+  /**
+   * Public entry point — open the OS document picker (multi-select on)
+   * and run the pipeline for every chosen file. Wired to LibraryScreen's
+   * "Add → Upload a file" sheet.
+   */
+  const startUpload = useCallback(async () => {
+    setState({ ...INITIAL_STATE, phase: 'picking' });
+
+    let picked: DocumentPicker.DocumentPickerAsset[];
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: ACCEPTED_MIME,
+        // Multi-select unlocks "drop your library in" — the OS picker
+        // lets the user select N files at once from on-device storage
+        // OR from any connected source (iCloud, Drive, Dropbox), with
+        // no SDK integration on our side. Sequential upload in
+        // processBatch handles the rest.
+        multiple: true,
+        copyToCacheDirectory: true,
+      });
+      if (result.canceled || !result.assets || result.assets.length === 0) {
+        setState(INITIAL_STATE);
+        return;
+      }
+      picked = result.assets;
+    } catch (err) {
+      setState({
+        ...INITIAL_STATE,
+        phase: 'failed',
+        errorMessage:
+          err instanceof Error
+            ? err.message
+            : 'Could not open the file picker.',
+      });
+      return;
+    }
+
+    await processBatch(picked);
+  }, [processBatch]);
+
+  /**
+   * Public entry point — skip the picker, run the pipeline against an
+   * asset the caller already picked. Used by onboarding step 2 (App.tsx
+   * picks the file before routing to Library so the new-user flow is
+   * one coherent sequence) and, in a forthcoming patch, the iOS Share
+   * Extension / Android Intent handler that hands the OS-provided
+   * asset straight to upload without a picker round-trip.
+   */
+  const startUploadFromAsset = useCallback(
+    async (asset: DocumentPicker.DocumentPickerAsset) => {
+      await processBatch([asset]);
+    },
+    [processBatch],
+  );
+
+  /**
+   * Public entry point — explicit multi-asset batch. Same semantics as
+   * `startUpload` minus the picker step. Reserved for future surfaces
+   * (a future cloud-folder-watch feature, etc.) that already have a
+   * resolved list of assets in hand.
+   */
+  const startUploadFromAssets = useCallback(
+    async (assets: DocumentPicker.DocumentPickerAsset[]) => {
+      await processBatch(assets);
+    },
+    [processBatch],
+  );
+
+  return {
+    state,
+    batchState,
+    startUpload,
+    startUploadFromAsset,
+    startUploadFromAssets,
+    cancel,
+    reset,
+  };
 }
 
 /**

@@ -36,3 +36,6 @@ export { ModeTogglePill } from './ModeTogglePill';
 export type { ModeTogglePillProps, ReaderMode } from './ModeTogglePill';
 
 export { EqBars } from './EqBars';
+
+export { ReminderTimePicker } from './ReminderTimePicker';
+export type { ReminderTimePickerProps } from './ReminderTimePicker';

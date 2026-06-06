@@ -1,4 +1,5 @@
 import { Alert } from 'react-native';
+import { useEffect, useState } from 'react';
 import Purchases, {
   LOG_LEVEL,
   type CustomerInfo,
@@ -141,3 +142,113 @@ export async function restorePurchases(): Promise<RestoreResult> {
 }
 
 export { PAYWALL_RESULT };
+
+// ─── React hook for entitlement state ─────────────────────────────────────
+
+/** Display-friendly plan label for the user's current subscription. */
+export type CurrentPlan =
+  | { tier: 'free' }
+  | {
+      tier: 'pro';
+      /** Subscription period (monthly / yearly / lifetime) or null if
+       * RevenueCat can't infer it from the product identifier. */
+      period: 'monthly' | 'yearly' | 'lifetime' | null;
+      /** ISO timestamp the entitlement expires (null for lifetime /
+       * never-expires entitlements). */
+      expiresAt: string | null;
+      /** True when the entitlement is in a trial period — useful for
+       * "Your free trial ends in 5 days" copy. */
+      inTrial: boolean;
+    };
+
+/**
+ * Reactive entitlement hook. Returns the user's current Pro state +
+ * plan details; updates automatically when RevenueCat reports a
+ * change (purchase, restore, subscription expiry, etc).
+ *
+ * Returns `{ isPro: false, plan: { tier: 'free' }, isLoading: true }`
+ * during the first render and while RevenueCat is loading. Calling
+ * sites should treat `isLoading=true` as "we don't yet know" and not
+ * lock features prematurely.
+ *
+ * When RevenueCat is disabled (no API key / kill switch) the hook
+ * settles on `isLoading=false, isPro=false` — every user is "free"
+ * which matches the in-dev no-billing state.
+ */
+export function useIsPro(): {
+  isPro: boolean;
+  plan: CurrentPlan;
+  isLoading: boolean;
+  /** Trigger restore-purchases — surfaces an inline result so the
+   * caller can confirm or show an error. Same envelope as the
+   * top-level `restorePurchases` function. */
+  restore: () => Promise<RestoreResult>;
+} {
+  const [info, setInfo] = useState<CustomerInfo | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    if (disabled || !configured) {
+      setIsLoading(false);
+      return;
+    }
+    let cancelled = false;
+    // Initial read so we don't wait on the listener for first paint.
+    Purchases.getCustomerInfo()
+      .then((ci) => {
+        if (!cancelled) {
+          setInfo(ci);
+          setIsLoading(false);
+        }
+      })
+      .catch((err) => {
+        console.warn('[revenuecat] getCustomerInfo threw:', err);
+        if (!cancelled) setIsLoading(false);
+      });
+    // Then subscribe to updates so a purchase / restore / expiry
+    // flips state without a manual refresh.
+    const listener = (ci: CustomerInfo) => {
+      if (!cancelled) setInfo(ci);
+    };
+    Purchases.addCustomerInfoUpdateListener(listener);
+    return () => {
+      cancelled = true;
+      Purchases.removeCustomerInfoUpdateListener(listener);
+    };
+  }, []);
+
+  const isPro = isEntitlementActive(info, ENTITLEMENT_PRO);
+  const plan: CurrentPlan = isPro
+    ? {
+        tier: 'pro',
+        period: derivePeriod(info, ENTITLEMENT_PRO),
+        expiresAt:
+          info?.entitlements.active[ENTITLEMENT_PRO]?.expirationDate ?? null,
+        inTrial:
+          info?.entitlements.active[ENTITLEMENT_PRO]?.periodType === 'TRIAL',
+      }
+    : { tier: 'free' };
+
+  return { isPro, plan, isLoading, restore: restorePurchases };
+}
+
+/**
+ * Derive a coarse monthly/yearly/lifetime label from the active
+ * entitlement's product identifier. Stores conventionally name
+ * products `*.monthly`, `*.yearly`, `*.lifetime` — we sniff the
+ * suffix. Falls back to `null` when the identifier is opaque (e.g.
+ * a custom name a store admin set) so the UI can render a neutral
+ * "Pro" label instead of an inferred-wrong one.
+ */
+function derivePeriod(
+  info: CustomerInfo | null,
+  entitlementId: string,
+): 'monthly' | 'yearly' | 'lifetime' | null {
+  const productId =
+    info?.entitlements.active[entitlementId]?.productIdentifier ?? '';
+  const lower = productId.toLowerCase();
+  if (lower.includes('lifetime')) return 'lifetime';
+  if (lower.includes('yearly') || lower.includes('annual')) return 'yearly';
+  if (lower.includes('monthly') || lower.includes('month')) return 'monthly';
+  return null;
+}

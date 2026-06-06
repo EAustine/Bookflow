@@ -54,12 +54,32 @@ const DOWNLOAD_TIMEOUT_MS = 30_000;
 // book we surface has its EPUB at `archive.org/download/{ia}/{ia}.epub`.
 // ws-export.wmcloud.org is the Wikisource Export tool that turns a
 // wiki page into an EPUB on demand.
+//
+// OPDS-adapter hosts (added with the generic discover-opds function):
+//   feedbooks.com       — Feedbooks Public Domain catalog
+//   manybooks.net       — ManyBooks catalog
+//   doabooks.org        — DOAB academic OA books (download links live
+//                          on the publisher's own domain in many cases;
+//                          we add the most-common ones below)
+//   oapen.org           — OAPEN academic OA books
+//
+// DOAB and OAPEN sometimes serve EPUBs from a publisher origin rather
+// than their own host (e.g., `library.oapen.org/bitstream/...`). Both
+// canonical hosts cover the common case; per-publisher domains can be
+// added on demand when an import fails with `host_not_allowed`.
 const ALLOWED_HOSTS = [
   'gutenberg.org',
   'www.gutenberg.org',
   'standardebooks.org',
   'archive.org',
   'ws-export.wmcloud.org',
+  'feedbooks.com',
+  'catalog.feedbooks.com',
+  'manybooks.net',
+  'doabooks.org',
+  'directory.doabooks.org',
+  'oapen.org',
+  'library.oapen.org',
 ];
 
 const CORS_HEADERS = {
@@ -72,8 +92,31 @@ type Body = {
   source_url: string;
   title: string;
   author?: string;
-  source: 'gutenberg' | 'standardebooks' | 'openlibrary' | 'wikisource';
+  /** Discovery source the book came from. The set has grown over time
+   * — see the comment block on `DiscoverBook.source` in
+   * `src/lib/discoverApi.ts` for the full list. We accept any string
+   * at the function boundary (Deno doesn't enforce TS unions at
+   * runtime) and let the DB constraint catch unknowns. */
+  source: string;
 };
+
+/**
+ * Decide whether `source_url` points to a PDF or an EPUB. URL-based —
+ * inspects the path extension and tolerates the common query/anchor/
+ * Java-session suffixes (`?sequence=1`, `;jsessionid=…`, `#page=2`).
+ *
+ * Falls back to 'epub' because every source we'd previously connected
+ * (Gutenberg, Standard Ebooks, Wikisource, Open Library) serves EPUBs.
+ * The first PDF source — DOAB via library.oapen.org — is what
+ * surfaced this branch.
+ */
+function detectFileType(sourceUrl: string): 'epub' | 'pdf' {
+  // Strip query string + fragment + DSpace session-id segment so the
+  // extension check sees the raw path.
+  const path = sourceUrl.split('?')[0]!.split('#')[0]!.split(';')[0]!;
+  if (/\.pdf$/i.test(path)) return 'pdf';
+  return 'epub';
+}
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -155,6 +198,15 @@ Deno.serve(async (req) => {
   // 4. Insert the books row first. Status starts as 'processing' so
   // the UI shows a spinner; gets flipped to 'ready' / 'failed' by
   // process-book once chunking completes.
+  //
+  // file_type is detected from the URL extension — every existing
+  // source produced EPUBs, but DOAB (the first academic source)
+  // serves PDFs from library.oapen.org. process-book branches on the
+  // file extension of the storage path (see `file_storage_path` ext
+  // sniff at process-book/index.ts line 261), so getting both the
+  // DB column AND the storage path right is what flips its pipeline
+  // into PDF mode.
+  const fileType = detectFileType(source_url);
   const { data: inserted, error: insertErr } = await supabase
     .from('books')
     .insert({
@@ -163,7 +215,7 @@ Deno.serve(async (req) => {
       author: author || null,
       source,
       source_url,
-      file_type: 'epub',
+      file_type: fileType,
       processing_status: 'processing',
     })
     .select('id')
@@ -188,7 +240,17 @@ Deno.serve(async (req) => {
   // row as `processing_status = 'failed:<reason>'`; the client's
   // realtime subscription delivers that change so the library can
   // render a retry/remove affordance.
-  const storagePath = `${userId}/${bookId}/source.epub`;
+  // Storage path matches the canonical convention used by
+  // device-upload (`uploadBook.ts` → `original.${fileType}`),
+  // reprocess (`reprocessBook.ts`), and the readers
+  // (`PdfReaderScreen` hard-codes the same path to fetch the PDF
+  // for Full mode). Earlier versions used `source.${ext}` and got
+  // away with it for EPUBs because the EPUB reader reads chunked
+  // text from the `pages` table — but PDFs need the actual file,
+  // and PdfReader's signed-URL lookup was therefore returning
+  // `Object not found` for every imported PDF. file-extension
+  // sniff in process-book also lands on the right branch.
+  const storagePath = `${userId}/${bookId}/original.${fileType}`;
 
   const backgroundWork = async () => {
     // 5a. Download the EPUB. AbortController gives us the timeout;
@@ -233,12 +295,14 @@ Deno.serve(async (req) => {
     }
 
     // 5b. Upload to Storage. Path matches the upload-from-device
-    // flow (`{user}/{book}/source.epub`) so process-book finds it
-    // without any branching.
+    // flow (`{user}/{book}/source.{ext}`) so process-book finds it
+    // without any branching. Content type tracks the detected file
+    // type so Storage serves the right mime for download.
     const { error: upErr } = await supabase.storage
       .from(STORAGE_BUCKET)
       .upload(storagePath, bytes, {
-        contentType: 'application/epub+zip',
+        contentType:
+          fileType === 'pdf' ? 'application/pdf' : 'application/epub+zip',
         upsert: true,
       });
     if (upErr) {

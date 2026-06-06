@@ -14,6 +14,8 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { BottomSheetModalProvider } from '@gorhom/bottom-sheet';
 import { useFonts } from 'expo-font';
 import * as Linking from 'expo-linking';
+import * as DocumentPicker from 'expo-document-picker';
+import { useShareIntent } from 'expo-share-intent';
 import {
   Fraunces_400Regular_Italic,
   Fraunces_500Medium,
@@ -26,7 +28,15 @@ import {
 import { Lexend_400Regular } from '@expo-google-fonts/lexend';
 import { Literata_400Regular } from '@expo-google-fonts/literata';
 import { installRejectionTracker } from '~/lib/installRejectionTracker';
-import { configureRevenueCat } from '~/lib/revenuecat';
+import { configureRevenueCat, useIsPro } from '~/lib/revenuecat';
+import {
+  fireBookReadyNotification,
+  installNotificationHandler,
+  useDailyReminderSync,
+  useNotificationPermission,
+  useStreakWarningSync,
+} from '~/lib/notifications';
+import { useReaderStore } from '~/stores/readerStore';
 
 // Install the global unhandled-rejection silencer for network
 // errors. Idempotent and side-effect free unless a rejection fires.
@@ -35,6 +45,12 @@ import { configureRevenueCat } from '~/lib/revenuecat';
 // up before the first rejection event lands. See
 // `installRejectionTracker.ts` for the full rationale.
 installRejectionTracker();
+
+// Tell expo-notifications how to display notifications fired while
+// the app is in the foreground. Module-load time so the handler is
+// in place before any notification can fire (e.g. a deep-link that
+// arrives during cold start). Idempotent.
+installNotificationHandler();
 import {
   type AuthExchangeErrorKind,
   completeAuthCallback,
@@ -146,6 +162,23 @@ export default function App() {
   const [paywallVisible, setPaywallVisible] = useState(false);
   const [callbackError, setCallbackError] = useState<AuthExchangeErrorKind>('unknown');
   const [signupName, setSignupName] = useState('');
+  // Pre-picked assets handed off to LibraryScreen on its next mount.
+  // Two surfaces write here:
+  //   1. Onboarding step 2's "Upload" tab — App.tsx opens the picker
+  //      before routing to Library so the new-user flow stays one
+  //      coherent sequence (pick → land on library → upload progress)
+  //      rather than dumping the user onto an empty library and asking
+  //      them to find Add → Upload.
+  //   2. iOS Share Extension / Android Intent handler (via
+  //      expo-share-intent) — when the user picks "Bookflow" from any
+  //      other app's share sheet for an EPUB/PDF, we receive the file
+  //      list here and pipe it through the same channel.
+  // Array (not a single asset) so multi-file shares from the OS share
+  // sheet feed into the same code path as multi-file picker uploads.
+  // LibraryScreen consumes the array on mount, clears the slot.
+  const [pendingUploadAssets, setPendingUploadAssets] = useState<
+    DocumentPicker.DocumentPickerAsset[] | null
+  >(null);
   // Listen-tab UI state. Audio playback (react-native-track-player) is
   // deferred to M2 — RNTP 4.x doesn't compile cleanly against RN 0.83 + new
   // arch and there's no book audio in the pipeline yet anyway. The Listen
@@ -263,6 +296,107 @@ export default function App() {
   }, [goToLibrary, persistOnboardingComplete]);
 
   /**
+   * Onboarding step 2's "Upload" tab → "Choose file". Opens the OS
+   * document picker right away (the OS sheet covers iCloud, Drive,
+   * Dropbox, on-device Files — wherever the user keeps their EPUBs
+   * and PDFs). On a successful pick we mark onboarding complete,
+   * stash the asset, and transition to the library where the
+   * upload progress + processing UI live. On cancel or error we
+   * stay on the onboarding screen so the user can switch back to
+   * the curated-library tab or try again.
+   *
+   * Earlier the screen was rendered without any `onPickFile`
+   * prop at all — the button was a silent no-op, which leaked the
+   * entire bring-your-own-library cohort directly into a dead end
+   * in step 2 of onboarding. This wires the existing useBookUpload
+   * pipeline to that surface via the asset-handoff state above.
+   */
+  const handleOnboardingPickFile = useCallback(async () => {
+    let asset: DocumentPicker.DocumentPickerAsset;
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: ['application/pdf', 'application/epub+zip'],
+        multiple: false,
+        copyToCacheDirectory: true,
+      });
+      if (result.canceled || !result.assets?.[0]) return;
+      asset = result.assets[0];
+    } catch (err) {
+      console.warn('[onboarding] file picker failed:', err);
+      return;
+    }
+    setPendingUploadAssets([asset]);
+    void persistOnboardingComplete();
+    goToLibrary();
+  }, [goToLibrary, persistOnboardingComplete]);
+
+  // ─── Share Extension / Intent handler ─────────────────────────────────
+  // When the user picks "Bookflow" from another app's iOS share sheet
+  // (Files, Mail, Safari, Dropbox, etc.) or an Android intent
+  // ("Open with…" on an EPUB/PDF in any file manager / cloud client),
+  // expo-share-intent surfaces the shared files here. We translate
+  // them into the same `DocumentPickerAsset` shape that the picker
+  // produces and feed them through the existing `pendingUploadAssets`
+  // channel — LibraryScreen on mount calls
+  // `upload.startUploadFromAssets(...)` and the user lands directly
+  // on the processing screen. Same flow as multi-file picker upload.
+  //
+  // Native config for the share extension itself lives in
+  // `app.json` → plugins → `expo-share-intent` (iOS Share Extension
+  // target + Android intent-filter for application/epub+zip and
+  // application/pdf). Changes there require a new EAS build.
+  const { hasShareIntent, shareIntent, resetShareIntent } = useShareIntent({
+    resetOnBackground: true,
+  });
+  useEffect(() => {
+    if (!hasShareIntent || !shareIntent.files || shareIntent.files.length === 0) {
+      return;
+    }
+    // Filter to the formats we can actually import. The plugin config
+    // already restricts the activation rules to EPUB+PDF, but defending
+    // here too keeps things robust if a tester or share-target glitch
+    // sends us something else.
+    const supportedAssets: DocumentPicker.DocumentPickerAsset[] = [];
+    for (const f of shareIntent.files) {
+      const mimeType = f.mimeType?.toLowerCase() ?? '';
+      const name = f.fileName?.toLowerCase() ?? '';
+      const looksLikeBook =
+        mimeType === 'application/pdf' ||
+        mimeType === 'application/epub+zip' ||
+        name.endsWith('.pdf') ||
+        name.endsWith('.epub');
+      if (!looksLikeBook) continue;
+      supportedAssets.push({
+        uri: f.path,
+        name: f.fileName,
+        mimeType: f.mimeType,
+        size: f.size ?? undefined,
+        // lastModified is required on DocumentPickerAsset (Web API
+        // parity field). expo-share-intent doesn't surface a real
+        // mtime; "now" is a sane default for our pipeline (we don't
+        // consume this field anywhere).
+        lastModified: Date.now(),
+      });
+    }
+    if (supportedAssets.length === 0) {
+      // Nothing usable in the share — clear the intent so future
+      // shares can fire. The user will see no library state change,
+      // which is correct: they shared an unsupported file.
+      resetShareIntent();
+      return;
+    }
+    setPendingUploadAssets(supportedAssets);
+    resetShareIntent();
+    // Route the user to the library stage. If they're already
+    // signed in and beyond onboarding, this is a no-op; if they
+    // happen to receive a share while on welcome/signin we still
+    // route them there (LibraryScreen's mount-effect will eat the
+    // upload once the user is authenticated, or do nothing if not —
+    // share-from-cold-start with no auth is rare enough to accept).
+    setStage((prev) => (prev === 'library' ? prev : 'library'));
+  }, [hasShareIntent, shareIntent, resetShareIntent]);
+
+  /**
    * Sign-out flow. YouScreen surfaces the confirmation sheet, awaits this
    * promise to keep its loading spinner accurate, and we route everyone
    * back to Welcome. Reset activeTab so the next sign-in lands on Library.
@@ -297,6 +431,29 @@ export default function App() {
     configureRevenueCat();
     return setupRevenueCatAuthSync();
   }, []);
+
+  // Keep the OS-side notifications in sync with the user's toggles
+  // + chosen hour. The hooks re-run schedule/cancel whenever any
+  // input changes. Both live at the root because mounting them
+  // inside the Settings screen would only sync while Settings is
+  // open; we want OS state to stay correct for the whole session.
+  const reminderEnabled = useReaderStore((s) => s.notifReminderOn);
+  const reminderHour = useReaderStore((s) => s.notifReminderHour);
+  const reminderMinute = useReaderStore((s) => s.notifReminderMinute);
+  const streakWarningEnabled = useReaderStore((s) => s.notifStreakWarningOn);
+  const { granted: notifGranted } = useNotificationPermission();
+  useDailyReminderSync(
+    reminderEnabled,
+    reminderHour,
+    reminderMinute,
+    notifGranted,
+  );
+  useStreakWarningSync(
+    streakWarningEnabled,
+    reminderHour,
+    reminderMinute,
+    notifGranted,
+  );
 
   // Android hardware-back at the root of the BackHandler subscription
   // stack. This runs ONLY when no sub-screen has consumed the press —
@@ -495,6 +652,7 @@ export default function App() {
               <OnboardingFirstBookScreen
                 onContinue={handleOnboardingFirstBookContinue}
                 onSkip={handleOnboardingFirstBookSkip}
+                onPickFile={() => void handleOnboardingPickFile()}
               />
             )}
             {stage === 'library' && (
@@ -520,6 +678,10 @@ export default function App() {
                   onUpgrade={() => setPaywallVisible(true)}
                   listenState={listenState}
                   setListenState={setListenState}
+                  pendingUploadAssets={pendingUploadAssets}
+                  onPendingUploadAssetsConsumed={() =>
+                    setPendingUploadAssets(null)
+                  }
                 />
               </BooksProvider>
             )}
@@ -828,6 +990,8 @@ function LibraryStage({
   onUpgrade,
   listenState,
   setListenState,
+  pendingUploadAssets,
+  onPendingUploadAssetsConsumed,
 }: {
   activeTab: TabKey;
   setActiveTab: (tab: TabKey) => void;
@@ -836,6 +1000,15 @@ function LibraryStage({
   onUpgrade: () => void;
   listenState: ListenPlaybackState;
   setListenState: React.Dispatch<React.SetStateAction<ListenPlaybackState>>;
+  /** Assets pre-picked during onboarding step 2 OR surfaced by the
+   * iOS Share Extension / Android intent handler. LibraryScreen
+   * consumes them on mount and kicks the multi-file pipeline
+   * immediately. Array (not a single asset) so multi-file shares
+   * from the OS share sheet feed in alongside single-asset
+   * onboarding picks through one channel. */
+  pendingUploadAssets: DocumentPicker.DocumentPickerAsset[] | null;
+  /** Clear the pending assets once LibraryScreen has handed them to upload. */
+  onPendingUploadAssetsConsumed: () => void;
 }) {
   // Subscribe to the stable slice only — book / pageIndex / voice
   // and the imperative setters. We do NOT re-render this whole
@@ -848,6 +1021,47 @@ function LibraryStage({
   // now-playing card and for the See-all history screen. useBooks
   // already fetches + caches at the App scope, so this is cheap.
   const { books } = useBooks();
+
+  // "Book finished processing" local notification. The realtime
+  // subscription in useBooks refetches on any books-table change; we
+  // detect the transition by comparing this render's processing-status
+  // map against the previous render's via a ref. Books that flipped
+  // from processing/pending → ready since last render get a one-shot
+  // local notification, gated on the user's toggle + OS permission.
+  // No-op on first render (the ref is empty) so we don't flood the
+  // user with notifications for every already-ready book the first
+  // time the library mounts.
+  //
+  // Both hooks called locally — LibraryStage runs inside BooksProvider
+  // so they only fire while the user is signed in, which is exactly
+  // when we want the transition detection live.
+  const bookFinishedEnabled = useReaderStore((s) => s.notifBookFinishedOn);
+  const { granted: bookFinishedGranted } = useNotificationPermission();
+  const prevBookStatusRef = useRef<Map<string, string | null>>(new Map());
+  useEffect(() => {
+    const prev = prevBookStatusRef.current;
+    const next = new Map<string, string | null>();
+    for (const b of books) {
+      next.set(b.id, b.processingStatus ?? null);
+      const previousStatus = prev.get(b.id);
+      // Skip first-mount and books we haven't seen before. We only
+      // want to notify on a genuine transition WITHIN this session,
+      // not on backfill from a fresh refetch.
+      if (previousStatus === undefined) continue;
+      const wasProcessing =
+        previousStatus === 'processing' || previousStatus === 'pending';
+      const isReady = b.processingStatus === 'ready';
+      if (wasProcessing && isReady) {
+        void fireBookReadyNotification({
+          bookId: b.id,
+          title: b.title,
+          enabled: bookFinishedEnabled,
+          granted: bookFinishedGranted,
+        });
+      }
+    }
+    prevBookStatusRef.current = next;
+  }, [books, bookFinishedEnabled, bookFinishedGranted]);
   // Persisted "last book the user tapped Listen on" — written by the
   // audio session, read here so the Listen tab's resume card stays
   // visible across app restarts even if the books table's last_read_at
@@ -896,12 +1110,19 @@ function LibraryStage({
   const { stats: realMonthStats } = useMonthlyListenStats();
   const monthStats: MonthStats = realMonthStats ?? FALLBACK_MONTH;
 
-  // Plan card on YouScreen — labeled "Free" until RevenueCat is wired
-  // for real entitlements. Meters come from data we already have:
-  // listening minutes this month from monthStats, books count from
-  // useBooks. AI credits aren't metered yet so we report 0 used.
+  // Plan card on YouScreen — name comes from RevenueCat now (Free vs
+  // Standard/Premium per the entitlement). Meters come from data we
+  // already have: listening minutes this month from monthStats,
+  // books count from useBooks. AI credits aren't metered yet so we
+  // report 0 used.
+  const { isPro, plan: rcPlan } = useIsPro();
+  const planName: YouPlan['name'] = isPro
+    ? rcPlan.tier === 'pro' && rcPlan.period === 'lifetime'
+      ? 'Premium'
+      : 'Standard'
+    : 'Free';
   const plan: YouPlan = {
-    name: 'Free',
+    name: planName,
     meters: {
       audio: {
         used: Math.round(monthStats.listeningHours * 60),
@@ -1008,6 +1229,8 @@ function LibraryStage({
           onUpgrade={onUpgrade}
           onStartListening={handleStartListening}
           onReaderOpenChange={setReaderOpen}
+          pendingUploadAssets={pendingUploadAssets}
+          onPendingUploadAssetsConsumed={onPendingUploadAssetsConsumed}
         />
       )}
       {activeTab === 'you' && (

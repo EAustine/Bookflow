@@ -45,6 +45,9 @@ import {
   ScannedPdfErrorScreen,
 } from '~/screens/UploadFlowScreen';
 import { useBookUpload } from '~/lib/uploadBook';
+import type * as DocumentPicker from 'expo-document-picker';
+import { useFreePlanUsage } from '~/lib/freePlanUsage';
+import { presentPaywall, ENTITLEMENT_PRO } from '~/lib/revenuecat';
 import { reprocessBook } from '~/lib/reprocessBook';
 import { useNetworkState } from '~/hooks/useNetworkState';
 import { LibrarySkeleton } from '~/screens/SkeletonScreens';
@@ -100,6 +103,16 @@ export type LibraryScreenProps = {
    * the user is already on the book.
    */
   onReaderOpenChange?: (open: boolean) => void;
+  /**
+   * Pre-picked assets from onboarding step 2's Upload tab OR the
+   * iOS Share Extension / Android Intent handler (App.tsx routes
+   * both surfaces through this single channel). On mount we kick
+   * `useBookUpload.startUploadFromAssets(...)` with them, then notify
+   * the parent via `onPendingUploadAssetsConsumed` so the slot is
+   * cleared and we don't re-fire on a future remount.
+   */
+  pendingUploadAssets?: DocumentPicker.DocumentPickerAsset[] | null;
+  onPendingUploadAssetsConsumed?: () => void;
 };
 
 export function LibraryScreen({
@@ -108,6 +121,8 @@ export function LibraryScreen({
   onUpgrade,
   onStartListening,
   onReaderOpenChange,
+  pendingUploadAssets,
+  onPendingUploadAssetsConsumed,
 }: LibraryScreenProps) {
   const { isConnected } = useNetworkState();
   const isOffline = !isConnected;
@@ -196,6 +211,34 @@ export function LibraryScreen({
   // upload → invoke fn → poll. We just react to its phase to drive the UI.
   const upload = useBookUpload();
 
+  // Free-tier usage. Drives the gate in handleUploadTap below: when
+  // a Free user is at-or-over the book cap, tapping "Upload a file"
+  // presents the paywall instead of opening the OS picker.
+  const planUsage = useFreePlanUsage();
+
+  // Consume pre-picked assets handed in by App.tsx — onboarding step
+  // 2's Upload tab OR the iOS Share Extension / Android Intent
+  // handler (App.tsx funnels both through the same array channel).
+  // We kick the multi-file batch pipeline on mount and immediately
+  // notify the parent so the slot is cleared and we don't re-fire
+  // on a future remount (e.g. tab switch back to Library while the
+  // assets state is still around).
+  //
+  // The processing screen surfaces via `showProcessing` so the user
+  // lands on a useful "uploading…" view instead of the empty library
+  // — same UX as tapping "Add → Upload a file" from the library.
+  useEffect(() => {
+    if (!pendingUploadAssets || pendingUploadAssets.length === 0) return;
+    const assets = pendingUploadAssets;
+    onPendingUploadAssetsConsumed?.();
+    setShowProcessing(true);
+    void upload.startUploadFromAssets(assets);
+    // upload.startUploadFromAssets identity comes from useCallback with a
+    // stable internal closure, so it's safe to omit from deps. Same
+    // shape the existing handleUploadTap effect uses.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingUploadAssets]);
+
   // Drives the "processing" phase ring creep. Resets each time we re-enter
   // processing; ticks once a second so the ring advances visibly without
   // burning render cycles. Capped at 60s — past that we hold at 95%.
@@ -214,11 +257,25 @@ export function LibraryScreen({
   }, [upload.state.phase]);
 
   const handleUploadTap = useCallback(() => {
+    // Free-tier book-limit gate. On Free + at-or-over the cap we
+    // don't open the picker at all — instead the paywall presents so
+    // the user can upgrade in-place. Pro users always sail through
+    // (`isLimited` is false). This blocks the START of an upload; if
+    // a Free user is at 4 of 5 and picks 3 files we don't try to
+    // mid-batch refuse, which would be a worse UX than letting the
+    // batch finish and surfacing the upgrade prompt afterward.
+    if (planUsage.books.isExceeded) {
+      void presentPaywall({ requiredEntitlement: ENTITLEMENT_PRO }).catch(() => {
+        // Disabled / unconfigured — silently no-op so testers without
+        // billing wired don't see a runtime error mid-flow.
+      });
+      return;
+    }
     setShowProcessing(true);
     void (async () => {
       await upload.startUpload();
     })();
-  }, [upload]);
+  }, [upload, planUsage.books.isExceeded]);
 
   // React to terminal upload states.
   //
@@ -319,8 +376,24 @@ export function LibraryScreen({
     return [uploadStep, extractStep, audioStep];
   })();
 
+  // Batch UI: when the user picks multiple files, the processing
+  // screen swaps its per-file copy for an aggregate "Uploading file
+  // N of M" header. We still surface the current file's per-step
+  // progress underneath so the user has something concrete to watch
+  // while each one is in flight; the aggregate counter just gives
+  // them a sense of where they are in the batch.
+  const batchTotal = upload.batchState.total;
+  const batchIndex = upload.batchState.index;
+  const isBatchMode = batchTotal > 1;
+
   const processingTitle = (() => {
     const name = upload.state.fileName ?? 'your book';
+    if (isBatchMode) {
+      if (upload.state.phase === 'ready') {
+        return `Added ${batchTotal} books`;
+      }
+      return `Uploading ${batchIndex} of ${batchTotal}`;
+    }
     if (upload.state.phase === 'uploading') return `Uploading ${name}`;
     if (upload.state.phase === 'processing') return `Processing ${name}`;
     if (upload.state.phase === 'ready') return 'All set';
@@ -330,6 +403,13 @@ export function LibraryScreen({
   })();
 
   const processingSubtitle = (() => {
+    if (isBatchMode) {
+      if (upload.state.phase === 'ready') {
+        return 'Books will appear in your library as they finish processing.';
+      }
+      const currentName = upload.state.fileName ?? 'this book';
+      return `Working on ${currentName} — feel free to keep going in the background.`;
+    }
     if (upload.state.phase === 'uploading') return 'Sending the file to your library.';
     if (upload.state.phase === 'processing') {
       // Prefer the live status hint when the edge function has shipped
@@ -613,7 +693,20 @@ export function LibraryScreen({
             void refetch();
             void refetchStats();
           }}
-          onRequestTextMode={() => setEpubMode('text')}
+          onRequestTextMode={(pageIndex) => {
+            // Optional pageIndex carries through highlight-row /
+            // search-result jumps initiated from Full mode. When
+            // present, prime `pendingInitialPageIndex` so the
+            // ReaderScreen mount below picks it up as the
+            // `initialPageIndex` prop and lands on that exact page
+            // rather than the persisted last-read fallback. On a
+            // plain mode toggle (no pageIndex), leave the state
+            // alone so last-read continues to drive the open.
+            if (pageIndex !== undefined) {
+              setPendingInitialPageIndex(pageIndex);
+            }
+            setEpubMode('text');
+          }}
           onListen={() => {
             onStartListening(selectedBook);
             setSelectedBook(null);

@@ -72,6 +72,26 @@ export type ReaderSettings = {
    * without needing a re-toggle.
    */
   notifReminderOn: boolean;
+  /** Hour-of-day (0-23, local time) at which the daily reading
+   * reminder fires when `notifReminderOn`. Defaults to 20 (8 PM) to
+   * match the design copy + the "evening reader" mode the reminder
+   * is targeting. */
+  notifReminderHour: number;
+  /** Minute-of-hour (0-59) for the reminder. Paired with
+   * `notifReminderHour` so the user can pick any time of day, not
+   * just on the hour. Defaults to 0 (so the legacy 8 PM = 20:00). */
+  notifReminderMinute: number;
+  /** Secondary nudge — fires at `notifReminderHour + 1` so the
+   * user gets a "don't break your reading streak" follow-up if the
+   * initial reminder didn't move them. Off by default to avoid
+   * notification fatigue; users opt in from Settings. */
+  notifStreakWarningOn: boolean;
+  /** Fire a local notification when a book the user uploaded
+   * finishes processing in the background. Especially useful for
+   * slow OCR / large PDFs that can take minutes. On by default
+   * because the alternative is the user staring at "Processing…"
+   * with no idea when they can read. */
+  notifBookFinishedOn: boolean;
   notifWarningsOn: boolean;
   notifUpdatesOn: boolean;
 };
@@ -100,6 +120,10 @@ const DEFAULT: ReaderSettings = {
   defaultPlaybackSpeed: 1,
   resumeAfterCalls: true,
   notifReminderOn: true,
+  notifReminderHour: 20,
+  notifReminderMinute: 0,
+  notifStreakWarningOn: false,
+  notifBookFinishedOn: true,
   notifWarningsOn: true,
   notifUpdatesOn: false,
 };
@@ -115,6 +139,10 @@ type ReaderStore = ReaderSettings & {
   setDefaultPlaybackSpeed: (speed: number) => void;
   setResumeAfterCalls: (v: boolean) => void;
   setNotifReminderOn: (v: boolean) => void;
+  setNotifReminderHour: (hour: number) => void;
+  setNotifReminderMinute: (minute: number) => void;
+  setNotifStreakWarningOn: (v: boolean) => void;
+  setNotifBookFinishedOn: (v: boolean) => void;
   setNotifWarningsOn: (v: boolean) => void;
   setNotifUpdatesOn: (v: boolean) => void;
   reset: () => void;
@@ -132,6 +160,14 @@ export const useReaderStore = create<ReaderStore>((set) => ({
   setDefaultPlaybackSpeed: (defaultPlaybackSpeed) => set({ defaultPlaybackSpeed }),
   setResumeAfterCalls: (resumeAfterCalls) => set({ resumeAfterCalls }),
   setNotifReminderOn: (notifReminderOn) => set({ notifReminderOn }),
+  setNotifReminderHour: (notifReminderHour) =>
+    set({ notifReminderHour: Math.max(0, Math.min(23, notifReminderHour)) }),
+  setNotifReminderMinute: (notifReminderMinute) =>
+    set({ notifReminderMinute: Math.max(0, Math.min(59, notifReminderMinute)) }),
+  setNotifStreakWarningOn: (notifStreakWarningOn) =>
+    set({ notifStreakWarningOn }),
+  setNotifBookFinishedOn: (notifBookFinishedOn) =>
+    set({ notifBookFinishedOn }),
   setNotifWarningsOn: (notifWarningsOn) => set({ notifWarningsOn }),
   setNotifUpdatesOn: (notifUpdatesOn) => set({ notifUpdatesOn }),
   reset: () => set(DEFAULT),
