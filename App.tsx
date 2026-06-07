@@ -28,7 +28,12 @@ import {
 import { Lexend_400Regular } from '@expo-google-fonts/lexend';
 import { Literata_400Regular } from '@expo-google-fonts/literata';
 import { installRejectionTracker } from '~/lib/installRejectionTracker';
-import { configureRevenueCat, useIsPro } from '~/lib/revenuecat';
+import {
+  configureRevenueCat,
+  presentPaywall,
+  useIsPro,
+  ENTITLEMENT_PRO,
+} from '~/lib/revenuecat';
 import {
   fireBookReadyNotification,
   installNotificationHandler,
@@ -81,7 +86,10 @@ import {
   type MonthStats,
 } from '~/screens/ListenNowPlayingScreen';
 import type { Book } from '~/types/book';
-import { PaywallPlanScreen } from '~/screens/PaywallScreen';
+// PaywallPlanScreen (custom mockup) retired — all upgrade entry points
+// now use RevenueCat's hosted paywall via presentPaywall(). The custom
+// screen never wired its CTA to a purchase; the hosted paywall handles
+// purchase / restore / localized pricing / store-compliance copy.
 import {
   LibraryScreen,
   clearLibrarySignedUrlCache,
@@ -159,7 +167,6 @@ export default function App() {
   // so future deep-links (e.g. "open Bookflow on the You tab") have one
   // setter to call.
   const [activeTab, setActiveTab] = useState<TabKey>('library');
-  const [paywallVisible, setPaywallVisible] = useState(false);
   const [callbackError, setCallbackError] = useState<AuthExchangeErrorKind>('unknown');
   const [signupName, setSignupName] = useState('');
   // Pre-picked assets handed off to LibraryScreen on its next mount.
@@ -675,7 +682,7 @@ export default function App() {
                   setActiveTab={setActiveTab}
                   userName={signupName}
                   onSignOut={handleSignOut}
-                  onUpgrade={() => setPaywallVisible(true)}
+                  onUpgrade={() => void presentPaywall({ requiredEntitlement: ENTITLEMENT_PRO })}
                   listenState={listenState}
                   setListenState={setListenState}
                   pendingUploadAssets={pendingUploadAssets}
@@ -684,11 +691,6 @@ export default function App() {
                   }
                 />
               </BooksProvider>
-            )}
-            {paywallVisible && (
-              <View style={styles.paywallOverlay}>
-                <PaywallPlanScreen onClose={() => setPaywallVisible(false)} />
-              </View>
             )}
             <StatusBar style="dark" />
           </BottomSheetModalProvider>
@@ -1309,10 +1311,6 @@ function LibraryStage({
 const styles = StyleSheet.create({
   root: {
     flex: 1,
-  },
-  paywallOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    zIndex: 100,
   },
   stageRoot: {
     flex: 1,

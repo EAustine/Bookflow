@@ -1,4 +1,4 @@
-import { Alert } from 'react-native';
+import { Alert, Platform } from 'react-native';
 import { useEffect, useState } from 'react';
 import Purchases, {
   LOG_LEVEL,
@@ -11,7 +11,24 @@ export const ENTITLEMENT_PRO = 'Bookflow Pro';
 
 export type ProductId = 'lifetime' | 'yearly' | 'monthly';
 
-const apiKey = process.env.EXPO_PUBLIC_REVENUECAT_API_KEY;
+/**
+ * RevenueCat issues a SEPARATE public SDK key per platform (an
+ * `appl_…` key for the iOS app, a `goog_…` key for the Android app).
+ * Configuring with the wrong-platform key silently returns no
+ * offerings, so production MUST pick the key by platform.
+ *
+ * Resolution order:
+ *   1. Platform-specific key (EXPO_PUBLIC_REVENUECAT_IOS_KEY /
+ *      EXPO_PUBLIC_REVENUECAT_ANDROID_KEY) — use these in production.
+ *   2. Legacy single EXPO_PUBLIC_REVENUECAT_API_KEY — backward-compat
+ *      for the current dev/test setup so nothing breaks before the
+ *      per-platform keys are added.
+ */
+const apiKey =
+  (Platform.OS === 'ios'
+    ? process.env.EXPO_PUBLIC_REVENUECAT_IOS_KEY
+    : process.env.EXPO_PUBLIC_REVENUECAT_ANDROID_KEY) ??
+  process.env.EXPO_PUBLIC_REVENUECAT_API_KEY;
 
 /**
  * Set `EXPO_PUBLIC_REVENUECAT_DISABLED=1` in `.env` to skip RevenueCat
