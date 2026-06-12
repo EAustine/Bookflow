@@ -269,3 +269,169 @@ function derivePeriod(
   if (lower.includes('monthly') || lower.includes('month')) return 'monthly';
   return null;
 }
+
+// ─── Active-subscription display details ──────────────────────────────────
+
+export type ProSubscriptionDetails = {
+  /** "Monthly" | "Yearly" | "Weekly" | "Lifetime" | null when unknown. */
+  periodLabel: string | null;
+  /** Localized price + cadence, e.g. "₦4,500 / month" or "$79 / year".
+   * Null when we can't read it. Localized by the store, so it shows the
+   * buyer's real currency (naira, etc) — never a hardcoded "$". */
+  priceLabel: string | null;
+  /** Next renewal / expiry, e.g. "May 12, 2027". Null when none. */
+  renewalLabel: string | null;
+  /** True when the subscription auto-renews (false = cancelled/expiring). */
+  willRenew: boolean;
+};
+
+const EMPTY_SUB_DETAILS: ProSubscriptionDetails = {
+  periodLabel: null,
+  priceLabel: null,
+  renewalLabel: null,
+  willRenew: false,
+};
+
+/**
+ * Reactive display details for the user's ACTIVE Pro subscription, for the
+ * "Account & Subscription" / plan surfaces. Combines two RevenueCat sources:
+ *   - CustomerInfo → active entitlement: the Play base-plan id (period),
+ *     expiry/renewal date, and willRenew.
+ *   - Current offering → the matching package's LOCALIZED price string.
+ *     CustomerInfo doesn't carry the price the user paid, so we read it
+ *     from the store product, which is correctly localized to the buyer's
+ *     currency. This is why we never hardcode a "$" amount.
+ *
+ * Every field is null until known (or when RC is disabled). Callers should
+ * omit the row rather than render a wrong placeholder. Re-derives on every
+ * RevenueCat customer-info update (purchase / restore / renewal / expiry).
+ */
+export function useProSubscriptionDetails(): ProSubscriptionDetails {
+  const [state, setState] = useState<ProSubscriptionDetails>(EMPTY_SUB_DETAILS);
+
+  useEffect(() => {
+    if (disabled || !configured) return;
+    let cancelled = false;
+
+    async function load() {
+      try {
+        const ci = await Purchases.getCustomerInfo();
+        const ent = ci.entitlements.active[ENTITLEMENT_PRO];
+        if (!ent) {
+          if (!cancelled) setState(EMPTY_SUB_DETAILS);
+          return;
+        }
+        // Play reports the base-plan id (monthly/annual/student) here —
+        // the most reliable period signal. Cast defensively in case the
+        // installed SDK's types predate the field.
+        const basePlan =
+          (ent as { productPlanIdentifier?: string | null })
+            .productPlanIdentifier ?? null;
+
+        // Match the active product to an offering package to read its
+        // localized price + authoritative subscription period. Play
+        // product ids look like `bookflow_pro:monthly`, so when the
+        // entitlement only reports the bare subscription id we match on
+        // the base-plan suffix instead.
+        let priceLabel: string | null = null;
+        let periodLabel: string | null = null;
+        try {
+          const offering = await getCurrentOffering();
+          const pkg =
+            offering?.availablePackages.find(
+              (p) => p.product.identifier === ent.productIdentifier,
+            ) ??
+            (basePlan
+              ? offering?.availablePackages.find((p) =>
+                  p.product.identifier.endsWith(`:${basePlan}`),
+                )
+              : undefined);
+          const iso = pkg?.product.subscriptionPeriod ?? null;
+          periodLabel = labelFromISO(iso);
+          const word = wordFromISO(iso);
+          const priceString = pkg?.product.priceString ?? null;
+          if (priceString) {
+            priceLabel = word ? `${priceString} / ${word}` : priceString;
+          }
+        } catch {
+          // Offerings unavailable — fall back below, leave price null.
+        }
+
+        // Fallbacks when the offering lookup couldn't resolve a package.
+        if (!periodLabel) {
+          periodLabel = labelFromText(basePlan ?? ent.productIdentifier);
+        }
+
+        const renewalLabel = ent.expirationDate
+          ? formatDate(ent.expirationDate)
+          : null;
+
+        if (!cancelled) {
+          setState({
+            periodLabel,
+            priceLabel,
+            renewalLabel,
+            willRenew: Boolean(ent.willRenew),
+          });
+        }
+      } catch {
+        // CustomerInfo unavailable — keep prior state rather than flicker.
+      }
+    }
+
+    void load();
+    const listener = () => void load();
+    Purchases.addCustomerInfoUpdateListener(listener);
+    return () => {
+      cancelled = true;
+      Purchases.removeCustomerInfoUpdateListener(listener);
+    };
+  }, []);
+
+  return state;
+}
+
+/** ISO-8601 subscription period ("P1M"/"P1Y"/"P1W") → display label. */
+function labelFromISO(iso: string | null): string | null {
+  if (!iso) return null;
+  if (/\d+W$/.test(iso)) return 'Weekly';
+  if (/\d+Y$/.test(iso) || iso === 'P12M') return 'Yearly';
+  if (/\d+M$/.test(iso)) return 'Monthly';
+  if (/\d+D$/.test(iso)) return 'Daily';
+  return null;
+}
+
+/** ISO-8601 subscription period → cadence word for a price suffix. */
+function wordFromISO(iso: string | null): string | null {
+  if (!iso) return null;
+  if (/\d+W$/.test(iso)) return 'week';
+  if (/\d+Y$/.test(iso) || iso === 'P12M') return 'year';
+  if (/\d+M$/.test(iso)) return 'month';
+  if (/\d+D$/.test(iso)) return 'day';
+  return null;
+}
+
+/** Last-resort label from a base-plan id / product id string. */
+function labelFromText(text: string): string | null {
+  const s = text.toLowerCase();
+  if (s.includes('annual') || s.includes('year')) return 'Yearly';
+  if (s.includes('week')) return 'Weekly';
+  if (s.includes('life')) return 'Lifetime';
+  if (s.includes('month') || s.includes('student')) return 'Monthly';
+  return null;
+}
+
+/** ISO timestamp → "May 12, 2027". Defensive against bad input. */
+function formatDate(iso: string): string | null {
+  try {
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return null;
+    return d.toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+    });
+  } catch {
+    return null;
+  }
+}

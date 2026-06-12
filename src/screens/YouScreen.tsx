@@ -46,7 +46,11 @@ import {
   Text,
 } from '~/components';
 import { tokens } from '~/design/tokens';
-import { presentPaywall, ENTITLEMENT_PRO } from '~/lib/revenuecat';
+import {
+  presentPaywall,
+  presentCustomerCenter,
+  ENTITLEMENT_PRO,
+} from '~/lib/revenuecat';
 
 // ============================================================================
 // TYPES
@@ -150,6 +154,16 @@ export function YouScreen({
       // helper already surfaces a friendly Alert, so swallow here.
     });
   }, [onUpgrade]);
+
+  // "Manage plan" for an already-subscribed user. NOT the paywall —
+  // presentPaywallIfNeeded no-ops when the entitlement is already active,
+  // which is exactly why the old "Manage plan" button did nothing. The
+  // Customer Center is RevenueCat's native manage/cancel/billing surface.
+  const handleManage = useCallback(() => {
+    void presentCustomerCenter().catch(() => {
+      // Disabled / unconfigured — the helper shows a friendly Alert.
+    });
+  }, []);
 
   const sheetRef = useRef<BottomSheetRef>(null);
   const [signingOut, setSigningOut] = useState(false);
@@ -259,7 +273,11 @@ export function YouScreen({
             profile={profile}
             onPress={() => setView('account')}
           />
-          <PlanCard plan={plan} onUpgrade={handleUpgrade} />
+          <PlanCard
+            plan={plan}
+            onUpgrade={handleUpgrade}
+            onManage={handleManage}
+          />
 
           <SettingsSection label="Reading">
             <ListRow
@@ -452,15 +470,18 @@ function getInitials(name: string, email: string): string {
 function PlanCard({
   plan,
   onUpgrade,
+  onManage,
 }: {
   plan: YouPlan;
   onUpgrade: () => void;
+  onManage: () => void;
 }) {
   const audioPct = pct(plan.meters.audio.used, plan.meters.audio.total);
   const aiPct = pct(plan.meters.aiCredits.used, plan.meters.aiCredits.total);
   const booksPct = pct(plan.meters.books.used, plan.meters.books.total);
 
-  const upgradeLabel = plan.name === 'Free' ? 'Upgrade to Standard' : 'Manage plan';
+  const isFree = plan.name === 'Free';
+  const upgradeLabel = isFree ? 'Upgrade to Standard' : 'Manage plan';
 
   return (
     <View style={styles.planCard}>
@@ -494,7 +515,7 @@ function PlanCard({
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={upgradeLabel}
-        onPress={onUpgrade}
+        onPress={isFree ? onUpgrade : onManage}
         style={({ pressed }) => [
           styles.upgradeBtn,
           pressed && { backgroundColor: tokens.colors.amber[200] },

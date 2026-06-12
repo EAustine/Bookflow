@@ -18,7 +18,11 @@ import { BottomSheet, type BottomSheetRef, Button, Icon, Text } from '~/componen
 import { tokens } from '~/design/tokens';
 import { refreshCurrentUser } from '~/hooks/useCurrentUser';
 import { supabase } from '~/lib/supabase';
-import { presentCustomerCenter, restorePurchases } from '~/lib/revenuecat';
+import {
+  presentCustomerCenter,
+  restorePurchases,
+  useProSubscriptionDetails,
+} from '~/lib/revenuecat';
 import type { YouPlan, YouProfile } from '~/screens/YouScreen';
 
 // External URLs for the Privacy & data rows live in a shared
@@ -89,12 +93,20 @@ export function AccountScreen({
     try {
       const result = await restorePurchases();
       if (result.ok) {
-        Alert.alert(
-          'Purchases restored',
-          result.pro
-            ? "Your Pro subscription is active again. You're all set."
-            : "We couldn't find any active purchases to restore on this account.",
-        );
+        if (result.pro) {
+          Alert.alert(
+            'Purchases restored',
+            "Your Pro subscription is active again. You're all set.",
+          );
+        } else {
+          // ok:true but no Pro entitlement = restore succeeded, found
+          // nothing. Don't title it "restored" — that reads like it did
+          // something. Tell them what to check (different Google account).
+          Alert.alert(
+            'No purchases found',
+            "We couldn't find any past purchases on this Google account. If you subscribed with a different account, switch to it in the Play Store and try again.",
+          );
+        }
       } else if (result.reason === 'disabled') {
         Alert.alert(
           'Restore unavailable',
@@ -1026,7 +1038,13 @@ const PRO_FEATURES = [
 ];
 
 function ProPlanCard({ plan }: { plan: YouPlan }) {
-  const planLabel = plan.name === 'Standard' ? 'Standard · Yearly' : plan.name;
+  // Real subscription details from RevenueCat — period, LOCALIZED price
+  // (buyer's real currency), and the actual renewal date. Each field is
+  // null until known; we omit rather than show a wrong placeholder.
+  const { periodLabel, priceLabel, renewalLabel, willRenew } =
+    useProSubscriptionDetails();
+  const planLabel = periodLabel ? `${plan.name} · ${periodLabel}` : plan.name;
+  const statusLabel = priceLabel ? `Active · ${priceLabel}` : 'Active';
 
   return (
     <View style={styles.subCard}>
@@ -1034,17 +1052,21 @@ function ProPlanCard({ plan }: { plan: YouPlan }) {
         <View>
           <Text style={styles.planEyebrowPro}>Your plan</Text>
           <Text style={styles.planNamePro}>{planLabel}</Text>
-          <Text style={styles.planStatusPro}>Active · $79 / year</Text>
+          <Text style={styles.planStatusPro}>{statusLabel}</Text>
         </View>
         <View style={styles.proCheck}>
           <Icon name="Check" size={11} color={tokens.colors.forest[800]} strokeWidth={2.5} />
         </View>
       </View>
 
-      <View style={styles.renewalRow}>
-        <Text style={styles.renewalLabel}>Next renewal</Text>
-        <Text style={styles.renewalDate}>May 12, 2027</Text>
-      </View>
+      {renewalLabel && (
+        <View style={styles.renewalRow}>
+          <Text style={styles.renewalLabel}>
+            {willRenew ? 'Next renewal' : 'Expires'}
+          </Text>
+          <Text style={styles.renewalDate}>{renewalLabel}</Text>
+        </View>
+      )}
 
       <View style={styles.proFeatures}>
         {PRO_FEATURES.map((f) => (

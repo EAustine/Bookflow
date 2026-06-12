@@ -47,7 +47,7 @@ import {
 import { useBookUpload } from '~/lib/uploadBook';
 import type * as DocumentPicker from 'expo-document-picker';
 import { useFreePlanUsage } from '~/lib/freePlanUsage';
-import { presentPaywall, ENTITLEMENT_PRO } from '~/lib/revenuecat';
+import { presentPaywall, ENTITLEMENT_PRO, useIsPro } from '~/lib/revenuecat';
 import { reprocessBook } from '~/lib/reprocessBook';
 import { useNetworkState } from '~/hooks/useNetworkState';
 import { LibrarySkeleton } from '~/screens/SkeletonScreens';
@@ -126,6 +126,8 @@ export function LibraryScreen({
 }: LibraryScreenProps) {
   const { isConnected } = useNetworkState();
   const isOffline = !isConnected;
+  // Pro users never see the free-tier "running low" upsell banner.
+  const { isPro } = useIsPro();
 
   const [selectedBook, setSelectedBook] = useState<Book | null>(null);
   // Notify the parent shell whenever a reader opens / closes so the
@@ -912,7 +914,7 @@ export function LibraryScreen({
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
       {isOffline && <OfflineBanner onRetry={() => {}} />}
-      {!isOffline && showBanner && onUpgrade && (
+      {!isOffline && !isPro && showBanner && onUpgrade && (
         <SoftWarningBanner
           minutesLeft={18}
           onUpgrade={onUpgrade}
