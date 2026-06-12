@@ -1,4 +1,4 @@
-import { Alert, Platform } from 'react-native';
+import { Alert, Linking, Platform } from 'react-native';
 import { useEffect, useState } from 'react';
 import Purchases, {
   LOG_LEVEL,
@@ -120,6 +120,35 @@ export async function presentCustomerCenter(): Promise<void> {
     return;
   }
   await RevenueCatUI.presentCustomerCenter();
+}
+
+const PLAY_PACKAGE = 'com.eaustine.bookflow';
+const PLAY_SUBSCRIPTION_ID = 'bookflow_pro';
+
+/**
+ * Open the native subscription-management surface (change plan, cancel,
+ * update payment). On Android we deep-link straight to the Google Play
+ * subscriptions page for our subscription — always available, no
+ * RevenueCat dashboard config required (unlike the Customer Center). On
+ * iOS we point at the App Store management URL (iOS billing isn't wired
+ * yet, but the link is harmless if reached). Falls back to an Alert with
+ * manual steps if the device can't open the deep link.
+ */
+export async function openManageSubscription(): Promise<void> {
+  const url =
+    Platform.OS === 'ios'
+      ? 'https://apps.apple.com/account/subscriptions'
+      : `https://play.google.com/store/account/subscriptions?sku=${PLAY_SUBSCRIPTION_ID}&package=${PLAY_PACKAGE}`;
+  try {
+    await Linking.openURL(url);
+  } catch {
+    Alert.alert(
+      'Manage subscription',
+      Platform.OS === 'ios'
+        ? 'Open Settings → your Apple ID → Subscriptions to manage your plan.'
+        : 'Open the Google Play Store → tap your profile → Payments & subscriptions → Subscriptions to manage your plan.',
+    );
+  }
 }
 
 /**

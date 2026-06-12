@@ -48,7 +48,7 @@ import {
 import { tokens } from '~/design/tokens';
 import {
   presentPaywall,
-  presentCustomerCenter,
+  openManageSubscription,
   ENTITLEMENT_PRO,
 } from '~/lib/revenuecat';
 
@@ -157,12 +157,10 @@ export function YouScreen({
 
   // "Manage plan" for an already-subscribed user. NOT the paywall —
   // presentPaywallIfNeeded no-ops when the entitlement is already active,
-  // which is exactly why the old "Manage plan" button did nothing. The
-  // Customer Center is RevenueCat's native manage/cancel/billing surface.
+  // which is exactly why the old "Manage plan" button did nothing. Deep-
+  // links to the Google Play subscriptions page (cancel / change plan).
   const handleManage = useCallback(() => {
-    void presentCustomerCenter().catch(() => {
-      // Disabled / unconfigured — the helper shows a friendly Alert.
-    });
+    void openManageSubscription();
   }, []);
 
   const sheetRef = useRef<BottomSheetRef>(null);

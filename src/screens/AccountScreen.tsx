@@ -19,7 +19,7 @@ import { tokens } from '~/design/tokens';
 import { refreshCurrentUser } from '~/hooks/useCurrentUser';
 import { supabase } from '~/lib/supabase';
 import {
-  presentCustomerCenter,
+  openManageSubscription,
   restorePurchases,
   useProSubscriptionDetails,
 } from '~/lib/revenuecat';
@@ -1084,13 +1084,10 @@ function ProPlanCard({ plan }: { plan: YouPlan }) {
           accessibilityRole="button"
           style={({ pressed }) => [styles.proActionBtn, pressed && { opacity: 0.7 }]}
           onPress={() => {
-            // RevenueCat's Customer Center handles plan management,
-            // billing history, and cancellation in one native sheet —
-            // both buttons open the same surface so the user can do
-            // whatever they came here for in one place.
-            void presentCustomerCenter().catch(() => {
-              // Disabled / unconfigured — silently no-op.
-            });
+            // Deep-link to the Google Play subscriptions page — change
+            // plan, update payment, cancel. Both buttons open the same
+            // native surface (Play handles cancel there too).
+            void openManageSubscription();
           }}
         >
           <Text style={styles.proActionManage}>Manage</Text>
@@ -1100,9 +1097,7 @@ function ProPlanCard({ plan }: { plan: YouPlan }) {
           accessibilityRole="button"
           style={({ pressed }) => [styles.proActionBtn, pressed && { opacity: 0.7 }]}
           onPress={() => {
-            void presentCustomerCenter().catch(() => {
-              // Disabled / unconfigured — silently no-op.
-            });
+            void openManageSubscription();
           }}
         >
           <Text style={styles.proActionCancel}>Cancel</Text>
