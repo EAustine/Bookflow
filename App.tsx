@@ -1243,6 +1243,7 @@ function LibraryStage({
             avatarUrl: currentUser.avatarUrl,
           }}
           plan={plan}
+          onUpgrade={onUpgrade}
           onTabChange={setActiveTab}
           onSignOut={onSignOut}
           onSubViewOpenChange={setYouSubViewOpen}

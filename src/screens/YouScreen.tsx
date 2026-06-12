@@ -46,6 +46,7 @@ import {
   Text,
 } from '~/components';
 import { tokens } from '~/design/tokens';
+import { presentPaywall, ENTITLEMENT_PRO } from '~/lib/revenuecat';
 
 // ============================================================================
 // TYPES
@@ -133,6 +134,23 @@ export function YouScreen({
   appVersion = DEFAULTS.appVersion,
   onSubViewOpenChange,
 }: YouScreenProps) {
+  // Resolve the upgrade handler once. Prefer the parent-provided handler
+  // (App wires it to presentPaywall); if a caller ever forgets to thread
+  // it, fall back to presenting the hosted paywall directly so the
+  // Upgrade button can NEVER silently no-op. This is exactly what bit the
+  // You tab + Account screen before — `onUpgrade` was optional and
+  // defaulted to `() => {}`, so every Upgrade tap here did nothing.
+  const handleUpgrade = useCallback(() => {
+    if (onUpgrade) {
+      onUpgrade();
+      return;
+    }
+    void presentPaywall({ requiredEntitlement: ENTITLEMENT_PRO }).catch(() => {
+      // presentPaywall throws when RC is disabled / has no offering; the
+      // helper already surfaces a friendly Alert, so swallow here.
+    });
+  }, [onUpgrade]);
+
   const sheetRef = useRef<BottomSheetRef>(null);
   const [signingOut, setSigningOut] = useState(false);
   const [view, setView] = useState<
@@ -223,7 +241,7 @@ export function YouScreen({
         plan={plan}
         onBack={() => setView('home')}
         onSignOut={onSignOut}
-        onUpgrade={onUpgrade ?? (() => {})}
+        onUpgrade={handleUpgrade}
       />
     );
   }
@@ -241,7 +259,7 @@ export function YouScreen({
             profile={profile}
             onPress={() => setView('account')}
           />
-          <PlanCard plan={plan} onUpgrade={onUpgrade ?? (() => {})} />
+          <PlanCard plan={plan} onUpgrade={handleUpgrade} />
 
           <SettingsSection label="Reading">
             <ListRow
