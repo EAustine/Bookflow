@@ -33,10 +33,13 @@ const CORS_HEADERS = {
 
 type Body = { voice_id?: unknown };
 
-// 22-character alphanumeric ElevenLabs voice ID. We validate the
-// shape before hitting their API so a malformed input gets a clean
-// 400 instead of a 422 from the upstream.
-const VOICE_ID_RE = /^[A-Za-z0-9]{22}$/;
+// ElevenLabs voice IDs are 20-char alphanumeric strings (e.g.
+// "21m00Tcm4TlvDq8ikWAM"); cloned voices can vary, so accept a sane
+// alphanumeric range. The old pattern hard-required 22 chars, which
+// rejected EVERY real 20-char id with a 400 before we ever hit the API
+// — that's the bug that made voice preview silent for all voices. Keep
+// this in sync with generate-audio's looser `length >= 8` check.
+const VOICE_ID_RE = /^[A-Za-z0-9]{16,40}$/;
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
