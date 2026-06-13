@@ -35,7 +35,7 @@ import {
   useReaderStore,
 } from '~/stores/readerStore';
 import { VOICE_OPTIONS } from '~/lib/aiAudio';
-import { presentPaywall, ENTITLEMENT_PRO } from '~/lib/revenuecat';
+import { presentPaywall, ENTITLEMENT_PRO, useIsPro } from '~/lib/revenuecat';
 import { SUPPORT_EMAIL } from '~/lib/legalUrls';
 import { useBackHandler } from '~/lib/useBackHandler';
 import {
@@ -201,11 +201,9 @@ export function DefaultVoiceScreen({ onBack }: { onBack: () => void }) {
 
   // Same plan gate as the per-book VoiceSheet on the Listen screen:
   // free voices are pickable; Pro voices show but are locked until the
-  // user upgrades. Real entitlement plumbing isn't wired (RevenueCat
-  // returns 'free' for everyone today), so this is currently a hard
-  // gate — when the entitlement plumbing lands, swap this constant
-  // for the live tier from useEntitlement().
-  const isPro = false;
+  // user upgrades. Now driven by the live RevenueCat entitlement, so
+  // subscribers can actually select the premium voices.
+  const { isPro } = useIsPro();
   const freeVoices = VOICE_OPTIONS.filter((v) => v.tier === 'free');
   const proVoices = VOICE_OPTIONS.filter((v) => v.tier === 'pro');
 

@@ -1123,20 +1123,30 @@ function LibraryStage({
       ? 'Premium'
       : 'Standard'
     : 'Free';
+  // Pro unlocks unlimited audio + library and a 10× AI-credit cap, so the
+  // plan meters reflect that instead of the free caps. Infinity renders as
+  // "Unlimited" in the meter UI; the 500K AI credits match the paywall copy.
+  const planLimits = isPro
+    ? {
+        audioMinutesPerMonth: Infinity,
+        aiCreditsPerMonth: 500_000,
+        booksTotal: Infinity,
+      }
+    : FREE_PLAN_LIMITS;
   const plan: YouPlan = {
     name: planName,
     meters: {
       audio: {
         used: Math.round(monthStats.listeningHours * 60),
-        total: FREE_PLAN_LIMITS.audioMinutesPerMonth,
+        total: planLimits.audioMinutesPerMonth,
       },
       aiCredits: {
         used: 0,
-        total: FREE_PLAN_LIMITS.aiCreditsPerMonth,
+        total: planLimits.aiCreditsPerMonth,
       },
       books: {
         used: books.length,
-        total: FREE_PLAN_LIMITS.booksTotal,
+        total: planLimits.booksTotal,
       },
     },
   };

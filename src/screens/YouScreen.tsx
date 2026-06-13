@@ -493,7 +493,11 @@ function PlanCard({
       <View style={styles.meters}>
         <Meter
           name="Audio"
-          value={`${plan.meters.audio.used} / ${plan.meters.audio.total} min`}
+          value={
+            plan.meters.audio.total === Infinity
+              ? 'Unlimited'
+              : `${plan.meters.audio.used} / ${plan.meters.audio.total} min`
+          }
           percent={audioPct}
         />
         <Meter
@@ -505,7 +509,11 @@ function PlanCard({
         />
         <Meter
           name="Books"
-          value={`${plan.meters.books.used} / ${plan.meters.books.total}`}
+          value={
+            plan.meters.books.total === Infinity
+              ? 'Unlimited'
+              : `${plan.meters.books.used} / ${plan.meters.books.total}`
+          }
           percent={booksPct}
         />
       </View>

@@ -36,7 +36,7 @@ import type { BottomSheetRef } from '~/components/BottomSheet';
 import { useSummary } from '~/lib/aiSummary';
 import { useChat, type ChatRecord } from '~/lib/aiChat';
 import { FALLBACK_STARTERS, useStarterQuestions } from '~/lib/aiStarters';
-import { presentPaywall, ENTITLEMENT_PRO } from '~/lib/revenuecat';
+import { presentPaywall, ENTITLEMENT_PRO, useIsPro } from '~/lib/revenuecat';
 
 // Offline colour aliases — defer to tokens so the slate palette
 // stays consistent with LibraryScreen's offline banner.
@@ -768,6 +768,7 @@ const WholeBookCreditSheet = forwardRef<BottomSheetModal, {
   onConfirm: () => void;
   onCancel: () => void;
 }>(function WholeBookCreditSheet({ onConfirm, onCancel }, ref) {
+  const { isPro } = useIsPro();
   const renderBackdrop = useCallback(
     (props: BottomSheetBackdropProps) => (
       <BottomSheetBackdrop
@@ -821,16 +822,18 @@ const WholeBookCreditSheet = forwardRef<BottomSheetModal, {
           </View>
         </View>
 
-        {/* Soft pro upsell strip */}
-        <View style={wbStyles.upsellStrip}>
-          <Icon name="Moon" size={14} color={tokens.colors.forest[800]} strokeWidth={1.5} />
-          <Text style={wbStyles.upsellText}>
-            Standard plan gives you 500K credits / month — enough for summaries every day.
-          </Text>
-          <Pressable style={wbStyles.upsellBtn} onPress={openUpgradePaywall}>
-            <Text style={wbStyles.upsellBtnLabel}>Upgrade</Text>
-          </Pressable>
-        </View>
+        {/* Soft pro upsell strip — free users only; Pro already has 500K. */}
+        {!isPro && (
+          <View style={wbStyles.upsellStrip}>
+            <Icon name="Moon" size={14} color={tokens.colors.forest[800]} strokeWidth={1.5} />
+            <Text style={wbStyles.upsellText}>
+              Standard plan gives you 500K credits / month — enough for summaries every day.
+            </Text>
+            <Pressable style={wbStyles.upsellBtn} onPress={openUpgradePaywall}>
+              <Text style={wbStyles.upsellBtnLabel}>Upgrade</Text>
+            </Pressable>
+          </View>
+        )}
 
         {/* CTAs */}
         <View style={wbStyles.ctas}>

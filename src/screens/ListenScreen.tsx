@@ -16,7 +16,7 @@ import type { Book } from '~/types/book';
 import { type AudioVoice, DEFAULT_VOICE } from '~/lib/aiAudio';
 import { useAudioSession } from '~/lib/audioSession';
 import { useBackHandler } from '~/lib/useBackHandler';
-import { presentPaywall, ENTITLEMENT_PRO } from '~/lib/revenuecat';
+import { presentPaywall, ENTITLEMENT_PRO, useIsPro } from '~/lib/revenuecat';
 import { usePage, usePageList } from '~/lib/useBookChapters';
 import { BookSearchScreen } from '~/screens/BookSearchScreen';
 import {
@@ -722,6 +722,9 @@ function VoiceSheet({
 }) {
   const freeVoices = VOICES.filter((v) => v.tier === 'free');
   const proVoices = VOICES.filter((v) => v.tier === 'pro');
+  // Live entitlement — Pro subscribers can select premium voices; free
+  // users see them locked with an upsell.
+  const { isPro } = useIsPro();
 
   // We pause any currently-playing book audio before starting a
   // preview — otherwise two voices overlap. We DON'T auto-resume
@@ -833,45 +836,56 @@ function VoiceSheet({
           <VoiceRow
             key={voice.id}
             voice={voice}
-            isSelected={false}
+            // Pro subscribers: behave exactly like a free row (select +
+            // preview). Free users: locked, and tapping opens the paywall.
+            isSelected={isPro && voice.id === selectedVoiceId}
             isLast={idx === proVoices.length - 1}
-            locked
-            previewState="idle"
-            // Tapping a locked Pro voice opens the paywall — same
-            // surface the Upgrade button below this list uses. Better
-            // UX than a silent reject; users frequently try the
-            // voice they want first, then find the Upgrade button.
+            locked={!isPro}
+            previewState={
+              isPro && pendingVoiceId === voice.id
+                ? 'loading'
+                : isPro && activeVoiceId === voice.id
+                  ? 'playing'
+                  : 'idle'
+            }
+            onPreview={isPro ? () => void handlePreview(voice.id) : undefined}
             onPress={() => {
-              void presentPaywall({
-                requiredEntitlement: ENTITLEMENT_PRO,
-              }).catch(() => {});
+              if (isPro) {
+                onSelect(voice.id);
+              } else {
+                void presentPaywall({
+                  requiredEntitlement: ENTITLEMENT_PRO,
+                }).catch(() => {});
+              }
             }}
           />
         ))}
       </View>
 
-      {/* Pro upsell */}
-      <View style={styles.proUpsell}>
-        <View style={{ flex: 1 }}>
-          <Text style={styles.upsellTitle}>Unlock all voices</Text>
-          <Text style={styles.upsellSub}>
-            4 premium voices + faster audio on Standard
-          </Text>
+      {/* Pro upsell — only for free users; subscribers already have it. */}
+      {!isPro && (
+        <View style={styles.proUpsell}>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.upsellTitle}>Unlock all voices</Text>
+            <Text style={styles.upsellSub}>
+              4 premium voices + faster audio on Standard
+            </Text>
+          </View>
+          <Pressable
+            style={styles.upsellBtn}
+            onPress={() => {
+              void presentPaywall({
+                requiredEntitlement: ENTITLEMENT_PRO,
+              }).catch(() => {
+                // Swallow when RevenueCat isn't configured — the
+                // button still feels responsive instead of crashing.
+              });
+            }}
+          >
+            <Text style={styles.upsellBtnLabel}>Upgrade</Text>
+          </Pressable>
         </View>
-        <Pressable
-          style={styles.upsellBtn}
-          onPress={() => {
-            void presentPaywall({
-              requiredEntitlement: ENTITLEMENT_PRO,
-            }).catch(() => {
-              // Swallow when RevenueCat isn't configured — the
-              // button still feels responsive instead of crashing.
-            });
-          }}
-        >
-          <Text style={styles.upsellBtnLabel}>Upgrade</Text>
-        </Pressable>
-      </View>
+      )}
     </View>
   );
 }
