@@ -151,6 +151,40 @@ export function ReadingDisplayScreen({ onBack }: { onBack: () => void }) {
             </Pressable>
           ))}
         </Section>
+
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Reset reading display to defaults"
+          onPress={() => {
+            // Reset only the reading-display fields (font, size, theme) to
+            // their defaults — leaves voice / notification prefs untouched.
+            setFontFamily('serif');
+            setFontSize(20);
+            setTheme('light');
+          }}
+          style={({ pressed }) => [
+            {
+              marginTop: tokens.space.lg,
+              height: 48,
+              borderRadius: tokens.radii.md,
+              borderWidth: StyleSheet.hairlineWidth,
+              borderColor: tokens.borderColors.subtle,
+              alignItems: 'center',
+              justifyContent: 'center',
+            },
+            pressed && { opacity: 0.7 },
+          ]}
+        >
+          <Text
+            style={{
+              fontFamily: tokens.fonts.uiMedium,
+              fontSize: 15,
+              color: tokens.textColors.secondary,
+            }}
+          >
+            Reset to defaults
+          </Text>
+        </Pressable>
       </ScrollView>
     </SafeAreaView>
   );

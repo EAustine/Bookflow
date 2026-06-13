@@ -30,6 +30,28 @@ export const COMMON_LANGUAGES: TranslationLanguage[] = [
   { code: 'yoruba', label: 'Yoruba' },
 ];
 
+/**
+ * Bridge between the reader-store language codes (ISO-ish: 'tw', 'es', …)
+ * that the You-tab "Translation language" picker writes, and the translate
+ * API codes (full names: 'twi', 'spanish', …) the Translate tool speaks.
+ * Without this the You-tab setting was disconnected from the tool. Keep the
+ * keys in sync with readerStore.TranslationLanguage.
+ */
+export const STORE_LANG_TO_TRANSLATE: Record<string, string> = {
+  en: 'english',
+  es: 'spanish',
+  fr: 'french',
+  de: 'german',
+  it: 'italian',
+  pt: 'portuguese',
+  tw: 'twi',
+  sw: 'swahili',
+  yo: 'yoruba',
+  zh: 'mandarin',
+  ja: 'japanese',
+  ko: 'korean',
+};
+
 export type GenerateTranslationResult =
   | {
       ok: true;

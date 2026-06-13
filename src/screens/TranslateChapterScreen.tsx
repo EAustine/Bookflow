@@ -27,11 +27,13 @@ import { tokens } from '~/design/tokens';
 import type { Book } from '~/types/book';
 import {
   COMMON_LANGUAGES,
+  STORE_LANG_TO_TRANSLATE,
   useTranslation,
   type TranslationLanguage,
 } from '~/lib/aiTranslate';
 import { formatNetworkError } from '~/lib/networkErrors';
 import { useBackHandler } from '~/lib/useBackHandler';
+import { useReaderStore } from '~/stores/readerStore';
 
 export type TranslateChapterScreenProps = {
   book: Book;
@@ -60,7 +62,14 @@ export function TranslateChapterScreen({
       (book as { last_read_page?: number }).last_read_page ??
       0,
   );
-  const [targetLanguage, setTargetLanguage] = useState(initialLanguage ?? 'twi');
+  // Default to the user's You-tab "Translation language" setting (mapped
+  // from the store's code scheme to the translate API's), so that picker
+  // actually drives the tool. An explicit prop still wins; 'twi' is the
+  // final fallback. The user can still override per-session below.
+  const storeLang = useReaderStore((s) => s.translationLanguage);
+  const [targetLanguage, setTargetLanguage] = useState(
+    initialLanguage ?? STORE_LANG_TO_TRANSLATE[storeLang] ?? 'twi',
+  );
 
   const totalPages = book.totalPages || 0;
   const canGoPrev = currentPageIndex > 0;
