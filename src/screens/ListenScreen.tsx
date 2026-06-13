@@ -755,15 +755,22 @@ function VoiceSheet({
   // (don't resume) without a stale closure.
   const bookWasPlayingRef = useRef(false);
   const pendingVoiceIdRef = useRef<string | null>(null);
+  // Hold the latest audio session in a ref so the subscription effect
+  // below can resume playback WITHOUT depending on `audio`. `audio`
+  // (useAudioSession) returns a new value on every playback tick, so an
+  // effect that re-subscribed each tick would tear the preview down via
+  // its cleanup's stopVoicePreview() — that's what broke preview entirely.
+  const audioRef = useRef(audio);
+  audioRef.current = audio;
   const resumeBookIfNeeded = useCallback(() => {
     if (!bookWasPlayingRef.current) return;
     bookWasPlayingRef.current = false;
     try {
-      audio.play();
+      audioRef.current.play();
     } catch {
       // Session gone / not loaded — nothing to resume.
     }
-  }, [audio]);
+  }, []);
   useEffect(() => {
     const unsub = subscribeVoicePreview(() => {
       const active = getActivePreviewVoiceId();
