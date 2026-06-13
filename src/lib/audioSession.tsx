@@ -684,6 +684,59 @@ export function AudioSessionProvider({ children }: { children: ReactNode }) {
     setPageIndexInternal(idx);
   }, []);
 
+  // ── Preserve playback position across a voice change ──────────────────
+  // Switching narration voice reloads the page audio (which resets to 0).
+  // Capture where we were + intent, then once the new voice's audio has
+  // loaded, seek to the equivalent spot — scaled by the new duration, since
+  // a different voice narrates the same page in a slightly different total
+  // time — and resume if we were playing. Live values are read through refs
+  // so this wrapped setter stays referentially STABLE: it lives in the
+  // `useAudioStable` slice, which must not churn on every playback tick.
+  const liveStatusRef = useRef(status);
+  liveStatusRef.current = status;
+  const voiceIdRef = useRef(voiceId);
+  voiceIdRef.current = voiceId;
+  const voiceSwitchRef = useRef<{
+    position: number;
+    fromDuration: number;
+    wasPlaying: boolean;
+  } | null>(null);
+
+  const setVoiceIdPreservingPosition = useCallback((voice: AudioVoice) => {
+    if (voice === voiceIdRef.current) return;
+    const s = liveStatusRef.current;
+    voiceSwitchRef.current =
+      s.durationSeconds > 0 && s.positionSeconds > 0.5
+        ? {
+            position: s.positionSeconds,
+            fromDuration: s.durationSeconds,
+            wasPlaying: s.isPlaying,
+          }
+        : null;
+    setVoiceId(voice);
+  }, []);
+
+  useEffect(() => {
+    const pending = voiceSwitchRef.current;
+    if (!pending) return;
+    if (status.loading || status.durationSeconds <= 0) return; // not loaded yet
+    voiceSwitchRef.current = null;
+    const ratio =
+      pending.fromDuration > 0 ? pending.position / pending.fromDuration : 0;
+    const target = Math.max(
+      0,
+      Math.min(status.durationSeconds - 0.5, ratio * status.durationSeconds),
+    );
+    void (async () => {
+      try {
+        await seekTo(target);
+        if (pending.wasPlaying) playWithIntent();
+      } catch {
+        // best-effort — the new voice just starts from 0 if the seek fails
+      }
+    })();
+  }, [status.loading, status.durationSeconds, seekTo, playWithIntent]);
+
   // Stable slice — rebuilt only when the listed fields actually
   // change. Notably excludes `status`, `alignment`, and
   // `currentCharIndex`, which churn on the audio tick. Consumers
@@ -704,7 +757,7 @@ export function AudioSessionProvider({ children }: { children: ReactNode }) {
       pause: pauseWithIntent,
       seekTo,
       setPageIndex: setPageIndexPublic,
-      setVoiceId,
+      setVoiceId: setVoiceIdPreservingPosition,
       setPlaybackRate,
       setSleepTimer,
       dismissMiniPlayer,
@@ -722,6 +775,7 @@ export function AudioSessionProvider({ children }: { children: ReactNode }) {
       start,
       stop,
       setPageIndexPublic,
+      setVoiceIdPreservingPosition,
       setPlaybackRate,
       setSleepTimer,
       dismissMiniPlayer,
