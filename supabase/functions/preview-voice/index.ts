@@ -23,7 +23,27 @@
  * (verify_jwt is on by default). No DB writes. No PII surfaced.
  */
 
+import { createClient } from 'npm:@supabase/supabase-js@2.45.0';
+
 const ELEVENLABS_API_KEY = Deno.env.get('ELEVENLABS_API_KEY');
+const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
+const SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+const STORAGE_BUCKET = 'books';
+const SIGNED_URL_TTL_S = 60 * 60; // 1h — ample for a picker session
+// Short sample rendered once per voice, then cached. Representative of
+// real narration cadence without burning many credits.
+const PREVIEW_TEXT =
+  "Hi — I'm your Bookflow narrator. This is how I'll read your book aloud to you.";
+// MUST stay in sync with generate-audio so the preview sounds exactly like
+// the real narration (the previous approach forwarded ElevenLabs' published
+// preview_url, which is rendered with different settings → "different voice").
+const PREVIEW_MODEL = 'eleven_turbo_v2_5';
+const PREVIEW_VOICE_SETTINGS = {
+  stability: 0.4,
+  similarity_boost: 0.75,
+  style: 0.0,
+  use_speaker_boost: true,
+};
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
@@ -66,50 +86,78 @@ Deno.serve(async (req) => {
     return json({ error: 'invalid_voice_id' }, 400);
   }
 
+  const supabase = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
+    auth: { autoRefreshToken: false, persistSession: false },
+  });
+  // `_turbo` in the path tags the model/settings the sample was rendered
+  // with — bump it if PREVIEW_MODEL/settings change so stale caches don't
+  // get served.
+  const cachePath = `voice-previews/${voiceId}_turbo.mp3`;
+
+  // 1. Serve the cached sample if we already rendered it for this voice.
+  const cachedSigned = await supabase.storage
+    .from(STORAGE_BUCKET)
+    .createSignedUrl(cachePath, SIGNED_URL_TTL_S);
+  if (!cachedSigned.error && cachedSigned.data?.signedUrl) {
+    return json({ url: cachedSigned.data.signedUrl, cached: true }, 200);
+  }
+
+  // 2. Cache miss — render the sample with the SAME model + settings as
+  // narration, so the preview matches what the user actually hears.
   try {
-    const res = await fetch(`https://api.elevenlabs.io/v1/voices/${voiceId}`, {
-      method: 'GET',
-      headers: {
-        'xi-api-key': ELEVENLABS_API_KEY,
-        accept: 'application/json',
+    const ttsRes = await fetch(
+      `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}?output_format=mp3_44100_128`,
+      {
+        method: 'POST',
+        headers: {
+          'xi-api-key': ELEVENLABS_API_KEY,
+          'Content-Type': 'application/json',
+          accept: 'audio/mpeg',
+        },
+        body: JSON.stringify({
+          text: PREVIEW_TEXT,
+          model_id: PREVIEW_MODEL,
+          voice_settings: PREVIEW_VOICE_SETTINGS,
+        }),
       },
-    });
-    if (!res.ok) {
-      const text = await res.text().catch(() => '');
+    );
+    if (!ttsRes.ok) {
+      const text = await ttsRes.text().catch(() => '');
       console.warn(
-        `[preview-voice] elevenlabs returned ${res.status}: ${text.slice(0, 200)}`,
+        `[preview-voice] elevenlabs ${ttsRes.status}: ${text.slice(0, 200)}`,
       );
       return json(
-        {
-          error: 'upstream_failed',
-          message: `ElevenLabs returned ${res.status}`,
-        },
+        { error: 'upstream_failed', message: `ElevenLabs returned ${ttsRes.status}` },
         502,
       );
     }
-    const payload = (await res.json()) as {
-      preview_url?: unknown;
-      name?: unknown;
-    };
-    if (typeof payload.preview_url !== 'string' || !payload.preview_url) {
+    const audioBytes = new Uint8Array(await ttsRes.arrayBuffer());
+    if (audioBytes.byteLength < 100) {
+      return json({ error: 'empty_audio' }, 502);
+    }
+
+    // Cache for next time. Upload failure is non-fatal — we can still
+    // sign+serve this generation (it just won't be cached).
+    const up = await supabase.storage
+      .from(STORAGE_BUCKET)
+      .upload(cachePath, audioBytes, { contentType: 'audio/mpeg', upsert: true });
+    if (up.error) {
+      console.warn('[preview-voice] cache upload failed:', up.error.message);
+    }
+
+    const signed = await supabase.storage
+      .from(STORAGE_BUCKET)
+      .createSignedUrl(cachePath, SIGNED_URL_TTL_S);
+    if (signed.error || !signed.data?.signedUrl) {
       return json(
-        {
-          error: 'no_preview',
-          message: 'This voice has no published preview URL.',
-        },
-        404,
+        { error: 'sign_failed', message: signed.error?.message ?? 'no signed url' },
+        500,
       );
     }
-    return json(
-      {
-        url: payload.preview_url,
-        name: typeof payload.name === 'string' ? payload.name : null,
-      },
-      200,
-    );
+    return json({ url: signed.data.signedUrl, cached: false }, 200);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    console.warn('[preview-voice] fetch threw:', message);
+    console.warn('[preview-voice] generate threw:', message);
     return json({ error: 'network_error', message }, 502);
   }
 });
