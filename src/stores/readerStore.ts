@@ -1,4 +1,6 @@
 import { create } from 'zustand';
+import { persist, createJSONStorage } from 'zustand/middleware';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export type ReaderFontFamily = 'serif' | 'sans' | 'lexend';
 export type ReaderTheme = 'light' | 'sepia' | 'dark';
@@ -116,7 +118,7 @@ const DEFAULT: ReaderSettings = {
   theme: 'light',
   autoHide: false,
   translationLanguage: 'tw',
-  defaultVoiceId: '21m00Tcm4TlvDq8ikWAM', // Rachel — same as aiAudio.DEFAULT_VOICE
+  defaultVoiceId: '9BWtsMINqrJLrRacOk9x', // Aria — matches aiAudio.DEFAULT_VOICE (free voice)
   defaultPlaybackSpeed: 1,
   resumeAfterCalls: true,
   notifReminderOn: true,
@@ -125,7 +127,7 @@ const DEFAULT: ReaderSettings = {
   notifStreakWarningOn: false,
   notifBookFinishedOn: true,
   notifWarningsOn: true,
-  notifUpdatesOn: false,
+  notifUpdatesOn: true, // product updates on by default
 };
 
 type ReaderStore = ReaderSettings & {
@@ -148,27 +150,54 @@ type ReaderStore = ReaderSettings & {
   reset: () => void;
 };
 
-export const useReaderStore = create<ReaderStore>((set) => ({
-  ...DEFAULT,
-  setPreset: (preset) => set({ preset, ...PRESET_CONFIGS[preset] }),
-  setFontSize: (fontSize) => set({ fontSize }),
-  setFontFamily: (fontFamily) => set({ fontFamily }),
-  setTheme: (theme) => set({ theme }),
-  setAutoHide: (autoHide) => set({ autoHide }),
-  setTranslationLanguage: (translationLanguage) => set({ translationLanguage }),
-  setDefaultVoiceId: (defaultVoiceId) => set({ defaultVoiceId }),
-  setDefaultPlaybackSpeed: (defaultPlaybackSpeed) => set({ defaultPlaybackSpeed }),
-  setResumeAfterCalls: (resumeAfterCalls) => set({ resumeAfterCalls }),
-  setNotifReminderOn: (notifReminderOn) => set({ notifReminderOn }),
-  setNotifReminderHour: (notifReminderHour) =>
-    set({ notifReminderHour: Math.max(0, Math.min(23, notifReminderHour)) }),
-  setNotifReminderMinute: (notifReminderMinute) =>
-    set({ notifReminderMinute: Math.max(0, Math.min(59, notifReminderMinute)) }),
-  setNotifStreakWarningOn: (notifStreakWarningOn) =>
-    set({ notifStreakWarningOn }),
-  setNotifBookFinishedOn: (notifBookFinishedOn) =>
-    set({ notifBookFinishedOn }),
-  setNotifWarningsOn: (notifWarningsOn) => set({ notifWarningsOn }),
-  setNotifUpdatesOn: (notifUpdatesOn) => set({ notifUpdatesOn }),
-  reset: () => set(DEFAULT),
-}));
+export const useReaderStore = create<ReaderStore>()(
+  persist(
+    (set) => ({
+      ...DEFAULT,
+      setPreset: (preset) => set({ preset, ...PRESET_CONFIGS[preset] }),
+      setFontSize: (fontSize) => set({ fontSize }),
+      setFontFamily: (fontFamily) => set({ fontFamily }),
+      setTheme: (theme) => set({ theme }),
+      setAutoHide: (autoHide) => set({ autoHide }),
+      setTranslationLanguage: (translationLanguage) => set({ translationLanguage }),
+      setDefaultVoiceId: (defaultVoiceId) => set({ defaultVoiceId }),
+      setDefaultPlaybackSpeed: (defaultPlaybackSpeed) => set({ defaultPlaybackSpeed }),
+      setResumeAfterCalls: (resumeAfterCalls) => set({ resumeAfterCalls }),
+      setNotifReminderOn: (notifReminderOn) => set({ notifReminderOn }),
+      setNotifReminderHour: (notifReminderHour) =>
+        set({ notifReminderHour: Math.max(0, Math.min(23, notifReminderHour)) }),
+      setNotifReminderMinute: (notifReminderMinute) =>
+        set({ notifReminderMinute: Math.max(0, Math.min(59, notifReminderMinute)) }),
+      setNotifStreakWarningOn: (notifStreakWarningOn) =>
+        set({ notifStreakWarningOn }),
+      setNotifBookFinishedOn: (notifBookFinishedOn) =>
+        set({ notifBookFinishedOn }),
+      setNotifWarningsOn: (notifWarningsOn) => set({ notifWarningsOn }),
+      setNotifUpdatesOn: (notifUpdatesOn) => set({ notifUpdatesOn }),
+      reset: () => set(DEFAULT),
+    }),
+    {
+      name: 'bookflow-reader-settings',
+      storage: createJSONStorage(() => AsyncStorage),
+      // Persist only the settings values, not the action functions.
+      partialize: (s) => ({
+        preset: s.preset,
+        fontSize: s.fontSize,
+        fontFamily: s.fontFamily,
+        theme: s.theme,
+        autoHide: s.autoHide,
+        translationLanguage: s.translationLanguage,
+        defaultVoiceId: s.defaultVoiceId,
+        defaultPlaybackSpeed: s.defaultPlaybackSpeed,
+        resumeAfterCalls: s.resumeAfterCalls,
+        notifReminderOn: s.notifReminderOn,
+        notifReminderHour: s.notifReminderHour,
+        notifReminderMinute: s.notifReminderMinute,
+        notifStreakWarningOn: s.notifStreakWarningOn,
+        notifBookFinishedOn: s.notifBookFinishedOn,
+        notifWarningsOn: s.notifWarningsOn,
+        notifUpdatesOn: s.notifUpdatesOn,
+      }),
+    },
+  ),
+);
