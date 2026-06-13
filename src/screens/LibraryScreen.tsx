@@ -46,7 +46,9 @@ import {
 } from '~/screens/UploadFlowScreen';
 import { useBookUpload } from '~/lib/uploadBook';
 import type * as DocumentPicker from 'expo-document-picker';
-import { useFreePlanUsage } from '~/lib/freePlanUsage';
+import { useFreePlanUsage, FREE_PLAN_LIMITS } from '~/lib/freePlanUsage';
+import { useMonthlyListenStats } from '~/lib/readingStats';
+import { useReaderStore } from '~/stores/readerStore';
 import { presentPaywall, ENTITLEMENT_PRO, useIsPro } from '~/lib/revenuecat';
 import { reprocessBook } from '~/lib/reprocessBook';
 import { useNetworkState } from '~/hooks/useNetworkState';
@@ -128,6 +130,13 @@ export function LibraryScreen({
   const isOffline = !isConnected;
   // Pro users never see the free-tier "running low" upsell banner.
   const { isPro } = useIsPro();
+  // Real audio usage drives the "running low" banner — show it only when
+  // the free user is actually near their monthly audio limit, and only if
+  // they haven't turned usage warnings off (Settings / Notifications).
+  const { stats: monthStats } = useMonthlyListenStats();
+  const audioRemainingMin =
+    monthStats?.audioRemainingMin ?? FREE_PLAN_LIMITS.audioMinutesPerMonth;
+  const usageWarningsOn = useReaderStore((s) => s.notifWarningsOn);
 
   const [selectedBook, setSelectedBook] = useState<Book | null>(null);
   // Notify the parent shell whenever a reader opens / closes so the
@@ -914,13 +923,18 @@ export function LibraryScreen({
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
       {isOffline && <OfflineBanner onRetry={() => {}} />}
-      {!isOffline && !isPro && showBanner && onUpgrade && (
-        <SoftWarningBanner
-          minutesLeft={18}
-          onUpgrade={onUpgrade}
-          onDismiss={() => setShowBanner(false)}
-        />
-      )}
+      {!isOffline &&
+        !isPro &&
+        usageWarningsOn &&
+        showBanner &&
+        onUpgrade &&
+        audioRemainingMin <= 18 && (
+          <SoftWarningBanner
+            minutesLeft={audioRemainingMin}
+            onUpgrade={onUpgrade}
+            onDismiss={() => setShowBanner(false)}
+          />
+        )}
       <ScrollView
         style={styles.scroll}
         contentContainerStyle={styles.scrollContent}

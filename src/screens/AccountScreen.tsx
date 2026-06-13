@@ -27,11 +27,7 @@ import type { YouPlan, YouProfile } from '~/screens/YouScreen';
 
 // External URLs for the Privacy & data rows live in a shared
 // constants module so a marketing change is a one-line edit.
-import {
-  PRIVACY_POLICY_URL,
-  STUDENT_VERIFICATION_URL,
-  TERMS_OF_SERVICE_URL,
-} from '~/lib/legalUrls';
+import { PRIVACY_POLICY_URL, TERMS_OF_SERVICE_URL } from '~/lib/legalUrls';
 import { useBackHandler } from '~/lib/useBackHandler';
 
 // ─── Props ────────────────────────────────────────────────────────────────────
@@ -124,25 +120,28 @@ export function AccountScreen({
   }, [restoring]);
 
   const handleVerifyStudent = useCallback(async () => {
-    // Student verification is provided via SheerID (or similar)
-    // — we don't have a verification SDK integrated yet, so the
-    // row deep-links into a web page where the user submits
-    // their .edu credentials. The returned coupon is applied
-    // to the Standard plan checkout.
-    const url = STUDENT_VERIFICATION_URL;
+    // Automated student verification (SheerID etc.) isn't wired yet and the
+    // old web link 404s — so route students to support to claim the rate
+    // manually rather than dumping them on a broken page. Prefer a
+    // pre-filled email; fall back to a clear instruction if no mail app.
+    const email = 'support@getbookflow.co';
+    const mailto = `mailto:${email}?subject=${encodeURIComponent(
+      'Student verification',
+    )}&body=${encodeURIComponent(
+      "Hi Bookflow — I'd like the student rate. My school (.edu) email is: ",
+    )}`;
     try {
-      const supported = await Linking.canOpenURL(url);
-      if (supported) {
-        await Linking.openURL(url);
-      } else {
-        Alert.alert('Verification', `Open ${url} on a desktop to complete student verification.`);
+      if (await Linking.canOpenURL(mailto)) {
+        await Linking.openURL(mailto);
+        return;
       }
-    } catch (err) {
-      Alert.alert(
-        "Can't open verification",
-        err instanceof Error ? err.message : 'Unknown error',
-      );
+    } catch {
+      // fall through to the manual instruction
     }
+    Alert.alert(
+      'Student verification',
+      `Email ${email} from your school (.edu) address and we'll apply the student rate to your account.`,
+    );
   }, []);
 
   const handleDeleteAccount = useCallback(async () => {
@@ -326,6 +325,12 @@ function EditProfileScreen({
   profile: YouProfile;
   onBack: () => void;
 }) {
+  // Android hardware back returns to the Account screen, not out of the
+  // app — without this it fell through to the root "press back to exit".
+  useBackHandler(() => {
+    onBack();
+    return true;
+  });
   const [name, setName] = useState(profile.name);
   // Local preview state for the avatar — `avatarUrl` shows what's
   // currently displayed, `pickedUri` is the new image the user
