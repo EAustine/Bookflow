@@ -11,6 +11,7 @@ import {
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   DEFAULT_VOICE,
+  VOICE_OPTIONS,
   useAudio,
   type AudioAlignment,
   type AudioVoice,
@@ -19,6 +20,14 @@ import { persistReadingPosition } from '~/lib/useBookChapters';
 import { peekCachedCoverUrl, resolveCoverUrl } from '~/lib/bookCovers';
 import type { Book } from '~/types/book';
 import { useReaderStore } from '~/stores/readerStore';
+import { useIsPro } from '~/lib/revenuecat';
+
+/** Voice IDs the current roster offers — used to discard a stale id
+ * persisted from an older roster and fall back to the free voice. */
+const VALID_VOICE_IDS = new Set(VOICE_OPTIONS.map((v) => v.id));
+/** The single free-tier voice (Aria). It's the default for everyone, and
+ * the only voice free users narrate with — Pro users may pick another. */
+const FREE_VOICE_ID = DEFAULT_VOICE;
 
 /**
  * Generate a placeholder artwork URL for a book that has no cover
@@ -240,6 +249,20 @@ export function AudioSessionProvider({ children }: { children: ReactNode }) {
   const [voiceId, setVoiceId] = useState<AudioVoice>(
     () => useReaderStore.getState().defaultVoiceId || DEFAULT_VOICE,
   );
+  // Enforce the voice-tier rule: the free voice is the default for
+  // everyone, free users ALWAYS narrate with it, and a stale id persisted
+  // from an older roster falls back to it. Only Pro users keep a custom
+  // pick. Runtime-only clamp — we don't overwrite the persisted default,
+  // so a Pro user's choice returns if their subscription lapses then
+  // resumes. (This is why first-listen used an old voice until the user
+  // tapped Aria: the persisted defaultVoiceId was a since-removed voice.)
+  const { isPro, isLoading: isProLoading } = useIsPro();
+  useEffect(() => {
+    if (isProLoading) return; // wait until entitlement is known
+    const desired =
+      isPro && VALID_VOICE_IDS.has(voiceId) ? voiceId : FREE_VOICE_ID;
+    if (desired !== voiceId) setVoiceId(desired);
+  }, [isPro, isProLoading, voiceId]);
   // Initial playback speed honours the user's default from the You /
   // Settings screens. Same imperative-read pattern as voiceId above —
   // we only need the value at mount; later changes to the store don't
