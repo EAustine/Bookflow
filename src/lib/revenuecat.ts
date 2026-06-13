@@ -364,6 +364,7 @@ export function useProSubscriptionDetails(): ProSubscriptionDetails {
         // the base-plan suffix instead.
         let priceLabel: string | null = null;
         let periodLabel: string | null = null;
+        let subPeriodISO: string | null = null;
         try {
           const offering = await getCurrentOffering();
           const pkg =
@@ -375,9 +376,9 @@ export function useProSubscriptionDetails(): ProSubscriptionDetails {
                   p.product.identifier.endsWith(`:${basePlan}`),
                 )
               : undefined);
-          const iso = pkg?.product.subscriptionPeriod ?? null;
-          periodLabel = labelFromISO(iso);
-          const word = wordFromISO(iso);
+          subPeriodISO = pkg?.product.subscriptionPeriod ?? null;
+          periodLabel = labelFromISO(subPeriodISO);
+          const word = wordFromISO(subPeriodISO);
           const priceString = pkg?.product.priceString ?? null;
           if (priceString) {
             priceLabel = word ? `${priceString} / ${word}` : priceString;
@@ -391,9 +392,24 @@ export function useProSubscriptionDetails(): ProSubscriptionDetails {
           periodLabel = labelFromText(basePlan ?? ent.productIdentifier);
         }
 
-        const renewalLabel = ent.expirationDate
-          ? formatDate(ent.expirationDate)
-          : null;
+        // Renewal date. For an auto-renewing sub we compute
+        // start-of-current-period + one billing period, which reads
+        // naturally (+1 month / +1 year) and — crucially — is robust to
+        // Google Play's SANDBOX clock, where test subs renew every ~5 min
+        // so the raw expirationDate is only minutes out. In production
+        // this equals the real expiry. For a cancelled sub we show the
+        // actual expirationDate (when access genuinely ends).
+        const anchor =
+          (ent as { latestPurchaseDate?: string | null }).latestPurchaseDate ??
+          (ent as { originalPurchaseDate?: string | null })
+            .originalPurchaseDate ??
+          null;
+        let renewalLabel: string | null = null;
+        if (ent.willRenew && anchor && subPeriodISO) {
+          renewalLabel = formatDate(addPeriod(anchor, subPeriodISO));
+        } else if (ent.expirationDate) {
+          renewalLabel = formatDate(ent.expirationDate);
+        }
 
         if (!cancelled) {
           setState({
@@ -462,5 +478,39 @@ function formatDate(iso: string): string | null {
     });
   } catch {
     return null;
+  }
+}
+
+/**
+ * Add one ISO-8601 billing period (P1M / P1Y / P1W / P7D) to a date,
+ * returning a new ISO string. Used to project the next renewal from the
+ * current period's start — accurate in production and immune to Google
+ * Play's compressed sandbox renewal clock. Returns the input unchanged
+ * if the period can't be parsed.
+ */
+function addPeriod(startISO: string, periodISO: string): string {
+  try {
+    const d = new Date(startISO);
+    if (Number.isNaN(d.getTime())) return startISO;
+    const m = periodISO.match(/^P(\d+)([DWMY])$/);
+    if (!m) return startISO;
+    const n = Number(m[1]);
+    switch (m[2]) {
+      case 'Y':
+        d.setFullYear(d.getFullYear() + n);
+        break;
+      case 'M':
+        d.setMonth(d.getMonth() + n);
+        break;
+      case 'W':
+        d.setDate(d.getDate() + n * 7);
+        break;
+      case 'D':
+        d.setDate(d.getDate() + n);
+        break;
+    }
+    return d.toISOString();
+  } catch {
+    return startISO;
   }
 }

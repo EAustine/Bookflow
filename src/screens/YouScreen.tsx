@@ -499,6 +499,7 @@ function PlanCard({
               : `${plan.meters.audio.used} / ${plan.meters.audio.total} min`
           }
           percent={audioPct}
+          unlimited={plan.meters.audio.total === Infinity}
         />
         <Meter
           name="AI credits"
@@ -515,6 +516,7 @@ function PlanCard({
               : `${plan.meters.books.used} / ${plan.meters.books.total}`
           }
           percent={booksPct}
+          unlimited={plan.meters.books.total === Infinity}
         />
       </View>
 
@@ -538,16 +540,36 @@ function Meter({
   name,
   value,
   percent,
+  unlimited,
 }: {
   name: string;
   value: string;
   percent: number;
+  /** Pro tiers have no cap on some meters — render an "Unlimited" chip
+   * instead of a progress bar, which would be meaningless. */
+  unlimited?: boolean;
 }) {
   // ≥80%: amber fill (soft "running low" cue, not alarming).
   // <80%: muted forest fill — present but quiet.
   const fillColor =
     percent >= 80 ? tokens.colors.amber[500] : tokens.colors.forest[200];
   const clamped = Math.max(0, Math.min(100, percent));
+
+  // Unlimited row: no track. Name on the left, an "Unlimited" chip with
+  // an infinity glyph on the right — a clean, intentional treatment
+  // rather than a full/empty bar that implies a limit that isn't there.
+  if (unlimited) {
+    return (
+      <View style={styles.meterRowUnlimited}>
+        <Text style={styles.meterName}>{name}</Text>
+        <View style={styles.unlimitedChip}>
+          <Text style={styles.unlimitedChipGlyph}>∞</Text>
+          <Text style={styles.unlimitedChipLabel}>Unlimited</Text>
+        </View>
+      </View>
+    );
+  }
+
   return (
     <View style={styles.meterRow}>
       <View style={styles.meterMeta}>
@@ -787,6 +809,37 @@ const styles = StyleSheet.create({
   meterFill: {
     height: '100%',
     borderRadius: 2,
+  },
+  // Unlimited (Pro) meter row — no track; a chip on the right instead.
+  meterRowUnlimited: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    minHeight: 25,
+  },
+  unlimitedChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: 'rgba(255,255,255,0.14)',
+    paddingHorizontal: 9,
+    paddingVertical: 4,
+    borderRadius: 11,
+  },
+  unlimitedChipGlyph: {
+    fontFamily: tokens.fonts.uiMedium,
+    fontSize: 14,
+    lineHeight: 16,
+    fontWeight: '600',
+    color: tokens.colors.cream[50],
+  },
+  unlimitedChipLabel: {
+    fontFamily: tokens.fonts.uiMedium,
+    fontSize: 11,
+    lineHeight: 14,
+    fontWeight: '600',
+    letterSpacing: 0.2,
+    color: tokens.colors.cream[50],
   },
   upgradeBtn: {
     height: 40,
