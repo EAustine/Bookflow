@@ -746,17 +746,40 @@ function VoiceSheet({
     getActivePreviewVoiceId(),
   );
   const [pendingVoiceId, setPendingVoiceId] = useState<string | null>(null);
+  // Book-pause coordination. We pause the book while a preview plays and
+  // resume it when the preview is fully done. `bookWasPlayingRef` records
+  // that the book WAS playing (set once on the first preview, cleared on
+  // resume) so switching voices doesn't lose the intent. `pendingVoiceIdRef`
+  // mirrors pendingVoiceId so the subscriber can tell a real "preview
+  // ended" (resume) from the brief stop→start gap when switching voices
+  // (don't resume) without a stale closure.
+  const bookWasPlayingRef = useRef(false);
+  const pendingVoiceIdRef = useRef<string | null>(null);
+  const resumeBookIfNeeded = useCallback(() => {
+    if (!bookWasPlayingRef.current) return;
+    bookWasPlayingRef.current = false;
+    try {
+      audio.play();
+    } catch {
+      // Session gone / not loaded — nothing to resume.
+    }
+  }, [audio]);
   useEffect(() => {
     const unsub = subscribeVoicePreview(() => {
-      setActiveVoiceId(getActivePreviewVoiceId());
+      const active = getActivePreviewVoiceId();
+      setActiveVoiceId(active);
+      // Preview fully ended → resume the book. Skip during the momentary
+      // stop→start gap when switching to another preview (pending set).
+      if (!active && !pendingVoiceIdRef.current) resumeBookIfNeeded();
     });
-    // Always stop preview when the sheet unmounts — otherwise a
-    // half-played sample keeps playing under the closed sheet.
+    // Stop preview when the sheet unmounts (otherwise a half-played sample
+    // keeps playing under the closed sheet) and resume the book.
     return () => {
       unsub();
       stopVoicePreview();
+      resumeBookIfNeeded();
     };
-  }, []);
+  }, [resumeBookIfNeeded]);
   const handlePreview = useCallback(
     async (voiceId: string) => {
       // Tap again to stop (matches user expectation; Preview button
@@ -765,15 +788,18 @@ function VoiceSheet({
         stopVoicePreview();
         return;
       }
-      // Yield the audio focus by pausing the book session first.
-      if (audio.isPlaying) {
-        try {
-          audio.pause();
-        } catch {
-          // Audio session may not be loaded yet — that's fine,
-          // there's nothing to silence.
-        }
+      // Pause the book BEFORE the preview so they never overlap. Record
+      // that it was playing (once — don't overwrite to false on a
+      // voice-switch where the book is already paused) so we can resume
+      // when the preview ends. Pause unconditionally: gating on isPlaying
+      // could skip a needed pause if that flag lags the real player.
+      if (audio.isPlaying) bookWasPlayingRef.current = true;
+      try {
+        audio.pause();
+      } catch {
+        // Session may not be loaded yet — nothing to silence.
       }
+      pendingVoiceIdRef.current = voiceId;
       setPendingVoiceId(voiceId);
       try {
         await playVoicePreview(voiceId);
@@ -787,6 +813,7 @@ function VoiceSheet({
           err instanceof Error ? err.message : err,
         );
       } finally {
+        pendingVoiceIdRef.current = null;
         setPendingVoiceId(null);
       }
     },
