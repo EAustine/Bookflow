@@ -55,15 +55,20 @@ const CORS_HEADERS = {
  * cloned voices added by the user later would also work without
  * server changes (they're just IDs).
  */
+// ElevenLabs CURRENT default-library voice IDs. The previous set used
+// legacy premade voices (Adam/Antoni/Domi/Sam) that newer accounts can't
+// access, which is why narration 502'd ("narration service failed") for
+// those. These are the present-day defaults — available on every account,
+// and chosen for distinct gender + accent.
 const KNOWN_VOICES = new Set([
-  '21m00Tcm4TlvDq8ikWAM', // Rachel
-  'AZnzlk1XvdvUeBnXmlld', // Domi
-  'EXAVITQu4vr4xnSDxMaL', // Bella
-  'ErXwobaYiN019PkySvjV', // Antoni
-  'pNInz6obpgDQGcFmaJgb', // Adam
-  'yoZ06aMxZJJ28mfd3POQ', // Sam
+  '9BWtsMINqrJLrRacOk9x', // Aria   — female, expressive (American)
+  'nPczCjzI2devNBz1zQrb', // Brian  — male, deep (American)
+  'JBFqnCBsd6RMkjVDRZzb', // George — male, warm (British)
+  'IKne3meq5aSn9XLyUdCD', // Charlie — male, casual (Australian)
+  'EXAVITQu4vr4xnSDxMaL', // Sarah  — female, gentle (American)
+  'pFZP5JQG7iQjIQuC4Bku', // Lily   — female, soft (British)
 ]);
-const DEFAULT_VOICE = '21m00Tcm4TlvDq8ikWAM'; // Rachel
+const DEFAULT_VOICE = '9BWtsMINqrJLrRacOk9x'; // Aria
 
 type Body = {
   book_id: string;
@@ -238,7 +243,12 @@ Deno.serve(async (req) => {
         },
         body: JSON.stringify({
           text: page.content.trim(),
-          model_id: 'eleven_multilingual_v2',
+          // turbo_v2_5 generates several times faster than multilingual_v2
+          // (the prior model) at near-identical quality — the main lever
+          // for "processing needs to be optimized." Still multilingual, so
+          // non-English pages narrate fine. (flash_v2_5 is faster still but
+          // audibly lower quality, not worth it for long-form narration.)
+          model_id: 'eleven_turbo_v2_5',
           voice_settings: {
             stability: 0.4,
             similarity_boost: 0.75,

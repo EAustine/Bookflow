@@ -136,13 +136,27 @@ export async function playVoicePreview(voiceId: string): Promise<void> {
   activeVoiceId = voiceId;
   notify();
 
-  // expo-audio emits playbackStatusUpdate; we listen for didJustFinish
-  // so the UI can flip the button back to its idle state.
-  player.addListener('playbackStatusUpdate', (status: { didJustFinish?: boolean }) => {
-    if (status.didJustFinish) {
-      stopVoicePreview();
-    }
-  });
+  // Play-on-loaded. createAudioPlayer loads the source asynchronously, and
+  // calling play() before it's ready silently no-ops in expo-audio — THAT
+  // was the "preview is silent" bug. So we (re)issue play() on the loaded
+  // status whenever the player isn't already playing (idempotent once it
+  // is), and also kick it immediately below in case it's already buffered.
+  player.addListener(
+    'playbackStatusUpdate',
+    (status: { isLoaded?: boolean; playing?: boolean; didJustFinish?: boolean }) => {
+      if (status.didJustFinish) {
+        stopVoicePreview();
+        return;
+      }
+      if (status.isLoaded && !status.playing && activePlayer === player) {
+        try {
+          player.play();
+        } catch {
+          stopVoicePreview();
+        }
+      }
+    },
+  );
 
   try {
     player.play();

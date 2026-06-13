@@ -45,12 +45,15 @@ const VOICES: {
   bg: string;
   fg: string;
 }[] = [
-  { id: '21m00Tcm4TlvDq8ikWAM', name: 'Rachel', desc: 'Calm · American English',       tier: 'free', bg: tokens.colors.forest[100], fg: tokens.colors.forest[800] },
-  { id: 'AZnzlk1XvdvUeBnXmlld', name: 'Domi',   desc: 'Confident · American English',  tier: 'pro',  bg: tokens.colors.amber[200],  fg: tokens.colors.ink[700] },
-  { id: 'EXAVITQu4vr4xnSDxMaL', name: 'Bella',  desc: 'Soft · American English',       tier: 'pro',  bg: tokens.colors.cream[200],  fg: tokens.colors.ink[700] },
-  { id: 'ErXwobaYiN019PkySvjV', name: 'Antoni', desc: 'Well-rounded · American Eng.', tier: 'pro',  bg: tokens.colors.forest[50],  fg: tokens.colors.forest[700] },
-  { id: 'pNInz6obpgDQGcFmaJgb', name: 'Adam',   desc: 'Deep · American English',       tier: 'pro',  bg: tokens.colors.ink[100],    fg: tokens.colors.ink[700] },
-  { id: 'yoZ06aMxZJJ28mfd3POQ', name: 'Sam',    desc: 'Raspy · American English',      tier: 'pro',  bg: tokens.colors.cream[50],   fg: tokens.colors.ink[700] },
+  // ElevenLabs current default-library voices — distinct gender + accent.
+  // Replaced the legacy premade IDs (some unavailable on newer accounts,
+  // which is why e.g. "Adam" failed with "narration service failed").
+  { id: '9BWtsMINqrJLrRacOk9x', name: 'Aria',    desc: 'Expressive · American',     tier: 'free', bg: tokens.colors.forest[100], fg: tokens.colors.forest[800] },
+  { id: 'nPczCjzI2devNBz1zQrb', name: 'Brian',   desc: 'Deep male · American',      tier: 'pro',  bg: tokens.colors.ink[100],    fg: tokens.colors.ink[700] },
+  { id: 'JBFqnCBsd6RMkjVDRZzb', name: 'George',  desc: 'Warm male · British',       tier: 'pro',  bg: tokens.colors.forest[50],  fg: tokens.colors.forest[700] },
+  { id: 'IKne3meq5aSn9XLyUdCD', name: 'Charlie', desc: 'Casual male · Australian',  tier: 'pro',  bg: tokens.colors.amber[200],  fg: tokens.colors.ink[700] },
+  { id: 'EXAVITQu4vr4xnSDxMaL', name: 'Sarah',   desc: 'Gentle female · American',  tier: 'pro',  bg: tokens.colors.cream[200],  fg: tokens.colors.ink[700] },
+  { id: 'pFZP5JQG7iQjIQuC4Bku', name: 'Lily',    desc: 'Soft female · British',     tier: 'pro',  bg: tokens.colors.cream[50],   fg: tokens.colors.ink[700] },
 ];
 
 // ─── Props ────────────────────────────────────────────────────────────────────

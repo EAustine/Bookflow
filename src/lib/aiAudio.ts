@@ -47,15 +47,18 @@ export const VOICE_OPTIONS: Array<{
    * per-book VoiceSheet on the Listen screen. */
   tier: VoiceTier;
 }> = [
-  { id: '21m00Tcm4TlvDq8ikWAM', label: 'Rachel', description: 'Calm · American English',         tier: 'free' },
-  { id: 'AZnzlk1XvdvUeBnXmlld', label: 'Domi',   description: 'Confident · American English',    tier: 'pro' },
-  { id: 'EXAVITQu4vr4xnSDxMaL', label: 'Bella',  description: 'Soft · American English',         tier: 'pro' },
-  { id: 'ErXwobaYiN019PkySvjV', label: 'Antoni', description: 'Well-rounded · American English', tier: 'pro' },
-  { id: 'pNInz6obpgDQGcFmaJgb', label: 'Adam',   description: 'Deep · American English',         tier: 'pro' },
-  { id: 'yoZ06aMxZJJ28mfd3POQ', label: 'Sam',    description: 'Raspy · American English',        tier: 'pro' },
+  // ElevenLabs current default-library voices — distinct gender + accent.
+  // (Replaced the legacy premade IDs, some of which newer accounts can't
+  // access, which made those voices fail with "narration service failed".)
+  { id: '9BWtsMINqrJLrRacOk9x', label: 'Aria',    description: 'Expressive · American',    tier: 'free' },
+  { id: 'nPczCjzI2devNBz1zQrb', label: 'Brian',   description: 'Deep male · American',     tier: 'pro' },
+  { id: 'JBFqnCBsd6RMkjVDRZzb', label: 'George',  description: 'Warm male · British',      tier: 'pro' },
+  { id: 'IKne3meq5aSn9XLyUdCD', label: 'Charlie', description: 'Casual male · Australian', tier: 'pro' },
+  { id: 'EXAVITQu4vr4xnSDxMaL', label: 'Sarah',   description: 'Gentle female · American', tier: 'pro' },
+  { id: 'pFZP5JQG7iQjIQuC4Bku', label: 'Lily',    description: 'Soft female · British',    tier: 'pro' },
 ];
 
-export const DEFAULT_VOICE: AudioVoice = '21m00Tcm4TlvDq8ikWAM'; // Rachel
+export const DEFAULT_VOICE: AudioVoice = '9BWtsMINqrJLrRacOk9x'; // Aria
 
 /**
  * Character-level alignment data from ElevenLabs `/with-timestamps`.
