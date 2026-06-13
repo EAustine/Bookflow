@@ -436,6 +436,17 @@ export function EpubFullReaderScreen({
   // doesn't have hard page boundaries, but it gets the AI tools to
   // operate on roughly the slice the user is looking at — much
   // better than always summarising page 1.
+  //
+  // CRITICAL: every hook must run before the conditional early-returns
+  // below. `useSlowOp` previously lived AFTER them, so opening an AI tool
+  // / Highlights / Search overlay skipped it and React crashed with
+  // "Rendered fewer hooks than expected." Keep all hook calls above here.
+  const showLoadingOverlay =
+    !resolvedHtml && !resolveError && hasContent !== false;
+  // Flip to true once the resolve has been pending >5s — tells the user
+  // the wait is on the network, not the app.
+  const isSlowLoad = useSlowOp(showLoadingOverlay);
+
   if (aiMode === 'summary') {
     return <SummaryScreen book={book} pageIndex={livePageIndex} onBack={() => setAIMode(null)} />;
   }
@@ -489,11 +500,6 @@ export function EpubFullReaderScreen({
       />
     );
   }
-
-  const showLoadingOverlay = !resolvedHtml && !resolveError && hasContent !== false;
-  // Flip to true once the resolve has been pending >5s — tells the
-  // user the wait is on the network, not the app.
-  const isSlowLoad = useSlowOp(showLoadingOverlay);
 
   return (
     <SafeAreaView style={styles.safe} edges={['left', 'right']}>
