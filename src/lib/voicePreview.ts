@@ -1,4 +1,8 @@
-import { createAudioPlayer, type AudioPlayer } from 'expo-audio';
+import {
+  createAudioPlayer,
+  setAudioModeAsync,
+  type AudioPlayer,
+} from 'expo-audio';
 import { supabase } from '~/lib/supabase';
 
 /**
@@ -111,6 +115,19 @@ export function stopVoicePreview(): void {
 export async function playVoicePreview(voiceId: string): Promise<void> {
   stopVoicePreview();
   const url = await fetchPreviewUrl(voiceId);
+  // Configure the audio session for playback BEFORE creating the player.
+  // Without this the preview is silent — the book-audio path sets the
+  // same mode (aiAudio.ts) but the preview never did, so a preview tapped
+  // before any book has played would produce no sound (and respects the
+  // iOS silent switch). Non-fatal if it throws; we still try to play.
+  try {
+    await setAudioModeAsync({
+      allowsRecording: false,
+      playsInSilentMode: true,
+    });
+  } catch {
+    // Mode failures are non-fatal — continue and attempt playback.
+  }
   // The user may have closed the sheet (or tapped another preview)
   // during the fetch. Bail in that case — stopVoicePreview cleared
   // activeVoiceId; if it's not us, abandon.
