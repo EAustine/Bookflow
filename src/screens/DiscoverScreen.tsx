@@ -40,6 +40,8 @@ import {
 } from '~/lib/discoverImport';
 import { DISCOVER_SEED } from '~/lib/discoverSeed';
 import { useBooks } from '~/hooks/useBooks';
+import { useFreePlanUsage } from '~/lib/freePlanUsage';
+import { presentPaywall, ENTITLEMENT_PRO } from '~/lib/revenuecat';
 import { supabase } from '~/lib/supabase';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -308,6 +310,8 @@ export function DiscoverScreen({
   // exact value to books.source_url. Switching to derived state means
   // no manual reconciliation between optimistic UI + real data.
   const { books: userBooks } = useBooks();
+  // Free-tier book cap (isPro-aware: Pro users get isExceeded=false).
+  const planUsage = useFreePlanUsage();
   const libraryIds = useMemo<Set<string>>(() => {
     const set = new Set<string>();
     for (const b of userBooks) {
@@ -1089,6 +1093,16 @@ export function DiscoverScreen({
    */
   const handleAddToLibrary = async (book: DiscoverBook) => {
     if (libraryIds.has(book.id) || pendingIds.has(book.id)) return;
+    // Free-tier book cap: surface the paywall BEFORE kicking off an import
+    // — otherwise the add silently started a doomed processing job that
+    // hung. Pro users bypass (isExceeded is always false for them). Same
+    // gate the upload path uses, so the two entry points behave alike.
+    if (planUsage.books.isExceeded) {
+      void presentPaywall({ requiredEntitlement: ENTITLEMENT_PRO }).catch(
+        () => {},
+      );
+      return;
+    }
     setPendingIds((prev) => new Set(prev).add(book.id));
     const result = await importDiscoverBook(book);
     setPendingIds((prev) => {
