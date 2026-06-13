@@ -468,13 +468,11 @@ function Toggle({
 // ─── Storage row (custom layout) ─────────────────────────────────────────────
 
 function StorageRow() {
-  const USED = 124;
-  const TOTAL = 360;
-  const pct = Math.round((USED / TOTAL) * 100);
-
-  // Read-only row — there's no "downloaded audio" management surface
-  // to drill into yet, so the wrapper is a plain View instead of a
-  // tap target. The progress bar + total is informational.
+  // Offline audio downloads aren't implemented yet — narration streams from
+  // signed URLs and nothing is stored locally — so there's no real "downloaded"
+  // size to report. Show an honest empty state instead of the previous
+  // fabricated "124 MB of 360 MB". Wire this to a real measurement once an
+  // offline-download feature exists.
   return (
     <View style={styles.settingsRow}>
       <View style={styles.rowIconBg}>
@@ -482,15 +480,8 @@ function StorageRow() {
       </View>
       <View style={styles.storageContent}>
         <Text style={styles.rowLabel}>Downloaded audio</Text>
-        <View style={styles.storageBarRow}>
-          <View style={styles.storageTrack}>
-            <View style={[styles.storageFill, { width: `${pct}%` }]} />
-          </View>
-          <Text style={styles.storageMeta}>{USED} MB of {TOTAL} MB</Text>
-        </View>
+        <Text style={styles.storageMeta}>No audio downloaded yet</Text>
       </View>
-      {/* Chevron removed alongside the Pressable — the row isn't
-          drillable until there's a downloads management screen. */}
     </View>
   );
 }
