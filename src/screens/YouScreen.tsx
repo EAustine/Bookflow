@@ -17,7 +17,13 @@
  *     users get a soft "running low" cue without a dark-pattern nudge.
  */
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react';
 import { Image, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { AccountScreen } from '~/screens/AccountScreen';
 import { HelpFAQScreen } from '~/screens/HelpFAQScreen';
@@ -49,6 +55,7 @@ import { tokens } from '~/design/tokens';
 import {
   presentPaywall,
   openManageSubscription,
+  useProSubscriptionDetails,
   ENTITLEMENT_PRO,
 } from '~/lib/revenuecat';
 
@@ -474,12 +481,15 @@ function PlanCard({
   onUpgrade: () => void;
   onManage: () => void;
 }) {
+  // Subscribers get the richer two-section card; free users keep the
+  // compact meters + upgrade CTA.
+  if (plan.name !== 'Free') {
+    return <ProPlanCard plan={plan} onManage={onManage} />;
+  }
+
   const audioPct = pct(plan.meters.audio.used, plan.meters.audio.total);
   const aiPct = pct(plan.meters.aiCredits.used, plan.meters.aiCredits.total);
   const booksPct = pct(plan.meters.books.used, plan.meters.books.total);
-
-  const isFree = plan.name === 'Free';
-  const upgradeLabel = isFree ? 'Upgrade to Standard' : 'Manage plan';
 
   return (
     <View style={styles.planCard}>
@@ -493,13 +503,8 @@ function PlanCard({
       <View style={styles.meters}>
         <Meter
           name="Audio"
-          value={
-            plan.meters.audio.total === Infinity
-              ? 'Unlimited'
-              : `${plan.meters.audio.used} / ${plan.meters.audio.total} min`
-          }
+          value={`${plan.meters.audio.used} / ${plan.meters.audio.total} min`}
           percent={audioPct}
-          unlimited={plan.meters.audio.total === Infinity}
         />
         <Meter
           name="AI credits"
@@ -510,30 +515,186 @@ function PlanCard({
         />
         <Meter
           name="Books"
-          value={
-            plan.meters.books.total === Infinity
-              ? 'Unlimited'
-              : `${plan.meters.books.used} / ${plan.meters.books.total}`
-          }
+          value={`${plan.meters.books.used} / ${plan.meters.books.total}`}
           percent={booksPct}
-          unlimited={plan.meters.books.total === Infinity}
         />
       </View>
 
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel={upgradeLabel}
-        onPress={isFree ? onUpgrade : onManage}
+        accessibilityLabel="Upgrade to Standard"
+        onPress={onUpgrade}
         style={({ pressed }) => [
           styles.upgradeBtn,
           pressed && { backgroundColor: tokens.colors.amber[200] },
         ]}
       >
         <Icon name="Sparkles" size={14} color={tokens.colors.forest[900]} />
-        <Text style={styles.upgradeBtnLabel}>{upgradeLabel}</Text>
+        <Text style={styles.upgradeBtnLabel}>Upgrade to Standard</Text>
       </Pressable>
     </View>
   );
+}
+
+// ─── Pro plan card — two-section hero design ──────────────────────────────
+
+function ProPlanCard({
+  plan,
+  onManage,
+}: {
+  plan: YouPlan;
+  onManage: () => void;
+}) {
+  const { renewalLabel, priceLabel } = useProSubscriptionDetails();
+  const renewsLine =
+    renewalLabel && priceLabel
+      ? `Renews ${renewalLabel} · ${priceLabel}`
+      : priceLabel
+        ? `Active · ${priceLabel}`
+        : renewalLabel
+          ? `Renews ${renewalLabel}`
+          : 'Active subscription';
+
+  const aiUsed = plan.meters.aiCredits.used;
+  const aiTotal = plan.meters.aiCredits.total;
+  const aiPct =
+    aiTotal > 0 && aiTotal !== Infinity
+      ? Math.min(100, (aiUsed / aiTotal) * 100)
+      : 0;
+
+  return (
+    <View style={styles.proCard}>
+      {/* Top — dark forest hero */}
+      <View style={styles.proTop}>
+        <View style={styles.proLabelRow}>
+          <Text style={styles.proEyebrow}>Your plan</Text>
+          <View style={styles.activeBadge}>
+            <View style={styles.activeDot} />
+            <Text style={styles.activeLabel}>Active</Text>
+          </View>
+        </View>
+        <Text style={styles.proNameHero}>{plan.name}</Text>
+        <Text style={styles.proRenews}>{renewsLine}</Text>
+      </View>
+
+      {/* Bottom — cream usage meters */}
+      <View style={styles.proBottom}>
+        <Text style={styles.proUsageLabel}>This month</Text>
+
+        <View style={styles.proUsageRows}>
+          <ProUsageRow
+            icon={
+              <Icon name="Headphones" size={14} color={tokens.colors.ink[500]} strokeWidth={1.5} />
+            }
+            name="Audio"
+            unlimited={plan.meters.audio.total === Infinity}
+            value={`${plan.meters.audio.used} / ${plan.meters.audio.total} min`}
+          />
+          <ProUsageRow
+            icon={
+              <Icon name="Books" size={14} color={tokens.colors.ink[500]} strokeWidth={1.5} />
+            }
+            name="Books"
+            unlimited={plan.meters.books.total === Infinity}
+            value={`${plan.meters.books.used} / ${plan.meters.books.total}`}
+          />
+          <ProUsageRow
+            icon={
+              <Icon name="Sparkles" size={14} color={tokens.colors.ink[500]} strokeWidth={1.5} />
+            }
+            name="AI credits"
+            value={`${formatTokens(aiUsed)} / ${formatTokens(aiTotal)}`}
+            percent={aiPct}
+            resetLabel={nextResetLabel()}
+          />
+        </View>
+
+        <View style={styles.proDivider} />
+
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Manage plan"
+          onPress={onManage}
+          style={({ pressed }) => [styles.manageRow, pressed && { opacity: 0.6 }]}
+        >
+          <View style={styles.manageLeft}>
+            <Icon name="Settings" size={16} color={tokens.colors.ink[500]} strokeWidth={1.5} />
+            <Text style={styles.manageText}>Manage plan</Text>
+          </View>
+          <Icon
+            name="ChevronRight"
+            size={14}
+            color={tokens.textColors.subtle}
+            strokeWidth={1.5}
+          />
+        </Pressable>
+      </View>
+    </View>
+  );
+}
+
+function ProUsageRow({
+  icon,
+  name,
+  value,
+  unlimited,
+  percent,
+  resetLabel,
+}: {
+  icon: ReactNode;
+  name: string;
+  value?: string;
+  unlimited?: boolean;
+  percent?: number;
+  resetLabel?: string;
+}) {
+  return (
+    <View style={styles.proUsageRow}>
+      <View style={styles.proUsageRowTop}>
+        <View style={styles.proUsageName}>
+          {icon}
+          <Text style={styles.proUsageNameText}>{name}</Text>
+        </View>
+        {unlimited ? (
+          <View style={styles.unlimitedChipLight}>
+            <Text style={styles.unlimitedChipLightGlyph}>∞</Text>
+            <Text style={styles.unlimitedChipLightLabel}>Unlimited</Text>
+          </View>
+        ) : (
+          <Text style={styles.proUsageValue}>{value}</Text>
+        )}
+      </View>
+      {percent !== undefined && (
+        <>
+          <View style={styles.proUsageTrack}>
+            <View
+              style={[
+                styles.proUsageFill,
+                { width: `${Math.max(0, Math.min(100, percent))}%` },
+              ]}
+            />
+          </View>
+          {resetLabel ? (
+            <Text style={styles.proUsageTrackLabel}>{resetLabel}</Text>
+          ) : null}
+        </>
+      )}
+    </View>
+  );
+}
+
+/** "Resets Jul 1" — the first of next month, when monthly allowances roll. */
+function nextResetLabel(): string {
+  try {
+    const d = new Date();
+    const next = new Date(d.getFullYear(), d.getMonth() + 1, 1);
+    return `Resets ${next.toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+    })}`;
+  } catch {
+    return 'Resets monthly';
+  }
 }
 
 function Meter({
@@ -856,6 +1017,179 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     fontWeight: '500',
     color: tokens.colors.forest[900],
+  },
+
+  // ─── Pro plan card (two-section hero) ──────────────────────────────
+  proCard: {
+    marginHorizontal: tokens.space.lg,
+    marginBottom: tokens.space.xl,
+    borderRadius: tokens.radii['2xl'],
+    overflow: 'hidden',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: '#D8D5CC',
+  },
+  proTop: {
+    backgroundColor: tokens.colors.forest[800],
+    paddingHorizontal: tokens.space.lg,
+    paddingVertical: tokens.space.md,
+  },
+  proLabelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  proEyebrow: {
+    fontFamily: tokens.fonts.uiMedium,
+    fontSize: 10,
+    fontWeight: '500',
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+    color: '#4A7C59',
+  },
+  activeBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: 'rgba(212,165,116,0.15)',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(212,165,116,0.4)',
+    borderRadius: 99,
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+  },
+  activeDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: tokens.colors.amber[500],
+  },
+  activeLabel: {
+    fontFamily: tokens.fonts.uiMedium,
+    fontSize: 10,
+    fontWeight: '500',
+    letterSpacing: 0.4,
+    color: tokens.colors.amber[500],
+  },
+  proNameHero: {
+    fontFamily: tokens.fonts.display,
+    fontSize: 28,
+    lineHeight: 31,
+    fontWeight: '500',
+    letterSpacing: -0.5,
+    color: tokens.colors.cream[50],
+    marginBottom: 4,
+  },
+  proRenews: {
+    fontFamily: tokens.fonts.ui,
+    fontSize: 12,
+    lineHeight: 16,
+    color: tokens.colors.forest[200],
+  },
+  proBottom: {
+    backgroundColor: '#F5F1E8',
+    paddingHorizontal: tokens.space.lg,
+    paddingTop: tokens.space.md,
+    paddingBottom: 18,
+  },
+  proUsageLabel: {
+    fontFamily: tokens.fonts.uiMedium,
+    fontSize: 10,
+    fontWeight: '500',
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
+    color: '#8A8780',
+    marginBottom: 12,
+  },
+  proUsageRows: {
+    gap: 12,
+    marginBottom: 16,
+  },
+  proUsageRow: {
+    gap: 5,
+  },
+  proUsageRowTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  proUsageName: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
+  },
+  proUsageNameText: {
+    fontFamily: tokens.fonts.uiMedium,
+    fontSize: 13,
+    fontWeight: '500',
+    color: '#3D3A36',
+  },
+  proUsageValue: {
+    fontFamily: tokens.fonts.uiMedium,
+    fontSize: 12,
+    fontWeight: '500',
+    color: tokens.colors.forest[800],
+  },
+  unlimitedChipLight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: tokens.colors.forest[50],
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: tokens.colors.forest[200],
+    borderRadius: 99,
+    paddingHorizontal: 9,
+    paddingVertical: 2,
+  },
+  unlimitedChipLightGlyph: {
+    fontFamily: tokens.fonts.uiMedium,
+    fontSize: 13,
+    fontWeight: '600',
+    color: tokens.colors.forest[800],
+  },
+  unlimitedChipLightLabel: {
+    fontFamily: tokens.fonts.uiMedium,
+    fontSize: 11,
+    fontWeight: '500',
+    color: tokens.colors.forest[800],
+  },
+  proUsageTrack: {
+    height: 4,
+    backgroundColor: '#ECE9E0',
+    borderRadius: 2,
+    overflow: 'hidden',
+  },
+  proUsageFill: {
+    height: '100%',
+    borderRadius: 2,
+    backgroundColor: tokens.colors.forest[800],
+  },
+  proUsageTrackLabel: {
+    fontFamily: tokens.fonts.ui,
+    fontSize: 10,
+    color: '#8A8780',
+    marginTop: 2,
+  },
+  proDivider: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: '#D8D5CC',
+    marginBottom: 14,
+  },
+  manageRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  manageLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  manageText: {
+    fontFamily: tokens.fonts.uiMedium,
+    fontSize: 13,
+    fontWeight: '500',
+    color: '#3D3A36',
   },
 
   // Settings sections
