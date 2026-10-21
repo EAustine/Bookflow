@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -1342,6 +1342,12 @@ function HomeView({
   onBook: (book: DiscoverBook) => void;
   onTabChange: (tab: TabKey) => void;
 }) {
+  // "For you" is the home view itself, so it has nowhere to navigate.
+  // Rather than leave an active-looking chip inert (F-28), tapping it
+  // returns the page to the top — the same affordance a tapped tab icon
+  // gives on iOS. The other chips still push a CategoryView.
+  const pageScrollRef = useRef<ScrollView>(null);
+
   const showSearchResults = searchQuery.trim().length > 0;
 
   // Hardware back while a search is active clears the query and
@@ -1378,6 +1384,7 @@ function HomeView({
         />
       )}
       <ScrollView
+        ref={pageScrollRef}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
         refreshControl={
@@ -1437,7 +1444,11 @@ function HomeView({
                 return (
                   <Pressable
                     key={cat}
-                    onPress={() => (cat !== 'For you' ? onCategory(cat) : undefined)}
+                    onPress={() =>
+                      cat === 'For you'
+                        ? pageScrollRef.current?.scrollTo({ y: 0, animated: true })
+                        : onCategory(cat)
+                    }
                     style={[s.chip, active ? s.chipActive : s.chipInactive]}
                   >
                     <Text
