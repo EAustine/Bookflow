@@ -18,6 +18,10 @@ export const colors = {
     800: '#1B4332', // Primary brand color
     700: '#234D38',
     600: '#2D5A3F',
+    // Mid-green. Reads on forest-800 where 600 is too close and 200 is
+    // too pale — the Pro plan card's eyebrow, and the dark reader
+    // theme's accent (see `dark.accent`, same value).
+    400: '#4A7C59',
     200: '#B7CCB9',
     100: '#DAE6DC',
     50: '#EFF4F0',
@@ -75,8 +79,12 @@ export const colors = {
   error: '#B5453A',
   errorPressed: '#9C3B30',
   errorBg: '#FBEAE7',
+  /** Paired with errorBg on error cards and inputs. */
+  errorBorder: '#EFC9C6',
   success: '#2D7A4F',
   successBg: '#E8F4ED',
+  /** Paired with successBg — used across 5 files before it had a name. */
+  successBorder: '#A8D5B9',
   /** Warning palette — used by usage-limit banners, paywall
    * triggers, and the practice-questions misanswer state. */
   warn: '#A0692A',
@@ -89,6 +97,48 @@ export const colors = {
   offline: '#4A5568',
   offlineBg: '#F0F2F5',
   offlineBorder: '#CBD5E0',
+
+  /** Skeleton shimmer end-points — animated 800ms, infinite reverse. */
+  skeletonFrom: '#EAE6DC',
+  skeletonTo: '#F0EDE5',
+  /** Notification accent, and the link colour inside the EPUB WebView. */
+  notificationTint: '#2D6A4F',
+  /** Paused now-playing hero card. Darker than forest-800. */
+  cardPaused: '#2C3B31',
+  /** Sepia theme swatch pair, shown in the reading-options sheet. */
+  sepiaSwatch: '#C4A882',
+  sepiaSwatchText: '#5C4A30',
+  /** Pure white. Rare — cream-50 is the app background. Used where a
+   *  surface must read as paper against a tinted page (PDF/EPUB pages)
+   *  and for the now-playing hero's white-on-forest type. */
+  white: '#FFFFFF',
+  /** Shadow colour. Every shadow in the app casts from black; opacity
+   *  carries the weight (see `elevation`). */
+  shadow: '#000000',
+} as const;
+
+/**
+ * EPUB Full-mode WebView palette.
+ *
+ * `EpubFullReaderScreen` injects a stylesheet into the WebView, so this
+ * surface cannot consume the React Native tokens above — the values
+ * have to be serialised into CSS. They were inline hex literals; named
+ * here so the two systems are at least declared in one place and a
+ * change to the reading palette can be made once.
+ *
+ * Note the reader's font / size / theme controls deliberately do NOT
+ * apply inside the WebView — the reading-options sheet says so.
+ */
+export const epubWeb = {
+  text: '#2A2620',
+  heading: '#1F1B16',
+  link: '#2D6A4F',
+  rule: '#DDD7CB',
+  codeBg: '#EDE7DD',
+  quoteBorder: '#C9C2B5',
+  quoteText: '#4A443B',
+  bodySize: 17,
+  bodyLineHeight: 1.65,
 } as const;
 
 // ============================================================================
@@ -299,7 +349,19 @@ export const iconSize = {
   lg: 24,   // Headers, empty states
 } as const;
 
-export const iconStrokeWidth = 1.5; // ALWAYS — never use Lucide's default 2
+/**
+ * The one icon stroke width. Tabler ships at 2; this is deliberately
+ * lighter so icons sit quietly beside Literata and Geist.
+ *
+ * Was 1.5, with 79 of 144 call sites overriding it — the rule existed
+ * but the codebase had voted against it. Settled at 1.0 and the
+ * overrides removed, so `<Icon>` needs no `strokeWidth` prop at all.
+ *
+ * The ONLY legitimate override is `strokeWidth={0}`, which Tabler's
+ * *Filled glyphs need (Play, Pause, ThumbUpFilled …) — those paint
+ * from `fill`, and any stroke would double-draw their edge.
+ */
+export const iconStrokeWidth = 1.0;
 
 // ============================================================================
 // SEMANTIC LAYER — preferred names for screens & app code
@@ -346,6 +408,92 @@ export const borderColors = {
 } as const;
 
 /**
+ * Border widths.
+ *
+ * `hairline` is `StyleSheet.hairlineWidth` at call sites — 1 physical
+ * pixel, so it renders ~0.33–0.5pt depending on device density. Kept
+ * as a named step so the intent ("the thinnest possible rule") is
+ * readable, but use `StyleSheet.hairlineWidth` directly in styles.
+ */
+export const borderWidth = {
+  hairline: 0.5,
+  default: 1,
+  /** Input focus ring — see `input.focusRingWidth`. */
+  focus: 3,
+} as const;
+
+/**
+ * Elevation — a 4-step scale synthesised from the ~48 ad-hoc shadows
+ * the app had. Each step carries both the iOS shadow props and the
+ * Android `elevation`, because React Native does not derive one from
+ * the other.
+ *
+ * Spread into a style: `...tokens.elevation[2]`.
+ */
+export const elevation = {
+  /** Resting chips and pills — ModeTogglePill, segmented controls. */
+  1: {
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.12,
+    shadowRadius: 3,
+    elevation: 2,
+  },
+  /** Cards sitting on the page. */
+  2: {
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+    elevation: 4,
+  },
+  /** Lifted surfaces — the now-playing play button, book covers. */
+  3: {
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.18,
+    shadowRadius: 12,
+    elevation: 8,
+  },
+  /** Overlays — toasts, sheets, the mini player. */
+  4: {
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.2,
+    shadowRadius: 16,
+    elevation: 12,
+  },
+} as const;
+
+/**
+ * Translucent overlays for dark surfaces.
+ *
+ * The plan cards and the now-playing hero paint hairlines, inset
+ * tracks and chips over forest-800. React Native has no colour-mix at
+ * the style layer, so the alpha is baked into the string — which is
+ * exactly why these kept getting retyped inline per screen. Name them
+ * once here instead.
+ */
+export const overlay = {
+  /** On a dark (forest-800) card. */
+  onDark: {
+    /** Hairline borders and dividers. */
+    hairline: 'rgba(255,255,255,0.08)',
+    /** Inset progress / meter tracks. */
+    track: 'rgba(255,255,255,0.12)',
+    /** Chip and pill fills. */
+    chip: 'rgba(255,255,255,0.14)',
+  },
+  /** forest-800 at low alpha — the input focus ring (3px, outset). */
+  focusRing: 'rgba(27,67,50,0.25)',
+  /** Amber at low alpha — the "Active" subscription badge. */
+  amber: {
+    fill: 'rgba(212,165,116,0.15)',
+    border: 'rgba(212,165,116,0.4)',
+  },
+} as const;
+
+/**
  * Named spacing scale per design system spec.
  * Aliases the numeric `spacing[n]` scale; both coexist.
  */
@@ -355,10 +503,16 @@ export const space = {
   sm: 8,    // component-internal padding
   md: 12,   // standard component padding, list-item gaps
   lg: 16,   // section padding, card padding
+  // 20 and 40 exist on the numeric `spacing` scale but had no semantic
+  // name, so `spacing[5]` and `spacing[8]` were unreachable from screen
+  // code that prefers `space.*` — and screens reached for raw 20/40
+  // instead. Named here to close that gap (F-16).
+  ml: 20,   // between lg and xl — screen gutters on wider content
   xl: 24,   // section separation
   '2xl': 32, // major layout breaks
-  '3xl': 48, // hero spacing, screen-level breathing room
-  '4xl': 64, // landing page / onboarding
+  '3xl': 40, // list-group separation
+  '4xl': 48, // hero spacing, screen-level breathing room
+  '5xl': 64, // landing page / onboarding
 } as const;
 
 /**
@@ -444,6 +598,10 @@ export const tokens = {
   textColors,
   bgColors,
   borderColors,
+  borderWidth,
+  elevation,
+  overlay,
+  epubWeb,
   space,
   textStyles,
 } as const;

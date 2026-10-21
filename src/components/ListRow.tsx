@@ -8,6 +8,7 @@ import {
 } from 'react-native';
 import { tokens } from '~/design/tokens';
 import { Icon, IconName } from './Icon';
+import { Toggle } from './Toggle';
 
 export type ListRowSize = 'standard' | 'compact';
 
@@ -148,28 +149,6 @@ export function ListRow({
   );
 }
 
-function Toggle({ value }: { value: boolean }) {
-  return (
-    <View
-      style={[
-        styles.toggleTrack,
-        {
-          backgroundColor: value
-            ? tokens.colors.forest[800]
-            : tokens.colors.ink[300],
-        },
-      ]}
-    >
-      <View
-        style={[
-          styles.toggleThumb,
-          { transform: [{ translateX: value ? 14 : 0 }] },
-        ]}
-      />
-    </View>
-  );
-}
-
 const styles = StyleSheet.create({
   row: {
     flexDirection: 'row',
@@ -210,18 +189,5 @@ const styles = StyleSheet.create({
     fontFamily: tokens.fonts.ui,
     fontSize: tokens.fontSizes.ui.xs,
     color: tokens.colors.ink[500],
-  },
-  toggleTrack: {
-    width: 36,
-    height: 22,
-    borderRadius: tokens.radii.full,
-    padding: 2,
-    justifyContent: 'center',
-  },
-  toggleThumb: {
-    width: 18,
-    height: 18,
-    borderRadius: tokens.radii.full,
-    backgroundColor: tokens.colors.cream[50],
   },
 });

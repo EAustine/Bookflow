@@ -9,7 +9,6 @@
 
 import { useRef } from 'react';
 import {
-  ActivityIndicator,
   Animated,
   Pressable,
   PressableProps,
@@ -19,6 +18,7 @@ import {
 } from 'react-native';
 import { tokens } from '~/design/tokens';
 import { Icon, IconName } from './Icon';
+import { Spinner } from './Spinner';
 
 // ============================================================================
 // TYPES
@@ -104,10 +104,10 @@ export function Button({
         {...rest}
       >
         {loading ? (
-          <ActivityIndicator
-            size="small"
-            color={labelColor}
-          />
+          // tokens.button.spinner — 16px / 1.5 stroke / 700ms. Was an
+          // ActivityIndicator, which matched neither the spec nor the
+          // other loading states in the app. See F-11.
+          <Spinner color={labelColor} />
         ) : (
           <View style={styles.content}>
             {leadingIcon && (

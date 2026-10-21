@@ -34,7 +34,6 @@ export function SlowNetworkBanner({
         name="WifiOff"
         size={14}
         color={tokens.colors.warn}
-        strokeWidth={1.75}
       />
       <Text style={styles.text} numberOfLines={2}>
         {label ?? "This is taking longer than usual — check your connection."}

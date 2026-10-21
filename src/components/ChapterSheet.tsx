@@ -1,3 +1,13 @@
+/**
+ * NOTE ON THE NAME: this sheet is called ChapterSheet but the reader is
+ * page-based. It handles both — when a book has real chapter metadata
+ * it offers a Chapters / Pages filter, and when it does not it lists
+ * pages only, which is the common case. The name is therefore narrower
+ * than the component. Kept rather than renamed because the rename
+ * touches five files for no behaviour change; the header label is
+ * already derived from the real unit (`titleLabel` / `unitLabel`).
+ * See F-16.
+ */
 import {
   forwardRef,
   useCallback,
@@ -454,9 +464,9 @@ function ChapterRow({
           <Text style={styles.nowChipLabel}>Now</Text>
         </View>
       ) : isFinished ? (
-        <Icon name="Check" size={16} color={tokens.colors.forest[200]} strokeWidth={2} />
+        <Icon name="Check" size={16} color={tokens.colors.forest[200]} />
       ) : (
-        <Icon name="ChevronRight" size={14} color={tokens.colors.ink[200]} strokeWidth={1.5} />
+        <Icon name="ChevronRight" size={14} color={tokens.colors.ink[200]} />
       )}
     </Pressable>
   );

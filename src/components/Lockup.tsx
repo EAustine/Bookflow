@@ -16,6 +16,11 @@
 
 import Svg, { Path } from 'react-native-svg';
 import { tokens } from '~/design/tokens';
+import {
+  LOGOMARK_ECHO,
+  LOGOMARK_MAIN,
+  LOGOMARK_STROKE,
+} from './Logomark';
 
 export type LockupSize = 'small' | 'medium' | 'large';
 
@@ -41,19 +46,22 @@ export function Lockup({
   const { width, height, echoOpacity } = DIMENSIONS[size];
   return (
     <Svg width={width} height={height} viewBox="0 0 196 52" fill="none">
-      {/* Logomark — main curve */}
+      {/* Logomark — main curve.
+          These two paths are the canonical mark. `Logomark.tsx` renders
+          the same `d` values against a cropped viewBox so the mark can
+          be used standalone; keep the two in step. See F-8. */}
       <Path
-        d="M14 33.4C22 14.2 30 14.2 38 33.4"
+        d={LOGOMARK_MAIN}
         stroke={color}
-        strokeWidth={4.32}
+        strokeWidth={LOGOMARK_STROKE}
         strokeLinecap="round"
       />
       {/* Logomark — echo curve */}
       <Path
         opacity={echoOpacity}
-        d="M18.8 32.44C23.6 19.64 28.4 19.64 33.2 32.44"
+        d={LOGOMARK_ECHO}
         stroke={color}
-        strokeWidth={4.32}
+        strokeWidth={LOGOMARK_STROKE}
         strokeLinecap="round"
       />
       {/* Wordmark "Bookflow" as outlined paths (font-independent) */}

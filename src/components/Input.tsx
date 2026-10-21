@@ -77,21 +77,39 @@ export const Input = forwardRef<TextInput, InputProps>(function Input(
 
   const textColor = editable ? tokens.colors.ink[900] : tokens.colors.ink[400];
 
+  const ringWidth = tokens.input.focusRingWidth;
+  // Error and success already carry their own border colour; stacking a
+  // forest halo on top of those would muddy the state.
+  const showFocusRing = focused && editable && state === 'default';
+
   return (
     <View style={containerStyle}>
       {label && <Text style={styles.label}>{label}</Text>}
+      {/* Focus ring. `tokens.input.focusRingWidth` has always declared a
+          3px ring, but the component only ever recoloured the 1px
+          border — the token was dead config (F-5). The ring is drawn
+          as an outset halo: the wrapper reserves the 3px with equal
+          padding and negative margin at all times and only paints when
+          focused, so gaining focus never reflows the field. */}
       <View
         style={[
-          styles.wrapper,
-          {
-            height: tokens.input.height[size],
-            borderRadius: tokens.input.radius[size],
-            paddingHorizontal: tokens.input.paddingX[size],
-            backgroundColor,
-            borderColor,
-          },
+          styles.focusRing,
+          { borderRadius: tokens.input.radius[size] + ringWidth },
+          showFocusRing && { backgroundColor: tokens.overlay.focusRing },
         ]}
       >
+        <View
+          style={[
+            styles.wrapper,
+            {
+              height: tokens.input.height[size],
+              borderRadius: tokens.input.radius[size],
+              paddingHorizontal: tokens.input.paddingX[size],
+              backgroundColor,
+              borderColor,
+            },
+          ]}
+        >
         {leadingIcon && (
           <Icon
             name={leadingIcon}
@@ -122,13 +140,14 @@ export const Input = forwardRef<TextInput, InputProps>(function Input(
           ]}
           {...rest}
         />
-        {trailingIcon && (
-          <Icon
-            name={trailingIcon}
-            size={tokens.input.iconSize[size]}
-            color={tokens.colors.ink[400]}
-          />
-        )}
+          {trailingIcon && (
+            <Icon
+              name={trailingIcon}
+              size={tokens.input.iconSize[size]}
+              color={tokens.colors.ink[400]}
+            />
+          )}
+        </View>
       </View>
       {helper && (
         <Text style={[styles.helper, { color: helperColor }]}>{helper}</Text>
@@ -138,10 +157,18 @@ export const Input = forwardRef<TextInput, InputProps>(function Input(
 });
 
 const styles = StyleSheet.create({
+  // Reserves the ring's 3px at all times (padding) and pulls it back
+  // out of flow (negative margin), so painting it on focus moves
+  // nothing. Transparent until focused.
+  focusRing: {
+    padding: tokens.input.focusRingWidth,
+    margin: -tokens.input.focusRingWidth,
+    backgroundColor: 'transparent',
+  },
   wrapper: {
     flexDirection: 'row',
     alignItems: 'center',
-    borderWidth: 1,
+    borderWidth: tokens.borderWidth.default,
   },
   input: {
     flex: 1,

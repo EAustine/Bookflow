@@ -31,9 +31,9 @@ import Animated, {
   withSequence,
   withTiming,
 } from 'react-native-reanimated';
-import Svg, { Path } from 'react-native-svg';
 import { Button } from '~/components/Button';
 import { Icon } from '~/components/Icon';
+import { Logomark } from '~/components/Logomark';
 import { Text } from '~/components/Text';
 import { tokens } from '~/design/tokens';
 
@@ -106,7 +106,7 @@ function Verifying() {
   return (
     <View style={styles.verifyContent}>
       <Animated.View style={markStyle}>
-        <Logomark size={56} />
+        <Logomark width={64} />
       </Animated.View>
 
       <View style={styles.verifyTextBlock}>
@@ -208,32 +208,6 @@ function ErrorState({
         />
       </View>
     </View>
-  );
-}
-
-// ============================================================================
-// Logomark
-// ============================================================================
-
-function Logomark({ size }: { size: number }) {
-  return (
-    <Svg width={size} height={size} viewBox="0 0 100 100">
-      <Path
-        d="M 25 80 C 33.5 22 66.5 22 75 80"
-        stroke={tokens.colors.forest[800]}
-        strokeWidth={9}
-        strokeLinecap="round"
-        fill="none"
-      />
-      <Path
-        d="M 35 78 C 45 33 55 33 65 78"
-        stroke={tokens.colors.forest[800]}
-        strokeWidth={9}
-        strokeLinecap="round"
-        fill="none"
-        opacity={0.45}
-      />
-    </Svg>
   );
 }
 

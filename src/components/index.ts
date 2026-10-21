@@ -17,6 +17,15 @@ export type { InputProps, InputSize, InputState } from './Input';
 export { ListRow } from './ListRow';
 export type { ListRowProps, ListRowSize, ListRowToggle } from './ListRow';
 
+export { Logomark } from './Logomark';
+export type { LogomarkProps } from './Logomark';
+
+export { Spinner } from './Spinner';
+export type { SpinnerProps } from './Spinner';
+
+export { Toggle } from './Toggle';
+export type { ToggleProps } from './Toggle';
+
 export { BottomSheet } from './BottomSheet';
 export type { BottomSheetProps, BottomSheetRef } from './BottomSheet';
 
