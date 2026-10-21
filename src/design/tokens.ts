@@ -508,6 +508,30 @@ export const overlay = {
     track: 'rgba(255,255,255,0.12)',
     /** Chip and pill fills. */
     chip: 'rgba(255,255,255,0.14)',
+    /**
+     * Raw alpha steps, mirroring the `white/NN` variables in Figma.
+     *
+     * The now-playing hero paints a dozen different alphas of white over
+     * forest-800 — scrub track, transport glyphs, pill fills, timestamps,
+     * the paused treatment. Giving each one a role name would invent
+     * distinctions the design does not actually make, so they are keyed
+     * by alpha instead. Reach for `hairline` / `track` / `chip` first;
+     * these are for everything else. (F-20.)
+     */
+    alpha: {
+      10: 'rgba(255,255,255,0.1)',
+      15: 'rgba(255,255,255,0.15)',
+      18: 'rgba(255,255,255,0.18)',
+      20: 'rgba(255,255,255,0.2)',
+      35: 'rgba(255,255,255,0.35)',
+      40: 'rgba(255,255,255,0.4)',
+      50: 'rgba(255,255,255,0.5)',
+      55: 'rgba(255,255,255,0.55)',
+      60: 'rgba(255,255,255,0.6)',
+      70: 'rgba(255,255,255,0.7)',
+      75: 'rgba(255,255,255,0.75)',
+      85: 'rgba(255,255,255,0.85)',
+    },
   },
   /** forest-800 at low alpha — the input focus ring (3px, outset). */
   focusRing: 'rgba(27,67,50,0.25)',

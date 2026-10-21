@@ -134,7 +134,7 @@ export function ListenNowPlayingScreen({
   onOpenProfile,
 }: ListenNowPlayingScreenProps) {
   const paused = state === 'paused';
-  const cardBg = paused ? '#2C3B31' : tokens.colors.forest[800];
+  const cardBg = paused ? tokens.colors.cardPaused : tokens.colors.forest[800];
   const dimOpacity = paused ? 0.6 : 1;
 
   return (
@@ -163,21 +163,21 @@ export function ListenNowPlayingScreen({
               <View
                 style={[
                   styles.badge,
-                  paused && { backgroundColor: 'rgba(255,255,255,0.1)' },
+                  paused && { backgroundColor: tokens.overlay.onDark.alpha[10] },
                 ]}
               >
                 <View
                   style={[
                     styles.badgeDot,
                     paused && {
-                      backgroundColor: 'rgba(255,255,255,0.4)',
+                      backgroundColor: tokens.overlay.onDark.alpha[40],
                     },
                   ]}
                 />
                 <Text
                   style={[
                     styles.badgeLabel,
-                    paused && { color: 'rgba(255,255,255,0.5)' },
+                    paused && { color: tokens.overlay.onDark.alpha[50] },
                   ]}
                 >
                   {paused ? 'Paused' : 'Now playing'}
@@ -235,7 +235,7 @@ export function ListenNowPlayingScreen({
               <Icon
                 name="PlayerSkipBack"
                 size={24}
-                color="rgba(255,255,255,0.85)"
+                color={tokens.overlay.onDark.alpha[85]}
               />
             </Pressable>
 
@@ -253,7 +253,7 @@ export function ListenNowPlayingScreen({
               <Icon
                 name="PlayerTrackPrev"
                 size={22}
-                color="rgba(255,255,255,0.85)"
+                color={tokens.overlay.onDark.alpha[85]}
               />
             </Pressable>
 
@@ -261,7 +261,7 @@ export function ListenNowPlayingScreen({
               onPress={onPlayPause}
               style={[
                 styles.playBtn,
-                paused && { backgroundColor: 'rgba(255,255,255,0.85)' },
+                paused && { backgroundColor: tokens.overlay.onDark.alpha[85] },
               ]}
               accessibilityRole="button"
               accessibilityLabel={paused ? 'Play' : 'Pause'}
@@ -283,7 +283,7 @@ export function ListenNowPlayingScreen({
               <Icon
                 name="PlayerTrackNext"
                 size={22}
-                color="rgba(255,255,255,0.85)"
+                color={tokens.overlay.onDark.alpha[85]}
               />
             </Pressable>
 
@@ -296,7 +296,7 @@ export function ListenNowPlayingScreen({
               <Icon
                 name="PlayerSkipForward"
                 size={24}
-                color="rgba(255,255,255,0.85)"
+                color={tokens.overlay.onDark.alpha[85]}
               />
             </Pressable>
           </View>
@@ -624,14 +624,14 @@ function ScrubBar({
               styles.scrubFill,
               {
                 width: `${displayPct}%`,
-                backgroundColor: paused ? 'rgba(255,255,255,0.4)' : tokens.colors.amber[500],
+                backgroundColor: paused ? tokens.overlay.onDark.alpha[40] : tokens.colors.amber[500],
               },
             ]}
           >
             <View
               style={[
                 styles.scrubThumb,
-                paused && { backgroundColor: 'rgba(255,255,255,0.7)' },
+                paused && { backgroundColor: tokens.overlay.onDark.alpha[70] },
                 dragPct !== null && styles.scrubThumbActive,
               ]}
             />
@@ -639,10 +639,10 @@ function ScrubBar({
         </View>
       </View>
       <View style={styles.scrubTimes}>
-        <Text style={[styles.scrubTimeText, paused && { color: 'rgba(255,255,255,0.35)' }]}>
+        <Text style={[styles.scrubTimeText, paused && { color: tokens.overlay.onDark.alpha[35] }]}>
           {elapsed}
         </Text>
-        <Text style={[styles.scrubTimeText, paused && { color: 'rgba(255,255,255,0.35)' }]}>
+        <Text style={[styles.scrubTimeText, paused && { color: tokens.overlay.onDark.alpha[35] }]}>
           {remaining}
         </Text>
       </View>
@@ -668,12 +668,12 @@ function Pill({
       onPress={onPress}
       style={[
         styles.pill,
-        prominent && { backgroundColor: 'rgba(255,255,255,0.18)' },
+        prominent && { backgroundColor: tokens.overlay.onDark.alpha[18] },
         { opacity },
       ]}
       accessibilityRole="button"
     >
-      <Icon name={icon} size={11} color="rgba(255,255,255,0.75)" />
+      <Icon name={icon} size={11} color={tokens.overlay.onDark.alpha[75]} />
       <Text style={styles.pillLabel}>{label}</Text>
     </Pressable>
   );
@@ -791,7 +791,7 @@ const styles = StyleSheet.create({
   coverText: {
     fontFamily: tokens.fonts.display,
     fontSize: 7,
-    color: 'rgba(255,255,255,0.6)',
+    color: tokens.overlay.onDark.alpha[60],
     lineHeight: 9,
   },
 
@@ -801,7 +801,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 5,
-    backgroundColor: 'rgba(255,255,255,0.15)',
+    backgroundColor: tokens.overlay.onDark.alpha[15],
     borderRadius: 99,
     paddingHorizontal: 10,
     paddingVertical: 3,
@@ -817,13 +817,13 @@ const styles = StyleSheet.create({
     fontFamily: tokens.fonts.uiMedium,
     fontSize: 10,
     fontWeight: '500',
-    color: 'rgba(255,255,255,0.85)',
+    color: tokens.overlay.onDark.alpha[85],
     letterSpacing: 0.04,
   },
   title: {
     fontFamily: tokens.fonts.display,
     fontSize: 18,
-    color: '#fff',
+    color: tokens.colors.white,
     letterSpacing: -0.18,
     marginBottom: 4,
   },
@@ -837,7 +837,7 @@ const styles = StyleSheet.create({
     fontFamily: tokens.fonts.uiMedium,
     fontSize: 12,
     fontWeight: '500',
-    color: 'rgba(255,255,255,0.7)',
+    color: tokens.overlay.onDark.alpha[70],
   },
 
   // Scrub
@@ -851,7 +851,7 @@ const styles = StyleSheet.create({
   },
   scrubTrack: {
     height: 4,
-    backgroundColor: 'rgba(255,255,255,0.2)',
+    backgroundColor: tokens.overlay.onDark.alpha[20],
     borderRadius: 2,
     marginBottom: 6,
   },
@@ -867,7 +867,7 @@ const styles = StyleSheet.create({
     width: 14,
     height: 14,
     borderRadius: 7,
-    backgroundColor: '#fff',
+    backgroundColor: tokens.colors.white,
     shadowColor: '#000',
     shadowOpacity: 0.3,
     shadowRadius: 4,
@@ -886,7 +886,7 @@ const styles = StyleSheet.create({
   scrubTimeText: {
     fontFamily: tokens.fonts.ui,
     fontSize: 11,
-    color: 'rgba(255,255,255,0.55)',
+    color: tokens.overlay.onDark.alpha[55],
   },
 
   // Controls — `space-between` so the outer buttons sit flush with the
@@ -908,7 +908,7 @@ const styles = StyleSheet.create({
     fontFamily: tokens.fonts.uiMedium,
     fontSize: 10,
     fontWeight: '500',
-    color: 'rgba(255,255,255,0.5)',
+    color: tokens.overlay.onDark.alpha[50],
   },
   // Inner nudge buttons (-15s / +15s). Slightly different shape than
   // skipBtn — they carry a "15" badge under/beside the icon to signal
@@ -923,14 +923,14 @@ const styles = StyleSheet.create({
     fontFamily: tokens.fonts.uiMedium,
     fontSize: 9,
     fontWeight: '500',
-    color: 'rgba(255,255,255,0.5)',
+    color: tokens.overlay.onDark.alpha[50],
     letterSpacing: 0.04,
   },
   playBtn: {
     width: 60,
     height: 60,
     borderRadius: 30,
-    backgroundColor: '#fff',
+    backgroundColor: tokens.colors.white,
     alignItems: 'center',
     justifyContent: 'center',
     shadowColor: '#000',
@@ -950,7 +950,7 @@ const styles = StyleSheet.create({
     height: 30,
     paddingHorizontal: 12,
     borderRadius: 15,
-    backgroundColor: 'rgba(255,255,255,0.12)',
+    backgroundColor: tokens.overlay.onDark.track,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 5,
@@ -959,7 +959,7 @@ const styles = StyleSheet.create({
     fontFamily: tokens.fonts.uiMedium,
     fontSize: 11,
     fontWeight: '500',
-    color: 'rgba(255,255,255,0.85)',
+    color: tokens.overlay.onDark.alpha[85],
   },
 
   // Section rows
