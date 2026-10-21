@@ -19,7 +19,6 @@ import * as DocumentPicker from 'expo-document-picker';
 import { useShareIntent } from 'expo-share-intent';
 import {
   Fraunces_400Regular_Italic,
-  Fraunces_500Medium,
   Fraunces_600SemiBold,
 } from '@expo-google-fonts/fraunces';
 import {
@@ -184,7 +183,6 @@ const skipNative =
 export default function App() {
   const [fontsLoaded] = useFonts({
     Fraunces_400Regular_Italic,
-    Fraunces_500Medium,
     Fraunces_600SemiBold,
     Geist_400Regular,
     Geist_500Medium,

@@ -153,7 +153,24 @@ export const epubWeb = {
  * weight; raw `fonts.*` values point at the default (medium / regular).
  */
 export const fonts = {
-  display: 'Fraunces_500Medium',
+  /**
+   * Fraunces **SemiBold 600**, not Medium 500.
+   *
+   * Figma ships Fraunces in Thin / Light / Regular / SemiBold / Bold /
+   * Black only — there is no Medium face and no variable-weight axis
+   * exposed, confirmed by `listAvailableFontsAsync` and by a direct
+   * `loadFontAsync({ family: 'Fraunces', style: 'Medium' })` that throws.
+   * Rather than let the design file stand in SemiBold while the app
+   * renders Medium, the app moves to the weight both can actually use.
+   * One weight, one source of truth. (Decision 2026-10-21.)
+   *
+   * Note `displayBold` now resolves to the same family. The two names are
+   * kept apart because the splash wordmark and the onboarding cover title
+   * ask for the heavier of the two by intent; they just no longer differ
+   * in render. Promote `displayBold` to `Fraunces_700Bold` if that
+   * contrast is wanted back.
+   */
+  display: 'Fraunces_600SemiBold',
   displayBold: 'Fraunces_600SemiBold',
   displayItalic: 'Fraunces_400Regular_Italic',
   ui: 'Geist_400Regular',
