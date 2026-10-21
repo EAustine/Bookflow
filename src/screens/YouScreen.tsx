@@ -753,35 +753,20 @@ function Meter({
   name,
   value,
   percent,
-  unlimited,
 }: {
   name: string;
   value: string;
   percent: number;
-  /** Pro tiers have no cap on some meters — render an "Unlimited" chip
-   * instead of a progress bar, which would be meaningless. */
-  unlimited?: boolean;
 }) {
   // Uniform muted-forest fill across every meter (audio / AI / books) so they
   // read as one consistent set, rather than one bar flipping amber at ≥80%.
   const fillColor = tokens.colors.forest[200];
   const clamped = Math.max(0, Math.min(100, percent));
 
-  // Unlimited row: no track. Name on the left, an "Unlimited" chip with
-  // an infinity glyph on the right — a clean, intentional treatment
-  // rather than a full/empty bar that implies a limit that isn't there.
-  if (unlimited) {
-    return (
-      <View style={styles.meterRowUnlimited}>
-        <Text style={styles.meterName}>{name}</Text>
-        <View style={styles.unlimitedChip}>
-          <Text style={styles.unlimitedChipGlyph}>∞</Text>
-          <Text style={styles.unlimitedChipLabel}>Unlimited</Text>
-        </View>
-      </View>
-    );
-  }
-
+  // There is deliberately no `unlimited` branch here. The free plan card
+  // is the only caller and all three of its meters have finite totals;
+  // the unlimited treatment belongs to `ProUsageRow`'s
+  // `unlimitedChipLight`, which is canonical. (F-32.)
   return (
     <View style={styles.meterRow}>
       <View style={styles.meterMeta}>
@@ -1022,36 +1007,6 @@ const styles = StyleSheet.create({
     borderRadius: 2,
   },
   // Unlimited (Pro) meter row — no track; a chip on the right instead.
-  meterRowUnlimited: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    minHeight: 25,
-  },
-  unlimitedChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: tokens.overlay.onDark.chip,
-    paddingHorizontal: 9,
-    paddingVertical: 4,
-    borderRadius: 11,
-  },
-  unlimitedChipGlyph: {
-    fontFamily: tokens.fonts.uiMedium,
-    fontSize: 14,
-    lineHeight: 16,
-    fontWeight: '600',
-    color: tokens.colors.cream[50],
-  },
-  unlimitedChipLabel: {
-    fontFamily: tokens.fonts.uiMedium,
-    fontSize: 11,
-    lineHeight: 14,
-    fontWeight: '600',
-    letterSpacing: 0.2,
-    color: tokens.colors.cream[50],
-  },
   upgradeBtn: {
     height: 40,
     borderRadius: tokens.radii.md,
