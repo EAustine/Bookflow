@@ -7,6 +7,8 @@ import {
 } from 'expo-audio';
 import { formatNetworkError } from '~/lib/networkErrors';
 import { supabase } from '~/lib/supabase';
+import { getLocalAudio } from '~/lib/audioDownloads';
+import { presentPaywall, ENTITLEMENT_PRO } from '~/lib/revenuecat';
 
 /**
  * Per-page TTS playback. The edge function `generate-audio` produces
@@ -145,6 +147,54 @@ export async function fetchPageAudio(args: {
       error: 'request_failed',
       message: err instanceof Error ? err.message : String(err),
     };
+  }
+}
+
+/** Result of a download cost estimate — what `downloadBook` would generate. */
+export type DownloadEstimate = {
+  /** Narratable pages in the book (front matter / blank pages excluded). */
+  totalPages: number;
+  /** Pages already narrated (per-user cache or cross-user dedup) — free. */
+  cachedPages: number;
+  /** Pages that would be freshly generated on ElevenLabs — the cost. */
+  newPages: number;
+  /** Rough minutes of NEW narration (counts toward the monthly cap). */
+  newMinutes: number;
+  /** Rough minutes for the whole book. */
+  totalMinutes: number;
+};
+
+/**
+ * Ask the server how much of a book still needs narration, WITHOUT generating
+ * anything. Powers the pre-download confirmation so the user isn't surprised by
+ * the cost of generating a whole book. Returns null on any failure (offline,
+ * pre-deploy, timeout) so the caller can fall back to a generic confirmation.
+ */
+export async function estimateDownload(
+  bookId: string,
+  voiceId?: AudioVoice,
+): Promise<DownloadEstimate | null> {
+  try {
+    const invoke = supabase.functions.invoke('estimate-download', {
+      body: { book_id: bookId, voice_id: voiceId ?? DEFAULT_VOICE },
+    });
+    // Don't let a hung request strand the download tap — cap the wait so the
+    // caller can show a generic confirmation instead of nothing.
+    const timeout = new Promise<{ data: null; error: string }>((resolve) =>
+      setTimeout(() => resolve({ data: null, error: 'timeout' }), 5000),
+    );
+    const { data, error } = await Promise.race([invoke, timeout]);
+    if (error || !data || typeof data !== 'object') return null;
+    const d = data as Record<string, number>;
+    return {
+      totalPages: d.total_pages ?? 0,
+      cachedPages: d.cached_pages ?? 0,
+      newPages: d.new_pages ?? 0,
+      newMinutes: d.new_minutes ?? 0,
+      totalMinutes: d.total_minutes ?? 0,
+    };
+  } catch {
+    return null;
   }
 }
 
@@ -335,7 +385,19 @@ export function useAudio(args: {
         // mode failures are non-fatal; continue trying to play
       }
 
-      // 2. Fetch the signed URL (generates audio if needed).
+      // 2. Resolve a playable source: a locally-downloaded file first
+      //    (fully offline — no signed-URL expiry, works with no network),
+      //    else the signed streaming URL (generating audio server-side if
+      //    the page hasn't been narrated yet).
+      let playUri: string;
+      let durationSeed: number;
+      let alignmentSource: string | null;
+      const local = getLocalAudio(bookId, pageIndex, voiceId);
+      if (local) {
+        playUri = local.audioUri;
+        durationSeed = 0; // expo-audio fills the real duration on load
+        alignmentSource = local.alignmentUri;
+      } else {
       const result = await fetchPageAudio({ bookId, pageIndex, voiceId });
       if (token !== loadTokenRef.current) return; // stale
       if (!result.ok) {
@@ -354,6 +416,27 @@ export function useAudio(args: {
         //      so we never store stack-trace-shaped text in
         //      `status.errorMessage` (it gets read by both the
         //      Listen banner and the lock-screen MediaSession).
+        // Free-tier audio cap reached — divert to the paywall.
+        if (result.error === 'audio_limit_reached') {
+          void presentPaywall({
+            requiredEntitlement: ENTITLEMENT_PRO,
+          }).catch(() => {});
+          setStatus({
+            ...INITIAL_STATUS,
+            errorMessage:
+              "You've used your free audio for this month. Upgrade for unlimited listening.",
+          });
+          return;
+        }
+        // Pro hit the (very high) monthly ceiling — no paywall, just inform.
+        if (result.error === 'audio_limit_reached_pro') {
+          setStatus({
+            ...INITIAL_STATUS,
+            errorMessage:
+              "You've reached this month's audio limit. It resets on the 1st.",
+          });
+          return;
+        }
         const raw = result.message;
         const isNetworkRaw =
           !!raw && /network request failed|network error|failed to fetch|abort|timeout/i.test(raw);
@@ -382,12 +465,16 @@ export function useAudio(args: {
         });
         return;
       }
+      playUri = result.data.url;
+      durationSeed = result.data.durationSeconds;
+      alignmentSource = result.data.alignmentUrl;
+      }
 
       // 3. Create the player. expo-audio loads asynchronously; we
       // subscribe to playbackStatusUpdate to track position + state.
       let player: AudioPlayer;
       try {
-        player = createAudioPlayer({ uri: result.data.url });
+        player = createAudioPlayer({ uri: playUri });
       } catch (err) {
         console.warn('[aiAudio] createAudioPlayer threw:', err);
         // The signed audio URL came back fine but expo-audio
@@ -436,7 +523,7 @@ export function useAudio(args: {
           durationSeconds:
             typeof s.duration === 'number' && s.duration > 0
               ? s.duration
-              : prev.durationSeconds || result.data.durationSeconds,
+              : prev.durationSeconds || durationSeed,
         }));
         if (!firedLoaded) {
           firedLoaded = true;
@@ -513,8 +600,8 @@ export function useAudio(args: {
         ...prev,
         loading: false,
         ready: true,
-        durationSeconds: result.data.durationSeconds,
-        alignmentUrl: result.data.alignmentUrl,
+        durationSeconds: durationSeed,
+        alignmentUrl: alignmentSource,
       }));
     })();
 
@@ -639,6 +726,10 @@ export function useAudio(args: {
 
 function audioErrorCodeToMessage(code: string): string {
   switch (code) {
+    case 'audio_limit_reached':
+      return "You've used your free audio for this month. Upgrade for unlimited listening.";
+    case 'audio_limit_reached_pro':
+      return "You've reached this month's audio limit. It resets on the 1st.";
     case 'page_not_found':
       return "Couldn't find this page in the book.";
     case 'page_too_short':

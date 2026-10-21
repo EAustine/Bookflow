@@ -4,6 +4,7 @@ import Purchases, {
   LOG_LEVEL,
   type CustomerInfo,
   type PurchasesOffering,
+  type PurchasesPackage,
 } from 'react-native-purchases';
 import RevenueCatUI, { PAYWALL_RESULT } from 'react-native-purchases-ui';
 
@@ -83,6 +84,98 @@ export async function getCurrentOffering(): Promise<PurchasesOffering | null> {
   if (disabled || !configured) return null;
   const offerings = await Purchases.getOfferings();
   return offerings.current ?? null;
+}
+
+/** RevenueCat Offering id holding the consumable credit-pack products.
+ * Create this offering (with the top-up products) in the RevenueCat dashboard. */
+export const TOPUP_OFFERING_ID = 'topups';
+
+export type TopupKind = 'audio' | 'ai';
+export type TopupMeta = {
+  kind: TopupKind;
+  /** Units the pack grants: minutes for audio, credits for AI. */
+  units: number;
+  /** Card name, e.g. "15 hours audio" / "500K AI credits". */
+  name: string;
+  /** One-line description shown under the name. */
+  description: string;
+};
+
+/**
+ * Display metadata for the consumable top-up products, keyed by Google Play
+ * product id. Mirrors the grant amounts in the revenuecat-webhook's
+ * TOPUP_PRODUCTS map — keep the two in sync. Only names/units live here; live
+ * prices come from RevenueCat. Powers the Buy Credits sheet's audio/AI grouping
+ * and its per-unit / savings math.
+ */
+export const TOPUP_CATALOG: Record<string, TopupMeta> = {
+  bookflow_audio_300min: {
+    kind: 'audio',
+    units: 300,
+    name: '5 hours audio',
+    description: '300 min of narration · used after your monthly allowance',
+  },
+  bookflow_audio_900min: {
+    kind: 'audio',
+    units: 900,
+    name: '15 hours audio',
+    description: '900 min of narration · used after your monthly allowance',
+  },
+  bookflow_ai_100k: {
+    kind: 'ai',
+    units: 100_000,
+    name: '100K AI credits',
+    description: 'Summaries, Q&A, and practice questions',
+  },
+  bookflow_ai_500k: {
+    kind: 'ai',
+    units: 500_000,
+    name: '500K AI credits',
+    description: 'Summaries, Q&A, practice questions & translation',
+  },
+};
+
+/** Resolve a package's product id to its top-up metadata. Tolerant of Google
+ * Play's `productId:purchaseOption` suffix (same as the webhook). */
+export function topupMetaFor(
+  productId: string | undefined | null,
+): TopupMeta | undefined {
+  if (!productId) return undefined;
+  return TOPUP_CATALOG[productId] ?? TOPUP_CATALOG[productId.split(':')[0]];
+}
+
+/** Fetch the consumable credit-pack packages, or [] if unavailable. */
+export async function getTopupPackages(): Promise<PurchasesPackage[]> {
+  if (disabled || !configured) return [];
+  try {
+    const offerings = await Purchases.getOfferings();
+    return offerings.all[TOPUP_OFFERING_ID]?.availablePackages ?? [];
+  } catch (err) {
+    console.warn('[revenuecat] getTopupPackages failed:', err);
+    return [];
+  }
+}
+
+export type TopupResult =
+  | { ok: true }
+  | { ok: false; cancelled?: boolean; error?: string };
+
+/**
+ * Buy a consumable credit pack. The credits themselves are granted
+ * server-side by the RevenueCat webhook (→ grant_credits), so they land on
+ * the user's balance a few seconds after a successful purchase rather than
+ * synchronously here.
+ */
+export async function purchaseTopup(pkg: PurchasesPackage): Promise<TopupResult> {
+  if (disabled || !configured) return { ok: false, error: 'unavailable' };
+  try {
+    await Purchases.purchasePackage(pkg);
+    return { ok: true };
+  } catch (err) {
+    const e = err as { userCancelled?: boolean; message?: string };
+    if (e?.userCancelled) return { ok: false, cancelled: true };
+    return { ok: false, error: e?.message ?? 'purchase_failed' };
+  }
 }
 
 export async function presentPaywall(opts?: {

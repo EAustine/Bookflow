@@ -23,6 +23,7 @@
 
 import Anthropic from 'npm:@anthropic-ai/sdk@0.30.0';
 import { createClient } from 'npm:@supabase/supabase-js@2.45.0';
+import { recordAiUsage, addUsage, checkAiCreditLimit, type AnthropicUsage } from '../_shared/aiCredits.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -205,6 +206,16 @@ Deno.serve(async (req) => {
   }
 
   // 3. Call Anthropic with a structured-output prompt.
+  // Server-authoritative credit gate. Cache hits returned earlier (free);
+  // only fresh generations reach here.
+  const creditGate = await checkAiCreditLimit(supabase, userId);
+  if (!creditGate.allowed) {
+    return json(
+      { error: 'credit_limit_reached', message: 'Monthly AI credit limit reached.' },
+      402,
+    );
+  }
+
   const anthropic = new Anthropic({ apiKey: ANTHROPIC_API_KEY });
   const t0 = Date.now();
 
@@ -216,6 +227,7 @@ Deno.serve(async (req) => {
 
   let questions: Question[] | null = null;
   let lastModelOutput = '';
+  let usageAcc: AnthropicUsage | null = null;
   for (let attempt = 0; attempt < 2 && !questions; attempt++) {
     try {
       const response = await anthropic.messages.create({
@@ -233,6 +245,7 @@ Deno.serve(async (req) => {
           },
         ],
       });
+      usageAcc = addUsage(usageAcc, response.usage);
 
       lastModelOutput = response.content
         .filter((b): b is { type: 'text'; text: string } => b.type === 'text')
@@ -272,6 +285,15 @@ Deno.serve(async (req) => {
   console.log(
     `[generate-practice] generated in ${Date.now() - t0}ms (count=${count} pages=${pages.length})`,
   );
+
+  // Record AI-credit usage (summed across any JSON-repair retry attempts).
+  await recordAiUsage(supabase, {
+    userId,
+    tool: 'practice',
+    bookId: book_id,
+    model: 'claude-haiku-4-5-20251001',
+    usage: usageAcc,
+  });
 
   return json(
     {

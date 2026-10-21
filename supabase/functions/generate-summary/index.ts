@@ -30,6 +30,7 @@
 
 import Anthropic from 'npm:@anthropic-ai/sdk@0.30.0';
 import { createClient } from 'npm:@supabase/supabase-js@2.45.0';
+import { recordAiUsage, checkAiCreditLimit } from '../_shared/aiCredits.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -299,6 +300,16 @@ Deno.serve(async (req) => {
   // 3. Cache miss — call Anthropic. Haiku 4.5 is the right pick for
   // summary work: fast, inexpensive, plenty of capability for
   // condensing prose. We don't need streaming for first-cut UX.
+  // Server-authoritative credit gate. Cache hits returned earlier (free);
+  // only fresh generations reach here.
+  const creditGate = await checkAiCreditLimit(supabase, userId);
+  if (!creditGate.allowed) {
+    return json(
+      { error: 'credit_limit_reached', message: 'Monthly AI credit limit reached.' },
+      402,
+    );
+  }
+
   const anthropic = new Anthropic({ apiKey: ANTHROPIC_API_KEY });
   const config = LENGTH_CONFIG[length];
 
@@ -341,6 +352,15 @@ Deno.serve(async (req) => {
         );
       }
     }
+
+    // Record AI-credit usage (best-effort; never blocks the response).
+    await recordAiUsage(supabase, {
+      userId,
+      tool: 'summary',
+      bookId: book_id,
+      model: 'claude-haiku-4-5-20251001',
+      usage: response.usage,
+    });
 
     console.log(
       `[generate-summary] generated in ${Date.now() - t0}ms (length=${length} pages=${pages.length} words=${summary.split(/\s+/).length})`,

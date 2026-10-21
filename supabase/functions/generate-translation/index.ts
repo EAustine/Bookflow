@@ -19,6 +19,7 @@
 
 import Anthropic from 'npm:@anthropic-ai/sdk@0.30.0';
 import { createClient } from 'npm:@supabase/supabase-js@2.45.0';
+import { recordAiUsage, checkAiCreditLimit } from '../_shared/aiCredits.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -188,6 +189,16 @@ Deno.serve(async (req) => {
   // 4. Call Anthropic. Sonnet 4.6 for the translation work — better
   // grasp of literary register and idiom than Haiku, and the
   // additional cost is small relative to total credits per page.
+  // Server-authoritative credit gate. Cache hits returned earlier (free);
+  // only fresh generations reach here.
+  const creditGate = await checkAiCreditLimit(supabase, userId);
+  if (!creditGate.allowed) {
+    return json(
+      { error: 'credit_limit_reached', message: 'Monthly AI credit limit reached.' },
+      402,
+    );
+  }
+
   const anthropic = new Anthropic({ apiKey: ANTHROPIC_API_KEY });
   const t0 = Date.now();
 
@@ -239,6 +250,15 @@ Deno.serve(async (req) => {
     console.log(
       `[generate-translation] generated in ${Date.now() - t0}ms (lang=${targetLang} pages=${pages.length} src_words=${sourceWordEstimate} out_chars=${translation.length})`,
     );
+
+    // Record AI-credit usage (best-effort; never blocks the response).
+    await recordAiUsage(supabase, {
+      userId,
+      tool: 'translation',
+      bookId: book_id,
+      model: 'claude-sonnet-4-6',
+      usage: response.usage,
+    });
 
     return json(
       {

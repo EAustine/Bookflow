@@ -21,6 +21,7 @@
 
 import Anthropic from 'npm:@anthropic-ai/sdk@0.30.0';
 import { createClient } from 'npm:@supabase/supabase-js@2.45.0';
+import { recordAiUsage, checkAiCreditLimit } from '../_shared/aiCredits.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -229,6 +230,16 @@ Deno.serve(async (req) => {
     // 5. Call Anthropic. The book text goes into a cached system
     // block; the conversation history (incl. the new user message)
     // goes in `messages`.
+    // Server-authoritative credit gate (chat is never cached, so every
+    // message is a fresh, billable generation).
+    const creditGate = await checkAiCreditLimit(supabase, userId);
+    if (!creditGate.allowed) {
+      return json(
+        { error: 'credit_limit_reached', message: 'Monthly AI credit limit reached.' },
+        402,
+      );
+    }
+
     const anthropic = new Anthropic({ apiKey: ANTHROPIC_API_KEY });
     const t0 = Date.now();
 
@@ -279,6 +290,16 @@ Deno.serve(async (req) => {
     console.log(
       `[chat-message] generated in ${Date.now() - t0}ms (history=${priorMessages.length} bookChars=${bookText.length} replyChars=${replyText.length})`,
     );
+
+    // Record AI-credit usage (best-effort). Prompt caching is reflected via
+    // the cache_* token fields on the usage object.
+    await recordAiUsage(supabase, {
+      userId,
+      tool: 'chat',
+      bookId: book_id,
+      model: 'claude-sonnet-4-6',
+      usage: response.usage,
+    });
 
     return json(
       {

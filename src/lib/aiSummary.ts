@@ -1,5 +1,10 @@
 import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '~/lib/supabase';
+import {
+  isCreditLimitError,
+  presentCreditLimitPaywall,
+  CREDIT_LIMIT_MESSAGE,
+} from '~/lib/aiUsage';
 
 /**
  * Client-side summary fetch.
@@ -266,10 +271,14 @@ export function useSummary(args: UseSummaryArgs): UseSummaryReturn {
           cached: result.data.cached,
         });
       } else {
+        const code = result.error.error;
+        if (isCreditLimitError(code)) presentCreditLimitPaywall();
         setState({
           status: 'error',
-          errorCode: result.error.error,
-          errorMessage: result.error.message ?? null,
+          errorCode: code,
+          errorMessage: isCreditLimitError(code)
+            ? CREDIT_LIMIT_MESSAGE
+            : result.error.message ?? null,
         });
       }
     })();

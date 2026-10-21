@@ -13,8 +13,9 @@
  *     · X / 5" on YouScreen / AccountScreen and the design intent
  *     that free users build a small library rather than churn through
  *     unlimited per-month imports.
- *   - **audio**: listening minutes this calendar month, from the
- *     same monthStats source that drives the meter UI.
+ *   - **audio**: minutes of NEW narration generated this calendar month
+ *     (cached + downloaded playback is free and doesn't count), from the
+ *     same source that drives the meter UI.
  *   - **ai**: AI credits used this month. Wire to a real tracker
  *     when we add per-tool metering — for now reports 0 so meters
  *     don't render misleading state.
@@ -34,7 +35,10 @@ import { useIsPro } from '~/lib/revenuecat';
  * cycle); the App.tsx copy will drop to a re-export once the YouScreen
  * meter wiring is migrated to read from here too. */
 export const FREE_PLAN_LIMITS = {
-  audioMinutesPerMonth: 90,
+  // Monthly NEW-narration (generation) allowance. Cached + downloaded
+  // playback is free and uncapped — only fresh ElevenLabs generation counts,
+  // enforced server-side in the generate-audio function.
+  audioMinutesPerMonth: 60,
   aiCreditsPerMonth: 50_000,
   booksTotal: 5,
 } as const;

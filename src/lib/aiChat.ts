@@ -1,5 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { supabase } from '~/lib/supabase';
+import {
+  isCreditLimitError,
+  presentCreditLimitPaywall,
+  CREDIT_LIMIT_MESSAGE,
+} from '~/lib/aiUsage';
 
 /**
  * Book-grounded chat. One canonical conversation per (user, book) —
@@ -230,7 +235,12 @@ export function useChat(bookId: string): UseChatState {
             m.id === optimisticId ? { ...m, pending: false, failed: true } : m,
           ),
         );
-        setErrorMessage(result.message ?? errorCodeToMessage(result.error));
+        if (isCreditLimitError(result.error)) presentCreditLimitPaywall();
+        setErrorMessage(
+          isCreditLimitError(result.error)
+            ? CREDIT_LIMIT_MESSAGE
+            : result.message ?? errorCodeToMessage(result.error),
+        );
       }
       setSending(false);
     },

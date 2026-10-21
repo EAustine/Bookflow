@@ -1,5 +1,10 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '~/lib/supabase';
+import {
+  isCreditLimitError,
+  presentCreditLimitPaywall,
+  CREDIT_LIMIT_MESSAGE,
+} from '~/lib/aiUsage';
 
 /**
  * Practice questions client. Calls the `generate-practice` edge
@@ -125,10 +130,13 @@ export function usePractice(args: {
           cached: result.data.cached,
         });
       } else {
+        if (isCreditLimitError(result.error)) presentCreditLimitPaywall();
         setState({
           status: 'error',
           errorCode: result.error,
-          errorMessage: result.message ?? null,
+          errorMessage: isCreditLimitError(result.error)
+            ? CREDIT_LIMIT_MESSAGE
+            : result.message ?? null,
         });
       }
     })();

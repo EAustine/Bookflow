@@ -12,12 +12,13 @@
  *     endpoint) to bring back the bimodal word-by-word highlight
  *     that OpenAI tts-1 didn't support.
  *
- * Cost note: ElevenLabs is ~16× more expensive than OpenAI tts-1 on
- * pay-as-you-go (~$0.30 per 1K chars vs. ~$0.018), but the cache
- * makes repeat plays free and a 200-word page is one round-trip
- * unless the user changes voice. Plans at $22+/mo bring the rate
- * down considerably; the function is otherwise unchanged when you
- * upgrade.
+ * Cost note: only a true cache miss costs money (~$0.08/min of narration on
+ * eleven_turbo_v2_5). Two layers keep that rare: a per-user cache (repeat
+ * plays of the same page+voice are free) and a cross-user content cache
+ * (identical text+voice is narrated ONCE globally, so the shared public-
+ * domain catalog is free after the first listener). Because cached + dedup
+ * serves cost nothing, only fresh generation is metered and capped — see the
+ * generation gate below; cached serves are never counted or blocked.
  *
  * Flow:
  *   1. Validate body { book_id, page_index, voice_id }.
@@ -42,6 +43,11 @@ const ELEVENLABS_API_KEY = Deno.env.get('ELEVENLABS_API_KEY');
 
 const STORAGE_BUCKET = 'books';
 const SIGNED_URL_TTL_S = 60 * 60; // 1 hour
+// Pro GENERATION ceiling — a high but finite monthly cap on NEW narration
+// (abuse backstop, not a marketed limit; a normal Pro listener never reaches
+// it, because cached + dedup playback is free and uncapped). Free users use
+// profiles.audio_seconds_limit (60 min of generation).
+const PRO_AUDIO_LIMIT_SECONDS = 180_000; // 50 hours / month
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
@@ -171,6 +177,22 @@ Deno.serve(async (req) => {
     return json({ error: 'page_too_short' }, 400);
   }
 
+  // Records generated narration seconds against the monthly generation cap
+  // (spends the monthly allowance first, then any purchased balance — see the
+  // record_audio_usage RPC). Called ONLY on a real cache miss below: cached +
+  // dedup serves are free, so they neither count nor block. Never throws — a
+  // metering hiccup must not fail a successful generation.
+  const recordAudio = async (seconds: number) => {
+    try {
+      await supabase.rpc('record_audio_usage', {
+        p_user: userId,
+        p_seconds: Math.max(0, Math.round(seconds || 0)),
+      });
+    } catch (e) {
+      console.warn('[generate-audio] record_audio_usage failed:', e);
+    }
+  };
+
   // 1. Cache lookup. We also pull the alignment_path so the client can
   // render bimodal highlights from cached audio without re-generating.
   const { data: cached } = await supabase
@@ -195,6 +217,9 @@ Deno.serve(async (req) => {
         : Promise.resolve({ data: null, error: null }),
     ]);
     if (!audioSigned.error && audioSigned.data?.signedUrl) {
+      // Cache hit — a free serve. Not counted against the generation cap and
+      // never blocked, so a user who's exhausted their generation allowance
+      // can still replay (and listen offline to) anything already narrated.
       return json(
         {
           url: audioSigned.data.signedUrl,
@@ -209,6 +234,113 @@ Deno.serve(async (req) => {
     }
     // Cache row exists but signing failed → fall through to regenerate.
     console.warn('[generate-audio] cache sign failed:', audioSigned.error?.message);
+  }
+
+  // 1b. Cross-user dedup. Identical text + voice → identical audio. Public-
+  // domain books (Discover, Bibles) are imported by many users as separate
+  // `pages` rows, so without this each user re-pays ElevenLabs for the same
+  // narration. A global cache keyed by content hash means the audio is
+  // generated ONCE and reused by everyone. Resilient if the table doesn't
+  // exist yet (pre-migration) — falls through to normal generation.
+  const contentHash = await sha256Hex(page.content.trim());
+  try {
+    const { data: shared } = await supabase
+      .from('audio_content_cache')
+      .select('storage_path, alignment_path, duration_seconds')
+      .eq('content_hash', contentHash)
+      .eq('voice_id', voice)
+      .maybeSingle();
+    if (shared?.storage_path) {
+      const [audioSigned, alignSigned] = await Promise.all([
+        supabase.storage
+          .from(STORAGE_BUCKET)
+          .createSignedUrl(shared.storage_path, SIGNED_URL_TTL_S),
+        shared.alignment_path
+          ? supabase.storage
+              .from(STORAGE_BUCKET)
+              .createSignedUrl(shared.alignment_path, SIGNED_URL_TTL_S)
+          : Promise.resolve({ data: null, error: null }),
+      ]);
+      if (!audioSigned.error && audioSigned.data?.signedUrl) {
+        // Point this user's per-page cache at the shared file so the next
+        // request hits the per-user cache directly (no content lookup).
+        await supabase.from('audio_cache').upsert(
+          {
+            page_id: page.id,
+            voice_id: voice,
+            storage_path: shared.storage_path,
+            alignment_path: shared.alignment_path,
+            duration_seconds: shared.duration_seconds,
+          },
+          { onConflict: 'page_id,voice_id' },
+        );
+        // Dedup hit — someone already generated this exact text+voice, so this
+        // serve costs us nothing. Free and uncapped, same as a per-user hit.
+        return json(
+          {
+            url: audioSigned.data.signedUrl,
+            alignment_url: alignSigned.data?.signedUrl ?? null,
+            duration_seconds: shared.duration_seconds,
+            cached: true,
+            page_index,
+            voice_id: voice,
+          },
+          200,
+        );
+      }
+    }
+  } catch (e) {
+    console.warn('[generate-audio] content-cache lookup skipped:', e);
+  }
+
+  // ── Generation cap (hard server-side enforcement) ───────────────────────
+  // We only reach here on a true cache miss — i.e. we're about to pay
+  // ElevenLabs to generate NEW narration. That's the only thing that costs
+  // money, so it's the only thing we gate; every cached + dedup serve above
+  // is free and uncapped. `audio_seconds_used` counts generated seconds and
+  // `audio_seconds_limit` is the monthly generation allowance (Pro: a high
+  // finite backstop; free: the column, 60 min). Purchased balance extends
+  // past the monthly allowance. Fail-open on any read error so a transient DB
+  // hiccup never blocks a (possibly paying) user mid-generation.
+  try {
+    const { data: prof } = await supabase
+      .from('profiles')
+      .select(
+        'plan, audio_seconds_used, audio_seconds_limit, audio_seconds_period_start, audio_seconds_balance, audio_seconds_balance_expires_at',
+      )
+      .eq('id', userId)
+      .maybeSingle();
+    if (prof) {
+      const isPro = prof.plan === 'pro';
+      const now = new Date();
+      const monthStart = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1);
+      const psRaw = prof.audio_seconds_period_start as string | null;
+      const ps = psRaw ? new Date(psRaw).getTime() : 0;
+      const used = ps >= monthStart ? (prof.audio_seconds_used ?? 0) : 0;
+      // Pro: a high finite ceiling (overrides the column so a lagging webhook
+      // can't strand a paying user at the free cap). Free: the column (60 min).
+      const limit = isPro
+        ? PRO_AUDIO_LIMIT_SECONDS
+        : ((prof.audio_seconds_limit ?? 3600) as number);
+      // Purchased audio balance (expiry-aware) extends past the monthly cap.
+      const balExpRaw = prof.audio_seconds_balance_expires_at as string | null;
+      const balExp = balExpRaw ? new Date(balExpRaw).getTime() : 0;
+      const balance =
+        balExp > now.getTime() ? (prof.audio_seconds_balance ?? 0) : 0;
+      if (used >= limit && balance <= 0) {
+        return json(
+          {
+            // Distinct code for Pro so the client shows a plain "limit
+            // reached" message rather than an upgrade paywall.
+            error: isPro ? 'audio_limit_reached_pro' : 'audio_limit_reached',
+            message: 'Monthly audio generation limit reached.',
+          },
+          402,
+        );
+      }
+    }
+  } catch (e) {
+    console.warn('[generate-audio] generation gate read failed (fail-open):', e);
   }
 
   // 2. Cache miss — call ElevenLabs `/with-timestamps`. Returns JSON
@@ -295,9 +427,11 @@ Deno.serve(async (req) => {
   // 3. Upload audio + alignment to Storage. Same path prefix; sidecar
   // alignment file as JSON. Uploads in parallel — the alignment is
   // small (~30-60KB) so neither blocks the other.
-  const audioPath = `${userId}/${book_id}/audio/${page_index}_${voice}.mp3`;
+  // Content-addressed shared path so the file is reused across every user
+  // with the same text + voice (see the content cache above + below).
+  const audioPath = `shared/audio/${contentHash}_${voice}.mp3`;
   const alignmentPath = alignment
-    ? `${userId}/${book_id}/audio/${page_index}_${voice}.json`
+    ? `shared/audio/${contentHash}_${voice}.json`
     : null;
   const [audioUp, alignUp] = await Promise.all([
     supabase.storage
@@ -359,6 +493,27 @@ Deno.serve(async (req) => {
     console.warn('[generate-audio] cache upsert failed:', cacheErr.message);
   }
 
+  // Global content cache — lets every other user reuse this audio with no
+  // further ElevenLabs cost. Non-fatal if the table is missing (pre-migration).
+  const { error: contentCacheErr } = await supabase
+    .from('audio_content_cache')
+    .upsert(
+      {
+        content_hash: contentHash,
+        voice_id: voice,
+        storage_path: audioPath,
+        alignment_path: finalAlignmentPath,
+        duration_seconds: estimatedDurationSec,
+      },
+      { onConflict: 'content_hash,voice_id' },
+    );
+  if (contentCacheErr) {
+    console.warn(
+      '[generate-audio] content-cache upsert failed:',
+      contentCacheErr.message,
+    );
+  }
+
   // 6. Sign + return both URLs. Alignment URL is null when we don't
   // have one; the client treats null as "no bimodal highlighting" and
   // falls back to static text.
@@ -386,6 +541,7 @@ Deno.serve(async (req) => {
     `[generate-audio] generated in ${Date.now() - t0}ms (voice=${voice} bytes=${audioBytes.byteLength} alignment=${alignment ? 'yes' : 'no'})`,
   );
 
+  await recordAudio(estimatedDurationSec);
   return json(
     {
       url: audioSignFresh.data.signedUrl,
@@ -398,6 +554,16 @@ Deno.serve(async (req) => {
     200,
   );
 });
+
+async function sha256Hex(input: string): Promise<string> {
+  const buf = await crypto.subtle.digest(
+    'SHA-256',
+    new TextEncoder().encode(input),
+  );
+  return Array.from(new Uint8Array(buf))
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('');
+}
 
 function json(payload: unknown, status: number) {
   return new Response(JSON.stringify(payload), {
