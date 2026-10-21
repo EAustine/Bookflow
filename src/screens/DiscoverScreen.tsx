@@ -66,10 +66,6 @@ type DiscoverBook = {
   /** Direct EPUB URL — used by the import flow. */
   epubUrl: string | null;
   tags: string[];
-  /** Optional — Gutendex doesn't ship reading time. */
-  readTime?: string;
-  /** Optional — Gutendex doesn't ship chapter count. */
-  chapters?: number;
   about: string;
   /** Source identifier the edge function knows how to import from.
    * The OPDS sources (feedbooks, manybooks, doab, oapen) are served
@@ -85,7 +81,6 @@ type DiscoverBook = {
     | 'oapen';
   /** Display label for the detail view ("Project Gutenberg"). */
   sourceLabel?: string;
-  related?: { id: string; title: string; coverColor: string }[];
 };
 
 // ─── Cover palette ────────────────────────────────────────────────────────────
@@ -2372,24 +2367,11 @@ function DetailView({
         <Text style={s.detailAuthor}>{book.author}</Text>
 
         <View style={s.detailMetaRow}>
-          {book.readTime && (
-            <>
-              <View style={s.detailMetaItem}>
-                <Text style={s.detailMetaValue}>{book.readTime}</Text>
-                <Text style={s.detailMetaLabel}>Read time</Text>
-              </View>
-              <View style={s.detailMetaDivider} />
-            </>
-          )}
-          {typeof book.chapters === 'number' && (
-            <>
-              <View style={s.detailMetaItem}>
-                <Text style={s.detailMetaValue}>{book.chapters}</Text>
-                <Text style={s.detailMetaLabel}>Chapters</Text>
-              </View>
-              <View style={s.detailMetaDivider} />
-            </>
-          )}
+          {/* Read time and chapter count used to render here behind
+              truthiness checks. No construction site ever populated them
+              — `fromApiBook` is the only path that builds a DiscoverBook
+              and returns neither — so the meta row has always shown just
+              the Free badge. (F-23.) */}
           <View style={s.detailMetaItem}>
             <View style={s.freeBadge}>
               <Text style={s.freeBadgeText}>Free</Text>
@@ -2415,24 +2397,6 @@ function DetailView({
             <Text style={s.detailSource}>
               {book.sourceLabel ?? book.source}
             </Text>
-          </>
-        )}
-
-        {book.related && book.related.length > 0 && (
-          <>
-            <Text style={[s.detailSectionLabel, { marginBottom: 8 }]}>If you like this</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-              <View style={s.relatedRail}>
-                {book.related.map((rel) => (
-                  <View key={rel.id} style={s.relatedCard}>
-                    <View style={[s.relatedCover, { backgroundColor: rel.coverColor }]}>
-                      <Text style={s.relatedCoverText}>{rel.title}</Text>
-                    </View>
-                    <Text style={s.relatedTitle} numberOfLines={2}>{rel.title}</Text>
-                  </View>
-                ))}
-              </View>
-            </ScrollView>
           </>
         )}
 
@@ -2854,20 +2818,6 @@ const s = StyleSheet.create({
     color: tokens.colors.cream[50],
     lineHeight: 10,
   },
-  readTimeBadge: {
-    position: 'absolute',
-    top: 6,
-    right: 6,
-    backgroundColor: 'rgba(0,0,0,0.45)',
-    borderRadius: 4,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-  },
-  readTimeText: {
-    fontFamily: tokens.fonts.uiMedium,
-    fontSize: 9,
-    color: '#fff',
-  },
 
   // Category view
   catHeader: {
@@ -3085,21 +3035,6 @@ const s = StyleSheet.create({
     alignItems: 'center',
     gap: 3,
   },
-  detailMetaValue: {
-    fontFamily: tokens.fonts.uiMedium,
-    fontSize: 13,
-    color: tokens.colors.ink[900],
-  },
-  detailMetaLabel: {
-    fontFamily: tokens.fonts.ui,
-    fontSize: 10,
-    color: tokens.colors.ink[400],
-  },
-  detailMetaDivider: {
-    width: StyleSheet.hairlineWidth,
-    backgroundColor: tokens.colors.ink[200],
-    alignSelf: 'stretch',
-  },
   freeBadge: {
     backgroundColor: tokens.colors.forest[50],
     borderRadius: 4,
@@ -3149,34 +3084,6 @@ const s = StyleSheet.create({
     color: tokens.colors.ink[400],
     lineHeight: 16.5,
     marginBottom: 18,
-  },
-  relatedRail: {
-    flexDirection: 'row',
-    gap: 10,
-  },
-  relatedCard: {
-    width: 80,
-  },
-  relatedCover: {
-    width: 80,
-    height: 116,
-    borderRadius: 5,
-    padding: 6,
-    justifyContent: 'flex-end',
-    marginBottom: 5,
-    overflow: 'hidden',
-  },
-  relatedCoverText: {
-    fontFamily: tokens.fonts.display,
-    fontSize: 6,
-    color: tokens.colors.cream[50],
-    lineHeight: 7.5,
-  },
-  relatedTitle: {
-    fontFamily: tokens.fonts.display,
-    fontSize: 10,
-    color: tokens.colors.ink[900],
-    lineHeight: 13,
   },
   detailCTABar: {
     flexDirection: 'row',
