@@ -8,15 +8,17 @@ Resumable record of the Figma replication. Any later session can pick up cold fr
 | **URL** | https://www.figma.com/design/Rt3gjNC24kBTrncxlnkuPW/Bookflow |
 | **Role** | **Foundations** (user decision, 2026-10-20). The brief originally called for three separate files; the user chose to use this existing file as Foundations instead. |
 | **Team** | The Fusion Studio — `team::1380221155674136965` (Pro tier → max 4 variable modes) |
-| **Source** | repo `bookflow`, branch `v11-batch`, HEAD `5cfc5fb` |
+| **Source** | repo `bookflow`, branch `ui-cleanup` (from `v11-batch`) |
 | **MCP session** | `b33f6fe9-6ebe-4f8f-a85f-776414bf7a36` |
 | **Inventory** | [`BOOKFLOW_FIGMA_INVENTORY.md`](./BOOKFLOW_FIGMA_INVENTORY.md) |
 
-**Phase status:** Phase 0 ✅ · Phase 1 ✅ · Phase 2 ✅ · **Phase 3 — Flows 1, 2, 4, 5 ✅ · Flow 3 and 6–10 ⏳** · Phase 4 ⏳
+**Phase status:** Phases 0–4 ✅ **complete** — all ten flows built, audited and covered against the route map. Current round: **UI cleanup** (branch `ui-cleanup`), settling the open questions before the architecture discussion.
 
 **Phase 3 base frame: 393 × 852** (user decision). Android 412 × 917 frames only where behaviour genuinely differs.
 
-**Decisions received 2026-10-20:** Phase 3 frame size = **393 × 852**. Fraunces Medium to be added to Figma by the user (re-checked and still unavailable at Tier 1; the 4 withheld text styles remain pending).
+**Decisions received 2026-10-20:** Phase 3 frame size = **393 × 852**.
+
+**Decision 2026-10-21 (font):** Fraunces Medium does not exist in Figma and will not. `tokens.fonts.display` moved to **Fraunces SemiBold 600** in code; all 23 text styles are now built and **nothing in the file is a placeholder weight**. See Phase A below.
 
 ---
 
@@ -62,17 +64,13 @@ Resumable record of the Figma replication. Any later session can pick up cold fr
 - Every variable has explicit `scopes`. Colour by role (`TEXT_FILL` / `FRAME_FILL`+`SHAPE_FILL` / `STROKE_COLOR`), spacing → `GAP`, radii → `CORNER_RADIUS`, strokes → `STROKE_FLOAT`, shadow numbers → `EFFECT_FLOAT`, Android-elevation and motion values → `[]` (documentation only; Figma has no bindable field).
 - Each variable's `description` carries its resolved value plus provenance.
 
-### Text styles (19 created, 4 deliberately skipped)
+### Text styles (23)
 
 `Display/XL` · `Heading/LG` `Heading/MD` `Heading/SM` · `Body/LG` `Body/MD` `Body/SM` `Body/XS` · `Label/MD` `Label/SM` · `Reading/Standard` `Reading/Comfortable` `Reading/Max readability` `Reading/Font/Sans` `Reading/Font/Lexend` · `Reading/EPUB/Body` `Reading/EPUB/Heading 1` `Reading/EPUB/Heading 2` `Reading/EPUB/Heading 3`
 
-> 🔴 **Not built — Fraunces Medium (500) does not exist in Figma.** Verified by `listAvailableFontsAsync` (Fraunces ships Thin, Light, Regular, SemiBold, Bold, Black + italics; no variable weight axis exposed) and by a failing `loadFontAsync`. Per ground rule 6 these were **not substituted**:
-> - `Display/LG` — Fraunces Medium 36 / 44
-> - `Display/MD` — Fraunces Medium 28 / 36
-> - `Display/SM` — Fraunces Medium 22 / 30 *(also the BottomSheet title)*
-> - `Reading/EPUB/Spine title` — Fraunces 500, 1.5em
->
-> **Resolve by** adding Fraunces Medium to the team's Figma fonts, **or** changing `tokens.fonts.display` in code to SemiBold 600 / Regular 400.
+Plus the four that were withheld through Phases 1–4 and are now built: `Display/LG` `Display/MD` `Display/SM` `Reading/EPUB/Spine title`.
+
+> ✅ **Fraunces Medium — resolved 2026-10-21.** Figma offers Fraunces only in Thin, Light, Regular, SemiBold, Bold and Black; there is no Medium face and no variable weight axis, confirmed by `listAvailableFontsAsync` **and** by a `loadFontAsync({family:'Fraunces', style:'Medium'})` that throws with the available-styles list. Rather than hold four styles hostage, **the app moved**: `tokens.fonts.display` is now `Fraunces_600SemiBold`. All four styles are built at SemiBold and every placeholder marking in the file is cleared. See Phase A.
 
 Reader styles use the **real constant leading** (`fontSize × 1.78`), not the presets' declared 1.5 / 1.8 / 2.0 — see open question F-2.
 
@@ -195,9 +193,9 @@ Extra: `List row / destructive` (`129:315`) — an instance showing the `destruc
 | Variables at `ALL_SCOPES` | **0** of 224 |
 | Variables missing WEB code syntax | **0** |
 
-### Fraunces Medium — placeholder-weight register
+### Fraunces Medium — placeholder-weight register ✅ CLOSED 2026-10-21
 
-Fraunces Medium was still unavailable when Tier 2 was built. These nodes use **Fraunces SemiBold as a marked stand-in** and must be switched once the font is added:
+Historical. These nodes were built in **Fraunces SemiBold as a marked stand-in** while Medium was expected. The app moved to SemiBold 600 instead, so SemiBold is now simply *correct* — the nodes are unchanged and the ⚠ PLACEHOLDER WEIGHT markers have been stripped from their component descriptions.
 
 | Component | Node | Spec |
 |---|---|---|
@@ -208,7 +206,7 @@ Fraunces Medium was still unavailable when Tier 2 was built. These nodes use **F
 | Mini player | cover text | Fraunces 5 / w500 |
 | Empty state | title | Fraunces 22 / w500 |
 
-Plus the 4 text styles still unbuilt: `Display/LG`, `Display/MD`, `Display/SM`, `Reading/EPUB/Spine title`.
+The 4 text styles that were unbuilt — `Display/LG`, `Display/MD`, `Display/SM`, `Reading/EPUB/Spine title` — now exist at SemiBold.
 
 ### Tier 3 — Organisms ✅  (13 families · 17 variants)
 
@@ -251,7 +249,7 @@ Plus a documentation block, **`Paywall — where the real one lives`** (`141:157
 | Variables at `ALL_SCOPES` | **0** |
 | Variables missing WEB code syntax | **0** |
 | Broken aliases | **0** |
-| Text styles | 19 (4 still blocked on Fraunces Medium) |
+| Text styles | 19 at the time; **23** after the Phase A font decision |
 
 **Publishing:** the brief's Phase 2 ends with "ask me to publish Components" because it assumed three files needing cross-file library instances. With the single-file decision, components consume local variables directly and **no publish is required** to start Phase 3. Publishing is only needed if you later want these consumed from another file.
 
@@ -322,7 +320,7 @@ Page: `Auth` (`145:61`). Ten screens at **393 × 852**, left to right in user or
 - Screen 10 has **no dedicated UI in code**. `App.tsx` restores the session, reads `profiles.onboarding_complete` and routes silently; the user only sees the splash. The frame shows that, with an annotation (`147:450`) describing the routing rather than inventing a screen.
 - The error state shows the `expired` copy. The other three variants (`used`, `network`, `unknown`) share the layout and differ only in title/sub/CTA — all four strings are in `ERROR_COPY`.
 - The three-dot pulse on Verifying and the splash draw-on animation are static here; Figma frames cannot express them. Timings are recorded on the Motion page.
-- ⚠ Fraunces Medium still unavailable: the Welcome headline, both form titles, "Check your email.", "Almost there.", "This link has expired." and the onboarding headings all use SemiBold as a marked stand-in.
+- The Welcome headline, both form titles, "Check your email.", "Almost there.", "This link has expired." and the onboarding headings are all Fraunces SemiBold — a marked stand-in when this flow was built, and **correct** since the Phase A font decision.
 
 ### Flow 2 — Library ✅
 
@@ -537,7 +535,7 @@ These are hard-coded in the app and have no token on either spacing scale (`spac
 - **F-21 — two near-duplicate recently-listened rows.** `ListenHistoryScreen.Row` (44×44 cover, Fraunces 14 / Geist 11, padding 18/10) and `ListenNowPlayingScreen.recentRow` (38×38 cover, Fraunces 13 / Geist 10, padding 14/11) render the same data with different metrics. Both exist in Figma as separate molecules. Intentional size difference, or should they converge?
 - **F-22 — transport icon opacity.** The code paints transport icons `rgba(255,255,255,0.85)`; in Figma they are bound to `white/85` on the component, but icon sub-layers inside instances resolve opaque (same binding quirk as above). Cosmetic, flagged rather than hacked around.
 
-#### Fraunces placeholder-weight additions from this flow
+#### Fraunces placeholder-weight additions from this flow — ✅ closed 2026-10-21 (SemiBold is now the real weight)
 
 | Component / screen | Node | Spec |
 |---|---|---|
@@ -549,7 +547,7 @@ These are hard-coded in the app and have no token on either spacing scale (`spac
 | Recent listen row title | `178:453` | Fraunces 13 / w500 |
 | History header title | screen 10 | Fraunces 16 / w500 |
 
-Fraunces Medium was re-checked at the start of this flow and is **still unavailable** in Figma.
+Fraunces Medium was re-checked at the start of this flow and was still unavailable. It never became available; the app moved to SemiBold 600 in Phase A instead.
 
 ---
 
@@ -600,7 +598,7 @@ SF Pro **is** available in Figma, so the native alert uses the real iOS system f
 
 `detailCoverWrap` marginBottom 18 · title marginBottom 4 · author marginBottom 14 · metaRow marginBottom/paddingBottom 18 · section-label marginBottom 8 · about marginBottom 16 · tags marginBottom 16 · source marginBottom 18 · cover 120×176 radius 8 padding 10 · header padding 16/8 · CTA bar padding 20/12/10 · primary button 48 high radius 10 · sample button 48×48 radius 10 · related cover 80×116 radius 5.
 
-#### Fraunces placeholder-weight additions from this flow
+#### Fraunces placeholder-weight additions from this flow — ✅ closed 2026-10-21 (SemiBold is now the real weight)
 
 | Node | Spec |
 |---|---|
@@ -673,7 +671,7 @@ Rebuilding `Topic tag` as a component set orphaned the 18 instances on the Book 
 
 home header 20/14 padding · search bar h40 r9999 pH14 · chip h32 pH14 r16 · sectionRow pH20 mb10 · rail cards 108×158 r7 pad8 · short cards 130×90 r8 · featured card r14, cover col 90 wide, info padding 14/12, add button h28 r14 pH12 · category header 16/10/12 · book row cover 72×104 r6 pad7 · divider marginVertical 14 · copy card r10 pH14 pV12 · banner pH14 pV10.
 
-#### Fraunces placeholder-weight additions from this flow
+#### Fraunces placeholder-weight additions from this flow — ✅ closed 2026-10-21 (SemiBold is now the real weight)
 
 `Discover` title (28/w500) · error + empty titles (18/w500) · category header title (20/w500) · rail card title (12) · short card title (11) · featured title (15) · book row title (14) · all cover captions (6.5–8).
 
@@ -730,7 +728,7 @@ Reused as-is: `Plan card` (Free + Pro, already built in Tier 2 from this screen)
 
 profile avatar 52×52 r26 · chevron circle 32×32 · plan badge radius `radii.sm` with 3px vertical padding · upgrade button h40 · Pro hero paddings 16/12, name 28/31, `proBottom` 16/12/18 · settings row 14/13 padding, 30×30 icon tile r8 · settings toggle 44×26, knob 20 inset 3 · drill header 16/10 with a 36px spacer · sub header back button 30×30 r15 · radio dot 20×20 border 1.5, inner 10 · size button 14/8 r10 · upsell card r12 pad14, button 14/8 r10 · notif banner r10 pad 14/12, CTA h30 r7.
 
-#### Fraunces placeholder-weight additions from this flow
+#### Fraunces placeholder-weight additions from this flow — ✅ closed 2026-10-21 (SemiBold is now the real weight)
 
 `You` title (28/w500) · profile name (16/w500) · Pro plan name hero (28/w500) · sub header title (16/w500) · drill header title (17/w500) · sign-out sheet title (20/w500) · upsell card title (14/w500).
 
@@ -793,7 +791,7 @@ with the footer "Top-ups expire 12 months after purchase · non-refundable". Nev
 
 sheet header 6/14 · card radius 14 with a 1.5 border · 46×46 icon tile r12 · best-value badge 7/2 · savings pill 10/3 · buy button h36 r9 pH18 minWidth 72 · tab track r10 pad 3, tab h34 r8 · soft warning r10 border 0.5 pad 12/10 · dismiss 24×24 on `rgba(0,0,0,0.06)`.
 
-#### Fraunces placeholder-weight additions from this flow
+#### Fraunces placeholder-weight additions from this flow — ✅ closed 2026-10-21 (SemiBold is now the real weight)
 
 Buy credits title (22/w500) · pack name (15/w500) · price (17/w500) · hosted-paywall marker heading (18).
 
@@ -849,12 +847,14 @@ offline banner 10/16 padding, 8px dot, retry h26 r6 pH10 · chat offline bar 8/1
 
 ## Phase 3 complete — all ten flows built
 
+Counts **as at the end of Phase 3**. Phase 4 then added 12 more surfaces — see §4.3 for the current state of the file.
+
 | Flow | Page | Frames | Node |
 |---|---|---|---|
 | 1 Auth | `Auth` | 10 | `145:61` |
-| 2 Library | `Library` | 11 | — |
+| 2 Library | `Library` | 12 | `152:2` |
 | 3 Book detail | `Book detail` | 6 | `194:2` |
-| 4 Reader | `Reader` | 11 | — |
+| 4 Reader | `Reader` | 10 | `156:2` |
 | 5 Reader AI tools | `AI tools` | 10 | — |
 | 6 Listen | `Listen` | 10 | `169:2` |
 | 7 Discover | `Discover` | 9 | `201:2` |
@@ -975,8 +975,8 @@ Twelve reachable surfaces from the route map were missing after Phase 3. All twe
 |---|---|
 | Screen frames | **108** across 10 flow pages |
 | Component sets | **98** (20 atoms · 54 molecules · 24 organisms) |
-| Variables | **248** across 9 collections |
-| Text styles | 19 · Effect styles 4 |
+| Variables | **263** across 9 collections |
+| Text styles | **23** · Effect styles 4 |
 | Detached instances | **0** |
 | Orphan instances | **0** |
 | Unbound fills | **0** |
@@ -1002,8 +1002,8 @@ Twelve reachable surfaces from the route map were missing after Phase 3. All twe
 
 ### 4.5 What is still outstanding
 
-1. **Fraunces Medium.** Re-checked once more in Phase 4 — still unavailable in Figma. ~30 node types use **Fraunces SemiBold as a marked stand-in**, and 4 text styles (`Display/LG`, `Display/MD`, `Display/SM`, `Reading/EPUB/Spine title`) are still withheld rather than substituted. Every affected node is registered in the per-flow placeholder registers above, so this is a single switch-over pass once the font lands.
-2. **36 open questions** — the table below. Several are real consistency bugs in the app, not design decisions.
+1. ~~**Fraunces Medium.**~~ **Resolved in Phase A (2026-10-21)** — the font does not exist in Figma, so the app moved to SemiBold 600. All 23 text styles built, every placeholder marking cleared.
+2. **Open questions** — the table below, now pruned to genuinely open items. Several are real consistency bugs in the app, not design decisions.
 3. **Ground rule 10 (visual verification against a real app render) was never satisfied** — see the caveat at the head of Phase 3. Screens are verified against source code and Figma screenshots only.
 
 ---
@@ -1135,22 +1135,18 @@ Verified: `grep` for the old control points returns **nothing** across `src/` an
 3. **WEB code syntax is the RN token path, not `var(--x)`.** No CSS variables exist in this codebase.
 4. **Reader themes are a separate collection, not modes of `Semantic/Color`.** Modelling them as global modes would wrongly imply the whole app re-themes; it does not (`app.json` → `userInterfaceStyle: "light"`, no `useColorScheme` anywhere).
 5. **`Border` and `Elevation` are derived**, and labelled as such in every description. Code has no such tokens.
-6. **4 text styles withheld** rather than substituted (Fraunces Medium). Ground rule 6.
+6. ~~**4 text styles withheld**~~ — the deviation is gone. Ground rule 6 held (no silent substitution); the question went back to code and `tokens.fonts.display` moved to SemiBold 600, so all 23 styles are built at a weight both sides genuinely have.
 
 ---
 
-## Open questions blocking later phases
+## Open questions — still genuinely open
+
+Answered items are **not** kept here; they live in §"Open questions F-1 … F-16", §"Post-Phase-4 code fixes" and the Phase A/B sections. This table is only what is still undecided.
 
 | ID | Question | Blocks |
 |---|---|---|
-| **Fonts** | Add Fraunces Medium to Figma, or change `tokens.fonts.display` in code? | 4 text styles |
-| **Frame size** | Existing mockups are 1290×2796 (@3x of 430×932); Phase 0 proposed 393×852. Which is the Phase 3 base? | Phase 3 |
-| ~~**F-1**~~ | ~~Paywall UI is RevenueCat-hosted~~ — **ANSWERED in Flow 9**: nothing to export. Hosted paywall is dashboard-configured; the only in-repo upgrade surface is the "Upgrade coming soon" alert. | ~~Phase 3~~ |
-| **F-2** | Reader presets declare line-heights that are never applied (always ×1.78). Bug or intended? | Reading styles |
-| **F-3** | Icon stroke-width 1.5 is overridden on ~79 instances. Expose a property, or fix in code? | Phase 2 |
-| **F-6** | Adopt the derived Border/Elevation scales back into `tokens.ts`? | Phase 2 |
-| **F-8** | Two geometrically different logomarks ship. Which is canonical? | Brand |
-| **F-13** | ~11 built-but-unreachable screens — in or out of scope? | Phase 2/3 |
+| **F-17** | `Button.tsx` and `ListRow.tsx` pair `fontWeight: '500'` with `fonts.ui` (Geist **Regular**), so their labels render Regular while Figma shows Medium. | Phase B |
+| **F-18** | `ModeTogglePill`'s `variant="dark"` is passed by no caller, and its code comment describing the PDF header as black-translucent is stale. | Phase B |
 | **F-19** | Figma `Stat card` exposes Value/Label only; code's `StatCard` also has `unit` and `delta`. Extend the component? | Phase 4 |
 | **F-20** | Now-playing hero card uses `#fff` / `rgba(255,255,255,…)` / `#2C3B31` inline instead of tokens. Adopt into `tokens.ts`? | Phase 4 |
 | **F-21** | Two near-duplicate recently-listened rows with different metrics (`ListenHistoryScreen.Row` vs `ListenNowPlayingScreen.recentRow`). Converge? | Phase 4 |
@@ -1161,15 +1157,12 @@ Verified: `grep` for the old control points returns **nothing** across `src/` an
 | **F-26** | Destructive confirmation differs by entry point: Library uses the bottom sheet, Discover uses a native alert. Breaks CLAUDE.md hard rule 5. | Phase 4 |
 | **F-27** | Free-book cap diverts to the hosted paywall with no visual state on the Add button. | Phase 4 |
 | **F-28** | The Discover "For you" chip renders in the active style but its onPress is a no-op. Make it filter, or restyle it? | Phase 4 |
-| ~~**F-29**~~ | ~~Two different toggles ship~~ — **FIXED IN CODE.** The list-row spec settles it: "Toggle (36×22, forest-800 when on)". Extracted `src/components/Toggle.tsx`; `ListRow`, `SettingsScreen` and `YouDrillScreens` all use it. Figma reconciled: `Settings toggle` deleted, 8 instances repointed. | ✅ done |
 | **F-30** | Three row patterns (ListRow / SettingsRow / RadioRow) and two header patterns (centred DrillHeader vs left-aligned SubHeader) coexist in one flow. | Phase 4 |
-| ~~**F-31**~~ | ~~Pro plan card hard-codes colour values~~ — **FIXED IN CODE.** 13 literals replaced: 10 already existed in `tokens.ts` and were simply bypassed; `forest/400` and a new `tokens.overlay` group were added for the two that did not. | ✅ done |
 | **F-32** | `YouScreen.Meter`'s `unlimited` branch is never reached from the free card; the Pro card uses a second, different unlimited chip. | Phase 4 |
 | **F-33** | Top-up prices live in the store, not the repo — Figma prices are placeholders. Confirm the real price points? | Phase 4 |
 | **F-34** | ~1,600 lines of unreachable monetisation UI (PaywallSheet, PaywallScreen, RestorePurchasesScreen, StudentVerificationScreen). Delete or wire up? | Phase 4 |
 | **F-35** | No in-repo upgrade UI at all — every path goes to the hosted paywall. Design a Bookflow paywall, or stay hosted? | Phase 4 |
 | **F-36** | Three more unreachable screens (NotificationPermissionSheet, ComingSoonScreen, AppRatingSheet). With F-34 that is ~2,270 lines of dead UI — the concrete answer to F-13. | Phase 4 |
-| ~~**F-37**~~ | ~~Splash is cut at ~1.25s by session restore~~ — **FIXED IN CODE.** The hand-off is split: session restore decides *where*, the splash timer decides *when*. Settled at **one breath (3.1s)**, measured on device. | ✅ done |
 
 ---
 
@@ -1179,13 +1172,12 @@ Verified: `grep` for the old control points returns **nothing** across `src/` an
 
 **Phases 0–4 are COMPLETE.** 108 screen frames across 10 flows, 98 component sets, 248 variables. 0 detached instances, 0 orphan instances, 0 unbound fills, 0 components without a description. The 12 route-map surfaces missing after Phase 3 were built in Phase 4 rather than reported as gaps.
 
-**Still outstanding:** Fraunces Medium (still unavailable — ~30 node types on marked SemiBold stand-ins, 4 text styles withheld), the 36 open questions below, and ground rule 10 — now **partially** satisfied: the app has been run on an iPhone 17 Pro simulator and the splash is the first surface ever compared against a real render (see the addendum at the end of this log). The other 107 frames remain uncompared.
+**Still outstanding:** the open questions below, and ground rule 10 — now **partially** satisfied: the app has been run on an iPhone 17 Pro simulator and the splash is the first surface ever compared against a real render (see the addendum at the end of this log). The other 107 frames remain uncompared.
 
 **Phase 4 is done.** What remains is not build work: answer the open questions, add Fraunces Medium and run the one switch-over pass, and decide what to do about the ~2,270 lines of unreachable UI (F-34, F-36).
 
 **Lesson that cost the most rework:** read the actual screen file before building a screen. Flow 6 had three screens built from a plausible-looking assumption; `ListenHomeScreen.tsx` and `ListenHistoryScreen.tsx` are separate files from `ListenScreen.tsx`, and all three screens had to be rebuilt. Check `src/screens/` for sibling files before starting any flow.
 
-Phase 2 (Components) needs: the publish decision for this file (cross-file instances require a published library — but with a single file, components can consume local variables directly and no publish is required), plus answers to F-3 and the font question.
 
 ---
 
@@ -1238,3 +1230,49 @@ then a clean cut to the Library skeleton. Two breaths cost ~1.9 s more on
 every cold start for a second identical cycle, which is not a trade worth
 making for Ama on a bus; `TOTAL_DURATION_MS` stays the single knob if that
 ever changes (4800 restores two).
+
+---
+
+## UI cleanup round — Phase A (2026-10-21)
+
+Branch `ui-cleanup`, cut from `v11-batch`. One commit per finding so any single decision can be reverted on its own.
+
+### A1 — build-log cleanup
+
+The log had drifted out of agreement with itself. Fixed:
+
+| Was | Now |
+|---|---|
+| Phase status showed Flows 3 and 6–10 pending | Phases 0–4 complete |
+| Open-questions table still listed Fonts, Frame size, F-1, F-2, F-3, F-6, F-8, F-13, F-29, F-31, F-37 — all answered | 11 answered rows removed; the table now holds only genuinely open items, and gained F-17 and F-18, which had been raised in prose but never tracked |
+| §"Phase 3 complete" said Library 11, Reader 11 — both wrong, and the total did not reach its own stated 96 | Library **12**, Reader **10**; the table is now labelled as the end-of-Phase-3 snapshot and points at §4.3 for the current file |
+| §4.3 said 248 variables, 19 text styles | **263** variables, **23** text styles — counted in the file, not carried forward |
+| Resume protocol still asked for a Phase 2 publish decision | removed — it was answered in the Phase 2 close-out |
+| Source line pinned to `v11-batch` HEAD `5cfc5fb` | branch `ui-cleanup` |
+
+### A2 — the font is settled
+
+**Fraunces Medium does not exist in Figma**, checked twice: `listAvailableFontsAsync` returns Thin / Light / Regular / SemiBold / Bold / Black (+ italics) and no variable weight axis, and a direct `loadFontAsync({ family: 'Fraunces', style: 'Medium' })` throws with that same list. The user offered to install the static Fraunces Medium locally first; it is not there, so this is the second path.
+
+**The app moved to the weight both sides have.** `tokens.fonts.display`: `Fraunces_500Medium` → `Fraunces_600SemiBold`. The `Fraunces_500Medium` import and `useFonts` entry are gone — nothing else referenced it. 125 call sites pick the change up through the token.
+
+| Then built at SemiBold | Spec |
+|---|---|
+| `Display/LG` | 36 / 44 |
+| `Display/MD` | 28 / 36 |
+| `Display/SM` | 22 / 30 (also the BottomSheet title) |
+| `Reading/EPUB/Spine title` | 25.5 / 31.875, tracking −0.255 |
+
+Text styles 19 → **23**. Every placeholder marking cleared: 4 callout texts rewritten (Cover `115:76`, Index `230:179`, Typography — UI `107:7` and `107:8`) and the ⚠ PLACEHOLDER WEIGHT sentence stripped from **18** component descriptions. The nodes themselves did not change — they were already SemiBold; SemiBold just stopped being a stand-in.
+
+> A line-based filter emptied two single-line descriptions (`Book detail header` `191:426`, `Drill header` `208:558`) before they were restored by hand. A follow-up sweep confirms **0 of 166** documentable components are missing a description.
+
+#### Three things this surfaced — none fixed, all need your call
+
+1. **`displayBold` now collides with `display`.** Both resolve to `Fraunces_600SemiBold`. The splash wordmark (36px) and the onboarding fake-cover title (11px) ask for `displayBold` by intent but no longer render heavier than anything else. Promote `displayBold` to `Fraunces_700Bold` to restore the contrast, or collapse the two token names.
+2. **102 of the 125 `fonts.display` sites still declare `fontWeight: '500'`.** Inert — Expo Google Fonts registers each weight as its own family, so the declaration has nothing to select — but it is now stale documentation sitting next to a SemiBold family, the same class of noise as F-17.
+3. **The EPUB spine title still declares `font-weight: 500`** in `EpubFullReaderScreen.tsx`'s injected CSS. That is a WebView surface with no Fraunces webfont loaded, so it renders the Georgia fallback; changing it to 600 is a visible change to a reading surface and was not made unasked.
+
+#### Weight change — where to look on device
+
+Every Fraunces surface in the app gets one step heavier (500 → 600). The largest type carries it most visibly, so check these first: the **Welcome headline**, the **Library / Discover / Listen / You tab titles** (all 28px), the **book detail title** (22px), **sheet titles** (17–20px), and the **reader chapter title** (20px). The small cover captions (6–9px) are where a heavier face is most likely to look muddy rather than crisper.
