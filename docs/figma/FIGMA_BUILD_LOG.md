@@ -1145,6 +1145,7 @@ Answered items are **not** kept here; they live in §"Open questions F-1 … F-1
 
 | ID | Question | Blocks |
 |---|---|---|
+| **F-41** | `assets/splash-icon.png` — the native splash on both platforms — is still the **retired** logomark. F-8 fixed the three code copies and missed the asset. | Phase D |
 | **F-40** | `List row` models Trailing as one choice, so a row can show a hint OR a chevron. The app shows both on every Settings drill-in. | Phase D |
 | **F-39** | Discover home shows "Couldn't reach the catalog" while other sources returned 748 books. Observed on device. | Phase D |
 | **F-38** | The EPUB WebView renders fallback fonts, not the brand faces — both Fraunces and Literata resolve to Georgia. Measured, not assumed. | architecture discussion |
@@ -1511,3 +1512,42 @@ The old `Settings row` had a `Trailing=Hint + chevron` option, which is why the 
 **Fix:** make `Hint` independent of `Trailing` — a `Show hint` boolean plus a hint node in every variant — and drop `Trailing=Hint`. That is surgery on a 30-variant set, so it is recorded rather than attempted mid-reconciliation.
 
 Two smaller drifts spotted in the same comparison, for Phase D: the hint values differ (Figma *"Literata · M"* / *"1.25×"* against the app's *"Literata · 20px"* / *"1×"*).
+
+---
+
+### F-41 — the native splash still ships the retired logomark
+
+Found on the first frame of Phase D, launching the Android build cold.
+
+F-8 established that the lockup geometry is canonical and replaced three code
+copies of a wrong mark — `AuthCallbackScreen`, and the splash's animated and
+web-static branches. It did not touch **`assets/splash-icon.png`**, which is
+what `app.json`'s `splash.image` points at and therefore the very first thing
+every user sees on a cold start, on both platforms.
+
+Measured from the asset's own ink bounding box:
+
+| | height / width |
+|---|---|
+| `assets/splash-icon.png` | **0.895** |
+| Retired auth-variant geometry | ~0.87 |
+| Canonical `Logomark` (28.32 : 18.72) | **0.661** |
+
+It is the retired shape. The echo is also a flat grey-green rather than
+forest-800 at 0.45 opacity, and there is no wordmark.
+
+**What the user actually sees on a cold start:** the retired, too-tall mark
+(native splash) → then the canonical, shallower mark draws itself on (JS
+splash). The logo visibly changes shape during the handoff, which is the exact
+failure the native splash is supposed to prevent.
+
+Left for the user: regenerating the asset means exporting the canonical mark at
+1024×1024 from `src/components/Logomark.tsx`, which is an art-asset change
+rather than a code fix, and the same asset feeds the Android adaptive icon
+pipeline.
+
+**Figma note:** `Auth / Splash / Default` (`146:2`) draws the wordmark as a
+**Lockup instance** — outlined vector paths at 196×52. The app draws a 96pt
+logomark SVG and a live 36px `<Text>` wordmark, 32pt apart. Different
+construction and different proportions; not reconciled, because which one is
+*intended* is a design decision.
