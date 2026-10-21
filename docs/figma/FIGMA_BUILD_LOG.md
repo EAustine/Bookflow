@@ -1314,9 +1314,28 @@ runs its content in a separate process and does not inherit them. The code
 comment at `buildDocument` already half-knew this — *"font-family falls back
 through serifs the device is likely to have"*.
 
-**Android is likely worse and is not yet measured.** Georgia is not a standard
-Android system font, so the stack probably falls to Noto Serif or Droid Serif
-there. The same probe will run on the emulator.
+**Android confirmed, and it diverges from iOS.** Checked directly on the
+`bookflow_pixel9` emulator (API 35):
+
+- `/system/fonts` contains **no** Literata and **no** Fraunces.
+- It contains no Georgia either. The two files that match the string —
+  `NotoSansGeorgian-VF.ttf` and `NotoSerifGeorgian-VF.ttf` — are the Georgian
+  *script*, not the typeface.
+- `/system/etc/fonts.xml` carries `<alias name="georgia" to="serif" />`, and
+  `serif` maps to `NotoSerif-Regular.ttf`.
+
+So the body chain `'Literata', 'Georgia', 'Times New Roman', serif` resolves to
+**Noto Serif** on Android, and the heading chain `'Fraunces', 'Georgia', serif`
+resolves to **Noto Serif** as well.
+
+| Platform | Body renders | Headings render |
+|---|---|---|
+| iOS | Georgia | Georgia |
+| Android | Noto Serif | Noto Serif |
+
+Two different fallback faces across the two platforms, and on each platform the
+display serif and the reading serif collapse into one. Ama and David are not
+reading the same book in the same typeface.
 
 **Deferred to the architecture discussion**, per decision. The fix is to serve
 the two faces to the WebView as base64 `@font-face` rules or from a local
@@ -1326,3 +1345,26 @@ asset server — which is a loading-strategy decision, not a UI cleanup.
 is marked as **not matching the app pending F-38**, rather than being redrawn in
 Georgia to copy the shortfall. Per the verification rule — do not change Figma
 to match a bug.
+
+---
+
+### Decision 2 verified on both platforms — `fontWeight` removal is a no-op
+
+The concern was Android, where `fontFamily` + `fontWeight` resolution differs
+from iOS. Measured by reverting `393d41f` in place, letting Metro fast-refresh,
+capturing, then restoring the tree.
+
+| Platform | Screen | Region | Pixels differing |
+|---|---|---|---|
+| iOS (iPhone 17 Pro) | Library — Fraunces at 28 / 20 / 15 / 13 | full content band | **0 of 1,591,920** |
+| Android (Pixel 9 class, 411×923 dp) | Welcome — Fraunces headline + italic emphasis | headline only | **0 of 378,000** |
+| Android | Welcome | headline + body + CTA | **0 of 756,000** |
+
+The only pixels that moved anywhere on the Android screen were a 184×89 block
+at the top right — the dev-client's floating tools button, which animates.
+Excluding it, the screens are identical.
+
+Conclusion: Expo Google Fonts registers each weight as its own family on both
+platforms, so a `fontWeight` beside a fully-qualified family name has nothing to
+select. Removing 107 of them changed nothing — which is the point: they were
+documentation that had gone false, not instructions.
