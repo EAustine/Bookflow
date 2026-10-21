@@ -36,6 +36,13 @@ export type ListRowProps = Omit<PressableProps, 'children' | 'style'> & {
   toggle?: ListRowToggle;
   selected?: boolean;
   trailingElement?: React.ReactNode;
+  /**
+   * Sub-label line clamp. One by default so rows stay a predictable
+   * height. Raise it where the sub-label carries a real explanation
+   * that must not be cut — hard rule 4 asks disabled rows to say why,
+   * and a truncated reason is no reason. (F-30.)
+   */
+  sublabelLines?: number;
   containerStyle?: ViewStyle;
 };
 
@@ -51,6 +58,7 @@ export function ListRow({
   toggle,
   selected,
   trailingElement,
+  sublabelLines = 1,
   containerStyle,
   disabled,
   onPress,
@@ -123,7 +131,7 @@ export function ListRow({
           {label}
         </Text>
         {sublabel && (
-          <Text style={styles.sublabel} numberOfLines={1}>
+          <Text style={styles.sublabel} numberOfLines={sublabelLines}>
             {sublabel}
           </Text>
         )}

@@ -320,6 +320,7 @@ export function SettingsScreen({ onBack }: SettingsScreenProps) {
               leadingIcon="Trash"
               label={clearingCache ? 'Clearing…' : 'Clear cache'}
               sublabel="Resets cached library + Discover lists. Books and progress stay."
+              sublabelLines={2}
               onPress={clearingCache ? undefined : handleClearCache}
             />
           </SectionBlock>
