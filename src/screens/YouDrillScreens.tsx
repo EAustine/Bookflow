@@ -23,6 +23,7 @@ import {
   type BottomSheetRef,
   Icon,
   ReminderTimePicker,
+  SubHeader,
   Text,
   Toggle,
 } from '~/components';
@@ -39,42 +40,11 @@ import { VOICE_OPTIONS } from '~/lib/aiAudio';
 import { VoiceAvatar } from '~/components/VoiceAvatar';
 import { presentPaywall, ENTITLEMENT_PRO, useIsPro } from '~/lib/revenuecat';
 import { SUPPORT_EMAIL } from '~/lib/legalUrls';
-import { useBackHandler } from '~/lib/useBackHandler';
 import {
   fireReminderSetConfirmation,
   formatReminderTime,
   useNotificationPermission,
 } from '~/lib/notifications';
-
-// ─── Shell (back-and-title header used by every drill-in) ────────────────────
-
-function DrillHeader({ title, onBack }: { title: string; onBack: () => void }) {
-  // Route Android hardware-back to the same callback the in-screen
-  // chevron uses. Without this, the user is dumped to the OS / app
-  // exit instead of back to the You tab home. Mounting this inside
-  // the shared header means every drill-in screen that uses
-  // DrillHeader gets back-button support automatically — no per-screen
-  // wiring required.
-  useBackHandler(() => {
-    onBack();
-    return true;
-  });
-  return (
-    <View style={styles.header}>
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel="Back"
-        onPress={onBack}
-        hitSlop={8}
-        style={styles.backBtn}
-      >
-        <Icon name="ArrowLeft" size={18} color={tokens.textColors.primary} />
-      </Pressable>
-      <Text style={styles.headerTitle}>{title}</Text>
-      <View style={styles.headerSpacer} />
-    </View>
-  );
-}
 
 // ─── Reading display ─────────────────────────────────────────────────────────
 
@@ -100,7 +70,7 @@ export function ReadingDisplayScreen({ onBack }: { onBack: () => void }) {
 
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'left', 'right', 'bottom']}>
-      <DrillHeader title="Reading display" onBack={onBack} />
+      <SubHeader title="Reading display" onBack={onBack} />
       <ScrollView contentContainerStyle={styles.body}>
         <Section label="Font">
           {FONT_OPTIONS.map((opt) => (
@@ -201,7 +171,7 @@ export function PlaybackSpeedScreen({ onBack }: { onBack: () => void }) {
   );
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'left', 'right', 'bottom']}>
-      <DrillHeader title="Default playback speed" onBack={onBack} />
+      <SubHeader title="Default playback speed" onBack={onBack} />
       <ScrollView contentContainerStyle={styles.body}>
         <Text style={styles.helperCopy}>
           The starting speed for new listening sessions. You can still
@@ -245,7 +215,7 @@ export function DefaultVoiceScreen({ onBack }: { onBack: () => void }) {
 
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'left', 'right', 'bottom']}>
-      <DrillHeader title="Default voice" onBack={onBack} />
+      <SubHeader title="Default voice" onBack={onBack} />
       <ScrollView contentContainerStyle={styles.body}>
         <Text style={styles.helperCopy}>
           The voice we use for new listening sessions. You can override it
@@ -341,7 +311,7 @@ export function TranslationLanguageScreen({ onBack }: { onBack: () => void }) {
 
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'left', 'right', 'bottom']}>
-      <DrillHeader title="Translation language" onBack={onBack} />
+      <SubHeader title="Translation language" onBack={onBack} />
       <ScrollView contentContainerStyle={styles.body}>
         <Text style={styles.helperCopy}>
           The language we translate words and sentences into when you tap
@@ -425,7 +395,7 @@ export function NotificationsScreen({ onBack }: { onBack: () => void }) {
   return (
     <>
       <SafeAreaView style={styles.safe} edges={['top', 'left', 'right', 'bottom']}>
-        <DrillHeader title="Notifications" onBack={onBack} />
+        <SubHeader title="Notifications" onBack={onBack} />
         <ScrollView contentContainerStyle={styles.body}>
           <Section label="Reminders">
             <ToggleRow
@@ -545,7 +515,7 @@ export function HelpScreen({ onBack }: { onBack: () => void }) {
   const [open, setOpen] = useState<number | null>(null);
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'left', 'right', 'bottom']}>
-      <DrillHeader title="Help & FAQ" onBack={onBack} />
+      <SubHeader title="Help & FAQ" onBack={onBack} />
       <ScrollView contentContainerStyle={styles.body}>
         <Text style={styles.helperCopy}>
           Quick answers to common questions. Still stuck? Tap "Send
@@ -615,7 +585,7 @@ export function SendFeedbackScreen({ onBack }: { onBack: () => void }) {
 
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'left', 'right', 'bottom']}>
-      <DrillHeader title="Send feedback" onBack={onBack} />
+      <SubHeader title="Send feedback" onBack={onBack} />
       <ScrollView contentContainerStyle={styles.body}>
         <Text style={styles.helperCopy}>
           Help us make Bookflow better — bug reports, feature ideas, or
@@ -745,28 +715,12 @@ function ToggleRow({
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: tokens.bgColors.canvas },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: tokens.borderColors.subtle,
-  },
   backBtn: {
     width: 36,
     height: 36,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  headerTitle: {
-    flex: 1,
-    fontFamily: tokens.fonts.display,
-    fontSize: 17,
-    color: tokens.textColors.primary,
-    textAlign: 'center',
-  },
-  headerSpacer: { width: 36 },
 
   body: {
     paddingHorizontal: 16,
@@ -800,11 +754,17 @@ const styles = StyleSheet.create({
   radioRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 14,
+    // Geometry aligned to ListRow Standard — same 14 side padding, same
+    // 56 minimum height, same 12 gap. RadioRow stays a separate
+    // component because single-select is different behaviour from a
+    // drill-in or a toggle, but a user moving between them should not
+    // see the rows change height. (F-30.)
+    paddingHorizontal: tokens.listRow.paddingX,
+    minHeight: tokens.listRow.minHeight.standard,
     paddingVertical: 12,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: tokens.borderColors.subtle,
-    gap: 12,
+    gap: tokens.listRow.gap,
   },
   radioLabelCol: { flex: 1, gap: 2 },
   radioLabel: {

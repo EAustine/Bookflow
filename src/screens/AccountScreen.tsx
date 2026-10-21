@@ -14,7 +14,14 @@ import {
 import { File as FsFile } from 'expo-file-system';
 import * as ImagePicker from 'expo-image-picker';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { BottomSheet, type BottomSheetRef, Button, Icon, Text } from '~/components';
+import {
+  BottomSheet,
+  type BottomSheetRef,
+  Button,
+  Icon,
+  SubHeader,
+  Text,
+} from '~/components';
 import { tokens } from '~/design/tokens';
 import { TopupBalanceBlock } from '~/screens/TopupBalanceBlock';
 import { refreshCurrentUser } from '~/hooks/useCurrentUser';
@@ -29,7 +36,6 @@ import type { YouPlan, YouProfile } from '~/screens/YouScreen';
 // External URLs for the Privacy & data rows live in a shared
 // constants module so a marketing change is a one-line edit.
 import { PRIVACY_POLICY_URL, TERMS_OF_SERVICE_URL } from '~/lib/legalUrls';
-import { useBackHandler } from '~/lib/useBackHandler';
 
 // ─── Props ────────────────────────────────────────────────────────────────────
 
@@ -209,7 +215,7 @@ export function AccountScreen({
   return (
     <>
       <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
-        <SubHeader onBack={onBack} />
+        <SubHeader title="Account & subscription" onBack={onBack} />
         <ScrollView
           style={styles.scroll}
           contentContainerStyle={styles.scrollContent}
@@ -326,12 +332,9 @@ function EditProfileScreen({
   profile: YouProfile;
   onBack: () => void;
 }) {
-  // Android hardware back returns to the Account screen, not out of the
-  // app — without this it fell through to the root "press back to exit".
-  useBackHandler(() => {
-    onBack();
-    return true;
-  });
+  // Android hardware back is handled by <SubHeader> below, which
+  // registers the same callback. Two registrations would both fire
+  // through the LIFO stack for one press. (F-30.)
   const [name, setName] = useState(profile.name);
   // Local preview state for the avatar — `avatarUrl` shows what's
   // currently displayed, `pickedUri` is the new image the user
@@ -692,17 +695,7 @@ function EditProfileScreen({
 
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'left', 'right', 'bottom']}>
-      <View style={styles.subHeader}>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Back"
-          onPress={onBack}
-          style={({ pressed }) => [styles.backBtn, pressed && { opacity: 0.7 }]}
-        >
-          <Icon name="ArrowLeft" size={16} color={tokens.textColors.secondary} />
-        </Pressable>
-        <Text style={styles.subHeaderTitle}>Edit profile</Text>
-      </View>
+      <SubHeader title="Edit profile" onBack={onBack} />
       <ScrollView
         style={styles.scroll}
         contentContainerStyle={styles.editScrollContent}
@@ -895,28 +888,6 @@ async function gatherUserData(): Promise<Record<string, unknown>> {
 
 // ─── Sub-header ───────────────────────────────────────────────────────────────
 
-function SubHeader({ onBack }: { onBack: () => void }) {
-  // Hardware-back on the main Account screen pops back to the You
-  // tab home. EditProfile sub-screen mounts its own back affordance
-  // higher in the LIFO stack so this one is dormant while it's open.
-  useBackHandler(() => {
-    onBack();
-    return true;
-  });
-  return (
-    <View style={styles.subHeader}>
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel="Back"
-        onPress={onBack}
-        style={({ pressed }) => [styles.backBtn, pressed && { opacity: 0.7 }]}
-      >
-        <Icon name="ArrowLeft" size={16} color={tokens.textColors.secondary} />
-      </Pressable>
-      <Text style={styles.subHeaderTitle}>Account &amp; subscription</Text>
-    </View>
-  );
-}
 
 // ─── Profile section ──────────────────────────────────────────────────────────
 
@@ -1352,16 +1323,6 @@ const styles = StyleSheet.create({
   },
 
   // Sub-header
-  subHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    paddingHorizontal: tokens.space.lg,
-    paddingVertical: 12,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: tokens.borderColors.subtle,
-    backgroundColor: tokens.bgColors.canvas,
-  },
   backBtn: {
     width: 32,
     height: 32,
@@ -1370,12 +1331,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     flexShrink: 0,
-  },
-  subHeaderTitle: {
-    fontFamily: tokens.fonts.display,
-    fontSize: 17,
-    color: tokens.textColors.primary,
-    flex: 1,
   },
 
   // Profile section

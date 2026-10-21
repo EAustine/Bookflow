@@ -47,6 +47,8 @@ export { ModeTogglePill } from './ModeTogglePill';
 export type { ModeTogglePillProps, ReaderMode } from './ModeTogglePill';
 
 export { Badge } from './Badge';
+export { SubHeader } from './SubHeader';
+export type { SubHeaderProps } from './SubHeader';
 export { RemoveBookSheetBody } from './RemoveBookSheetBody';
 export type { RemoveBookSheetBodyProps } from './RemoveBookSheetBody';
 export type { BadgeProps, BadgeKind, BadgeSize } from './Badge';

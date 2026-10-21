@@ -7,7 +7,9 @@ import {
   type BottomSheetRef,
   Icon,
   type IconName,
+  ListRow,
   ReminderTimePicker,
+  SubHeader,
   Text,
   Toggle,
 } from '~/components';
@@ -27,7 +29,6 @@ import {
   ReadingDisplayScreen,
   TranslationLanguageScreen,
 } from '~/screens/YouDrillScreens';
-import { useBackHandler } from '~/lib/useBackHandler';
 import {
   fireReminderSetConfirmation,
   formatReminderTime,
@@ -177,7 +178,7 @@ export function SettingsScreen({ onBack }: SettingsScreenProps) {
   return (
     <>
       <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
-        <SubHeader onBack={onBack} />
+        <SubHeader title="Settings" onBack={onBack} />
         <ScrollView
           style={styles.scroll}
           contentContainerStyle={styles.scrollContent}
@@ -185,54 +186,56 @@ export function SettingsScreen({ onBack }: SettingsScreenProps) {
         >
           {/* Reading & audio */}
           <SectionBlock label="Reading & audio">
-            <SettingsRow
-              iconName="TextSize"
+            <ListRow
+              leadingIcon="TextSize"
               label="Reading display"
               hint={readingHint}
+              drillsInto
               onPress={() => setView('reading')}
             />
             <RowDivider />
-            <SettingsRow
-              iconName="Microphone"
+            <ListRow
+              leadingIcon="Microphone"
               label="Default voice"
               hint={voiceHint}
+              drillsInto
               onPress={() => setView('voice')}
             />
             <RowDivider />
-            <SettingsRow
-              iconName="Clock"
+            <ListRow
+              leadingIcon="Clock"
               label="Default playback speed"
               hint={speedHint}
+              drillsInto
               onPress={() => setView('speed')}
             />
             <RowDivider />
-            <SettingsRow
-              iconName="Phone"
+            <ListRow
+              leadingIcon="Phone"
               label="Resume after calls"
               sublabel="Auto-resume audio after phone calls"
-              trailing={
-                <Toggle
-                  value={resumeAfterCalls}
-                  onChange={setResumeAfterCalls}
-                />
-              }
+              toggle={{
+                value: resumeAfterCalls,
+                onChange: setResumeAfterCalls,
+              }}
             />
           </SectionBlock>
 
           {/* Language & translation */}
           <SectionBlock label="Language & translation">
-            <SettingsRow
-              iconName="Globe"
+            <ListRow
+              leadingIcon="Globe"
               label="App language"
               sublabel="Only English is supported for now"
               hint="English"
             />
             <RowDivider />
-            <SettingsRow
-              iconName="Globe"
+            <ListRow
+              leadingIcon="Globe"
               label="Translation target"
               sublabel="Language used for word/sentence translations"
               hint={translationHint}
+              drillsInto
               onPress={() => setView('language')}
             />
           </SectionBlock>
@@ -243,11 +246,11 @@ export function SettingsScreen({ onBack }: SettingsScreenProps) {
               <NotifDeniedBanner />
             )}
             <View style={!osNotifGranted && styles.dimmed} pointerEvents={osNotifGranted ? 'auto' : 'none'}>
-              <SettingsRow
-                iconName="Bell"
+              <ListRow
+                leadingIcon="Bell"
                 label="Daily reading reminder"
                 sublabel={`${formatReminderTime(reminderHour, reminderMinute)} every day`}
-                trailing={
+                trailingElement={
                   <View style={styles.reminderTrailing}>
                     {/* Tappable time chip → opens the time picker sheet.
                         Reads the live `reminderHour` / `reminderMinute`
@@ -279,30 +282,26 @@ export function SettingsScreen({ onBack }: SettingsScreenProps) {
                 }
               />
               <RowDivider />
-              <SettingsRow
-                iconName="AlertTriangle"
+              <ListRow
+                leadingIcon="AlertTriangle"
                 label="Usage warnings"
                 sublabel="When limits are approaching"
-                trailing={
-                  <Toggle
-                    value={warningsOn}
-                    onChange={(v) => handleNotifToggle(setWarningsOn, v)}
-                    dimmed={!osNotifGranted}
-                  />
-                }
+                toggle={{
+                  value: warningsOn,
+                  onChange: (v) => handleNotifToggle(setWarningsOn, v),
+                  dimmed: !osNotifGranted,
+                }}
               />
               <RowDivider />
-              <SettingsRow
-                iconName="Sparkles"
+              <ListRow
+                leadingIcon="Sparkles"
                 label="Product updates"
                 sublabel="New features and announcements"
-                trailing={
-                  <Toggle
-                    value={updatesOn}
-                    onChange={(v) => handleNotifToggle(setUpdatesOn, v)}
-                    dimmed={!osNotifGranted}
-                  />
-                }
+                toggle={{
+                  value: updatesOn,
+                  onChange: (v) => handleNotifToggle(setUpdatesOn, v),
+                  dimmed: !osNotifGranted,
+                }}
               />
             </View>
             {!osNotifGranted && (
@@ -317,8 +316,8 @@ export function SettingsScreen({ onBack }: SettingsScreenProps) {
           <SectionBlock label="Storage">
             <StorageRow />
             <RowDivider />
-            <SettingsRow
-              iconName="Trash"
+            <ListRow
+              leadingIcon="Trash"
               label={clearingCache ? 'Clearing…' : 'Clear cache'}
               sublabel="Resets cached library + Discover lists. Books and progress stay."
               onPress={clearingCache ? undefined : handleClearCache}
@@ -357,30 +356,6 @@ export function SettingsScreen({ onBack }: SettingsScreenProps) {
 
 // ─── Sub-header ───────────────────────────────────────────────────────────────
 
-function SubHeader({ onBack }: { onBack: () => void }) {
-  // Hardware-back on the main Settings screen pops back to the You
-  // tab home. Sub-drill-ins (ReadingDisplay, DefaultVoice, etc.)
-  // render their own DrillHeader, which subscribes LIFO above this
-  // one — so when a sub-drill-in is mounted, ITS back handler fires
-  // first and routes back to the Settings home, not skipping past it.
-  useBackHandler(() => {
-    onBack();
-    return true;
-  });
-  return (
-    <View style={styles.subHeader}>
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel="Back"
-        onPress={onBack}
-        style={({ pressed }) => [styles.backBtn, pressed && { opacity: 0.7 }]}
-      >
-        <Icon name="ArrowLeft" size={16} color={tokens.textColors.secondary} />
-      </Pressable>
-      <Text style={styles.subHeaderTitle}>Settings</Text>
-    </View>
-  );
-}
 
 // ─── Section block ────────────────────────────────────────────────────────────
 
@@ -395,53 +370,6 @@ function SectionBlock({ label, children }: { label: string; children: React.Reac
 
 function RowDivider() {
   return <View style={styles.rowDivider} />;
-}
-
-// ─── Settings row ─────────────────────────────────────────────────────────────
-
-function SettingsRow({
-  iconName,
-  label,
-  sublabel,
-  hint,
-  trailing,
-  onPress,
-}: {
-  iconName: IconName;
-  label: string;
-  sublabel?: string;
-  hint?: string;
-  trailing?: React.ReactNode;
-  onPress?: () => void;
-}) {
-  const content = (
-    <View style={styles.settingsRow}>
-      <View style={styles.rowIconBg}>
-        <Icon name={iconName} size={14} color={tokens.textColors.secondary} />
-      </View>
-      <View style={styles.rowContent}>
-        <Text style={styles.rowLabel}>{label}</Text>
-        {sublabel && <Text style={styles.rowSublabel}>{sublabel}</Text>}
-      </View>
-      <View style={styles.rowTrailing}>
-        {hint && <Text style={styles.rowHint}>{hint}</Text>}
-        {trailing ?? (onPress && <Icon name="ChevronRight" size={13} color={tokens.colors.ink[300]} />)}
-      </View>
-    </View>
-  );
-
-  if (onPress) {
-    return (
-      <Pressable
-        accessibilityRole="button"
-        onPress={onPress}
-        style={({ pressed }) => [pressed && { backgroundColor: tokens.bgColors.raised }]}
-      >
-        {content}
-      </Pressable>
-    );
-  }
-  return content;
 }
 
 // ─── Storage row (custom layout) ─────────────────────────────────────────────
@@ -489,29 +417,29 @@ function StorageRow() {
 
   return (
     <View>
-      <View style={styles.settingsRow}>
-        <View style={styles.rowIconBg}>
-          <Icon name="Music" size={14} color={tokens.textColors.secondary} />
-        </View>
-        <View style={styles.storageContent}>
-          <Text style={styles.rowLabel}>Downloaded audio</Text>
-          <Text style={styles.storageMeta}>
-            {hasAny
-              ? `${entries.length} book${entries.length > 1 ? 's' : ''} · ${formatBytes(totalBytes)}`
-              : 'No audio downloaded yet'}
-          </Text>
-        </View>
-        {hasAny && (
-          <Pressable
-            accessibilityRole="button"
-            onPress={confirmRemoveAll}
-            hitSlop={8}
-            style={({ pressed }) => (pressed ? { opacity: 0.6 } : undefined)}
-          >
-            <Text style={styles.storageRemoveAll}>Remove all</Text>
-          </Pressable>
-        )}
-      </View>
+      {/* Canonical row for the row part; the per-book download list
+          below is a custom block this component owns. (F-30.) */}
+      <ListRow
+        leadingIcon="Music"
+        label="Downloaded audio"
+        sublabel={
+          hasAny
+            ? `${entries.length} book${entries.length > 1 ? 's' : ''} · ${formatBytes(totalBytes)}`
+            : 'No audio downloaded yet'
+        }
+        trailingElement={
+          hasAny ? (
+            <Pressable
+              accessibilityRole="button"
+              onPress={confirmRemoveAll}
+              hitSlop={8}
+              style={({ pressed }) => (pressed ? { opacity: 0.6 } : undefined)}
+            >
+              <Text style={styles.storageRemoveAll}>Remove all</Text>
+            </Pressable>
+          ) : undefined
+        }
+      />
       {entries.map((e) => (
         <View key={e.bookId} style={styles.downloadItem}>
           <View style={styles.downloadItemMeta}>
@@ -653,16 +581,6 @@ const styles = StyleSheet.create({
   },
 
   // Sub-header
-  subHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    paddingHorizontal: tokens.space.lg,
-    paddingVertical: 10,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: tokens.borderColors.subtle,
-    backgroundColor: tokens.bgColors.canvas,
-  },
   backBtn: {
     width: 30,
     height: 30,
@@ -671,12 +589,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     flexShrink: 0,
-  },
-  subHeaderTitle: {
-    fontFamily: tokens.fonts.display,
-    fontSize: 16,
-    color: tokens.textColors.primary,
-    flex: 1,
   },
 
   // Section block
@@ -707,49 +619,6 @@ const styles = StyleSheet.create({
   },
 
   // Settings row
-  settingsRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    paddingVertical: 13,
-    paddingHorizontal: 14,
-    backgroundColor: tokens.bgColors.canvas,
-  },
-  rowIconBg: {
-    width: 30,
-    height: 30,
-    borderRadius: 8,
-    backgroundColor: tokens.bgColors.surface,
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexShrink: 0,
-  },
-  rowContent: {
-    flex: 1,
-  },
-  rowLabel: {
-    fontFamily: tokens.fonts.uiMedium,
-    fontSize: 14,
-    fontWeight: '500',
-    color: tokens.textColors.primary,
-  },
-  rowSublabel: {
-    fontFamily: tokens.fonts.ui,
-    fontSize: 11,
-    color: tokens.colors.ink[400],
-    marginTop: 1,
-  },
-  rowTrailing: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    flexShrink: 0,
-  },
-  rowHint: {
-    fontFamily: tokens.fonts.ui,
-    fontSize: 13,
-    color: tokens.colors.ink[400],
-  },
 
 
   // Reminder trailing
@@ -780,10 +649,6 @@ const styles = StyleSheet.create({
   // ReminderTimePicker component in src/components.)
 
   // Storage row
-  storageContent: {
-    flex: 1,
-    gap: 6,
-  },
   storageBarRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -800,12 +665,6 @@ const styles = StyleSheet.create({
     height: '100%',
     backgroundColor: tokens.colors.amber[500],
     borderRadius: 2,
-  },
-  storageMeta: {
-    fontFamily: tokens.fonts.ui,
-    fontSize: 11,
-    color: tokens.textColors.muted,
-    flexShrink: 0,
   },
   storageRemoveAll: {
     fontFamily: tokens.fonts.uiMedium,

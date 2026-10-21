@@ -15,6 +15,13 @@ export type ListRowSize = 'standard' | 'compact';
 export type ListRowToggle = {
   value: boolean;
   onChange: (next: boolean) => void;
+  /**
+   * Present but not actionable — the notification rows while the OS
+   * permission is denied. Dims the switch and forces the off track, so
+   * it doesn't imply a setting that cannot take effect. The row itself
+   * is gated by its caller. (F-30.)
+   */
+  dimmed?: boolean;
 };
 
 export type ListRowProps = Omit<PressableProps, 'children' | 'style'> & {
@@ -132,7 +139,7 @@ export function ListRow({
               color={tokens.colors.forest[800]}
             />
           )}
-          {toggle && <Toggle value={toggle.value} />}
+          {toggle && <Toggle value={toggle.value} dimmed={toggle.dimmed} />}
           {drillsInto && (
             <Icon
               name="ChevronRight"
