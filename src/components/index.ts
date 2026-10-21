@@ -46,6 +46,8 @@ export type { SoftWarningBannerProps } from './SoftWarningBanner';
 export { ModeTogglePill } from './ModeTogglePill';
 export type { ModeTogglePillProps, ReaderMode } from './ModeTogglePill';
 
+export { Badge } from './Badge';
+export type { BadgeProps, BadgeKind, BadgeSize } from './Badge';
 export { EqBars } from './EqBars';
 export { RecentListenRow } from './RecentListenRow';
 export type { RecentListenRowProps, RecentListenRowSize } from './RecentListenRow';

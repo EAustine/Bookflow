@@ -12,7 +12,7 @@ import {
 } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Button, Icon, TabBar, type TabKey, Text } from '~/components';
+import { Badge, Button, Icon, TabBar, type TabKey, Text } from '~/components';
 import { tokens } from '~/design/tokens';
 import { SUPPORT_EMAIL } from '~/lib/legalUrls';
 import { formatNetworkError } from '~/lib/networkErrors';
@@ -1809,9 +1809,7 @@ function SearchResults({
               </Text>
               <View style={s.catTags}>
                 {book.tags.slice(0, 2).map((tag) => (
-                  <View key={tag} style={s.catTag}>
-                    <Text style={s.catTagText}>{tag}</Text>
-                  </View>
+                  <Badge key={tag} kind="tag" size="compact" label={tag} />
                 ))}
               </View>
               <AddPill
@@ -2294,9 +2292,7 @@ function CategoryView({
                     </Text>
                     <View style={s.catTags}>
                       {book.tags.slice(0, 2).map((tag) => (
-                        <View key={tag} style={s.catTag}>
-                          <Text style={s.catTagText}>{tag}</Text>
-                        </View>
+                        <Badge key={tag} kind="tag" size="compact" label={tag} />
                       ))}
                     </View>
                     <AddPill
@@ -2384,9 +2380,7 @@ function DetailView({
               and returns neither — so the meta row has always shown just
               the Free badge. (F-23.) */}
           <View style={s.detailMetaItem}>
-            <View style={s.freeBadge}>
-              <Text style={s.freeBadgeText}>Free</Text>
-            </View>
+            <Badge kind="free" label="Free" />
           </View>
         </View>
 
@@ -2396,9 +2390,7 @@ function DetailView({
         <Text style={s.detailSectionLabel}>Topics</Text>
         <View style={s.detailTags}>
           {book.tags.map((tag) => (
-            <View key={tag} style={s.detailTag}>
-              <Text style={s.detailTagText}>{tag}</Text>
-            </View>
+            <Badge key={tag} kind="tag" label={tag} />
           ))}
         </View>
 
@@ -2893,17 +2885,6 @@ const s = StyleSheet.create({
     gap: 5,
     marginTop: 4,
   },
-  catTag: {
-    backgroundColor: tokens.colors.cream[100],
-    borderRadius: 4,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-  },
-  catTagText: {
-    fontFamily: tokens.fonts.ui,
-    fontSize: 10,
-    color: tokens.colors.ink[500],
-  },
   catActions: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -3027,17 +3008,6 @@ const s = StyleSheet.create({
     alignItems: 'center',
     gap: 3,
   },
-  freeBadge: {
-    backgroundColor: tokens.colors.forest[50],
-    borderRadius: 4,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-  },
-  freeBadgeText: {
-    fontFamily: tokens.fonts.uiMedium,
-    fontSize: 11,
-    color: tokens.colors.forest[800],
-  },
   detailSectionLabel: {
     fontFamily: tokens.fonts.uiMedium,
     fontSize: 10,
@@ -3058,17 +3028,6 @@ const s = StyleSheet.create({
     flexWrap: 'wrap',
     gap: 6,
     marginBottom: 16,
-  },
-  detailTag: {
-    backgroundColor: tokens.colors.cream[100],
-    borderRadius: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-  },
-  detailTagText: {
-    fontFamily: tokens.fonts.ui,
-    fontSize: 11,
-    color: tokens.colors.ink[700],
   },
   detailSource: {
     fontFamily: tokens.fonts.ui,
