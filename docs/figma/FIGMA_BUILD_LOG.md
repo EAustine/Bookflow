@@ -1145,6 +1145,7 @@ Answered items are **not** kept here; they live in §"Open questions F-1 … F-1
 
 | ID | Question | Blocks |
 |---|---|---|
+| **F-40** | `List row` models Trailing as one choice, so a row can show a hint OR a chevron. The app shows both on every Settings drill-in. | Phase D |
 | **F-39** | Discover home shows "Couldn't reach the catalog" while other sources returned 748 books. Observed on device. | Phase D |
 | **F-38** | The EPUB WebView renders fallback fonts, not the brand faces — both Fraunces and Literata resolve to Georgia. Measured, not assumed. | architecture discussion |
 | **F-17** | `Button.tsx` and `ListRow.tsx` pair `fontWeight: '500'` with `fonts.ui` (Geist **Regular**), so their labels render Regular while Figma shows Medium. | Phase B |
@@ -1411,3 +1412,102 @@ as built, so it stays — the question is when the state should be *entered*.
 **Side effect for Phase D:** book detail is unreachable from Discover while the
 catalog is failing, so F-25's CTA bar could not be visually confirmed on device.
 It is type-checked and structurally simple, but it is **not** visually verified.
+
+---
+
+## UI cleanup round — Phase B (code) and Phase C (Figma)
+
+### Phase B — 16 commits, one per finding
+
+| ID | Commit | Outcome |
+|---|---|---|
+| F-17 | `71a2680` | Button + ListRow labels render Medium. ListRow's weight is per size, so `listRow.fontWeight.label` became `listRow.labelFont` carrying the family |
+| F-18 | `2cc1399` | **Premise was wrong.** `variant="dark"` IS passed, by `ReaderScreen` on the Dark theme. Comment fixed, variant kept |
+| F-19 | Phase C | Figma-only |
+| F-20 | `75ce5d6` | 28 literals → tokens; 12 new `overlay.onDark.alpha[NN]` steps |
+| F-21 | `be07f31` | One `RecentListenRow` with `size="regular"/"compact"` |
+| F-23 | `c786b90` | Dead book-detail metadata removed (−98 lines) |
+| F-24 | `be07f31` | New `Badge`. **No Badge existed in code** — Figma's atom was built from screen styles |
+| F-25 | `af30289` | CTA → canonical Button at Large; sample button 48→52 |
+| F-26 | `e0fd47b` | `RemoveBookSheetBody` shared by Library and Discover |
+| F-28 | `72462a8` | "For you" scrolls to top |
+| F-30 | `e97689d`, `87674c2` | One `SubHeader`, one row. Two hard rules fixed on the way |
+| F-32 | `84f322b` | Dead unlimited branch removed |
+| F-13 | `aede37c` | `RetryQuestionsScreen` deleted — retry already worked in place |
+| F-34 | `1af5823` | −1,622 lines; `SoftWarningBanner` extracted to components |
+| F-36 | `29c2be1` | −668 lines |
+| sign-out | `caa76b7` | One `ConfirmSheetBody` replacing four near-identical bodies |
+
+**2,635 lines of unreachable UI deleted.** `npx tsc --noEmit` clean in `src/` after every commit.
+
+Two hard rules were fixed inside F-30 rather than as findings of their own:
+
+- **Rule 3 — chevrons mean "drills into more".** `SettingsRow` drew one on any row with an `onPress`, which put a chevron on **Clear cache**. Only the four real drill-ins carry `drillsInto` now.
+- **Rule 6 — the tap target is the whole row.** The three toggle rows passed a live `<Toggle>` as trailing content, so only the switch was tappable. They use `ListRow`'s `toggle` prop now, which renders a display-only switch and lets the row own the press.
+
+A regression caught on device and fixed in the same phase: `ListRow` clamps sub-labels to one line where `SettingsRow` wrapped them, so Clear cache's explanation truncated at *"Books and progr…"*. `sublabelLines` added.
+
+### Phase C — Figma reconciliation
+
+| Change | Result |
+|---|---|
+| Badge gains Free / Tag / Tag compact | 7 kinds; 19 instances swapped off `Free badge` and `Topic tag`, both deleted |
+| `Size=Compact` | Does **not** map cleanly — it is a denser variant (radius, padding, size *and* ink), so it became `Kind=Tag compact` |
+| Listen rows merged | One `Recent listen row` set, `Size=Regular/Compact` × 3 states; 3 instances repointed, old set deleted |
+| Settings row → List row | **44 instances** swapped, 0 failures; `Settings row` deleted |
+| Drill header → Sub header | 7 instances swapped; `Drill header` deleted |
+| `List row` gains `Hint` | The 17 hint rows would have lost their text — the set had no Hint property |
+| Stat card | Now a set: `Unit`, `Delta`, `Show delta`, `Show unit`, `Delta tone=Default/Muted` |
+| CTA bar | Rebuilt from Button instances at Large; sample button 52×52 |
+| Remove confirm | Native-alert frame replaced with the sheet over the detail screen |
+| Dead code | `Paywall sheet` + doc block, `Related book card`, the unreachable-metadata frame, and the whole **Unreachable** page deleted. `RootErrorBoundary` moved to System states as a crash boundary **is** reachable |
+| Descriptions | 3 named deleted files; repointed. Both dead-code annotations rewritten to past tense |
+| Index | The link to the deleted page removed |
+
+### Phase C audit
+
+| Check | Result |
+|---|---|
+| Detached instances | **0** |
+| Orphan instances | **0** |
+| Components without a description | **0** of 159 |
+| Descriptions naming a deleted file | **0** |
+| Dead Index links | **0** |
+| Variables at `ALL_SCOPES` | **0** of 263 |
+| Variables missing WEB code syntax | **0** |
+| Unbound fills — 10 screen pages | **0** |
+| Unbound fills — 3 component pages | **0** |
+| Unbound fills — foundation/specimen pages | **1,144** — see below |
+
+> The 1,144 are all on Cover, Brand, Icons and the colour / typography / scale specimen sheets: swatch chips, type samples and scale bars painted as raw values. Phase 4's "0 unbound fills" was scoped to screens and components, which still holds. Whether a swatch *demonstrating* `forest/800` should itself bind to `forest/800` is a real question — it would make the sheets self-updating — but it is a new decision, not a regression.
+
+### New counts
+
+| | Before | After |
+|---|---|---|
+| Screen frames | 108 | **108** (−1 Book detail metadata, +1 crash boundary) |
+| Pages | 29 | **28** (Unreachable deleted) |
+| Component sets | 55 | **52** |
+| Standalone components | 110 | **107** (68 are icons) |
+| Sets + non-icon components | 98 | **91** |
+| Variables | 263 | **263** |
+| Text styles | 19 | **23** |
+| Effect styles | 4 | **4** |
+
+### Still outstanding in Phase C
+
+1. **No `Sheet / Sign out` organism.** The brief asked Figma to keep one; there is none — the sign-out sheet is drawn directly on the You & Settings page, and so is delete-account. Code now has one `ConfirmSheetBody` behind both, so the organism is worth building, but it is new construction rather than reconciliation and was not done.
+2. **F-28 has no prototype link**, deliberately. Scroll-to-top is not a navigation; it is recorded on the Category chip's description instead.
+3. **Pages were not re-screenshotted wholesale.** `You / Settings` and the new Book detail remove frame were checked; the rest of You & Settings was verified structurally (0 orphans, 0 detached) but not visually.
+
+### F-40 — List row cannot show a hint and a chevron together
+
+Found by putting the Figma Settings frame beside the device screenshot after the Phase C swap.
+
+`List row` models `Trailing` as a single choice: `None | Chevron | Toggle | Check | Hint`. The app renders `hint` and the `drillsInto` chevron **independently**, and every Settings drill-in shows both — *"Reading display    Literata · 20px    ›"*. Figma can show one or the other.
+
+The old `Settings row` had a `Trailing=Hint + chevron` option, which is why the model worked before; it had zero instances, so the Figma screens were already showing hint-only against an app showing hint-plus-chevron. The swap did not cause this, it exposed it.
+
+**Fix:** make `Hint` independent of `Trailing` — a `Show hint` boolean plus a hint node in every variant — and drop `Trailing=Hint`. That is surgery on a 30-variant set, so it is recorded rather than attempted mid-reconciliation.
+
+Two smaller drifts spotted in the same comparison, for Phase D: the hint values differ (Figma *"Literata · M"* / *"1.25×"* against the app's *"Literata · 20px"* / *"1×"*).
