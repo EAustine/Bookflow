@@ -26,6 +26,7 @@ import {
   type BottomSheetRef,
   Button,
   Icon,
+  RemoveBookSheetBody,
   SoftWarningBanner,
   TabBar,
   type TabKey,
@@ -2080,83 +2081,17 @@ function RemoveBookSheetContent({
   if (!book) {
     return <View style={styles.actionSheetPlaceholder} />;
   }
-
+  // Body is shared with Discover's book detail — see F-26. Only the
+  // cover differs, so Library passes its own.
   return (
-    <View>
-      <View style={styles.removeSheetHeader}>
-        <View style={styles.removeSheetIcon}>
-          <Icon
-            name="Trash"
-            size={18}
-            color={tokens.colors.error}
-          />
-        </View>
-        <View style={styles.removeSheetHeaderText}>
-          <Text style={styles.removeSheetTitle}>Remove book?</Text>
-          <Text style={styles.removeSheetSubtitle}>
-            This can't be undone.
-          </Text>
-        </View>
-      </View>
-
-      <View style={styles.removeSheetBookRow}>
-        <BookCover book={book} size="sm" />
-        <View style={styles.removeSheetBookText}>
-          <Text style={styles.removeSheetBookTitle} numberOfLines={2}>
-            {book.title}
-          </Text>
-          {book.author ? (
-            <Text style={styles.removeSheetBookAuthor} numberOfLines={1}>
-              {book.author}
-            </Text>
-          ) : null}
-        </View>
-      </View>
-
-      <View style={styles.removeSheetWarning}>
-        <Text style={styles.removeSheetWarningText}>
-          Removing this book deletes the original file, all extracted
-          chapters, and your reading progress.
-        </Text>
-      </View>
-
-      <View style={styles.removeSheetFooter}>
-        <Pressable
-          accessibilityRole="button"
-          disabled={removing}
-          onPress={onConfirm}
-          style={({ pressed }) => [
-            styles.removeSheetDestructive,
-            pressed && { backgroundColor: tokens.colors.errorPressed },
-            removing && { opacity: 0.7 },
-          ]}
-        >
-          {removing ? (
-            <ActivityIndicator size="small" color={tokens.colors.cream[50]} />
-          ) : (
-            <>
-              <Icon
-                name="Trash"
-                size={14}
-                color={tokens.colors.cream[50]}
-              />
-              <Text style={styles.removeSheetDestructiveLabel}>Remove book</Text>
-            </>
-          )}
-        </Pressable>
-        <Pressable
-          accessibilityRole="button"
-          disabled={removing}
-          onPress={onCancel}
-          style={({ pressed }) => [
-            styles.removeSheetCancel,
-            pressed && { opacity: 0.7 },
-          ]}
-        >
-          <Text style={styles.removeSheetCancelLabel}>Cancel</Text>
-        </Pressable>
-      </View>
-    </View>
+    <RemoveBookSheetBody
+      title={book.title}
+      author={book.author}
+      cover={<BookCover book={book} size="sm" />}
+      removing={removing}
+      onConfirm={onConfirm}
+      onCancel={onCancel}
+    />
   );
 }
 
@@ -3196,107 +3131,6 @@ const styles = StyleSheet.create({
   },
 
   // Remove-book confirm sheet
-  removeSheetHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    paddingHorizontal: tokens.space.lg,
-    paddingTop: tokens.space.lg,
-    paddingBottom: tokens.space.sm,
-  },
-  removeSheetIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
-    backgroundColor: tokens.colors.errorBg,
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexShrink: 0,
-  },
-  removeSheetHeaderText: {
-    flex: 1,
-  },
-  removeSheetTitle: {
-    fontFamily: tokens.fonts.display,
-    fontSize: 17,
-    color: tokens.textColors.primary,
-    marginBottom: 2,
-  },
-  removeSheetSubtitle: {
-    fontFamily: tokens.fonts.ui,
-    fontSize: 12,
-    color: tokens.textColors.muted,
-  },
-  removeSheetBookRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: tokens.space.md,
-    backgroundColor: tokens.bgColors.surface,
-    borderRadius: tokens.radii.lg,
-    paddingVertical: tokens.space.md,
-    paddingHorizontal: tokens.space.md,
-    marginHorizontal: tokens.space.lg,
-    marginTop: tokens.space.sm,
-  },
-  removeSheetBookText: {
-    flex: 1,
-  },
-  removeSheetBookTitle: {
-    fontFamily: tokens.fonts.uiMedium,
-    fontSize: 14,
-    fontWeight: '500',
-    color: tokens.textColors.primary,
-    marginBottom: 2,
-  },
-  removeSheetBookAuthor: {
-    fontFamily: tokens.fonts.ui,
-    fontSize: 12,
-    color: tokens.textColors.muted,
-  },
-  removeSheetWarning: {
-    paddingHorizontal: tokens.space.lg,
-    paddingTop: tokens.space.md,
-    paddingBottom: tokens.space.lg,
-  },
-  removeSheetWarningText: {
-    fontFamily: tokens.fonts.ui,
-    fontSize: 13,
-    lineHeight: 19,
-    color: tokens.textColors.muted,
-  },
-  removeSheetFooter: {
-    paddingHorizontal: tokens.space.lg,
-    paddingBottom: tokens.space.xl,
-    gap: tokens.space.sm,
-  },
-  removeSheetDestructive: {
-    height: 48,
-    borderRadius: 12,
-    backgroundColor: tokens.colors.error,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-  },
-  removeSheetDestructiveLabel: {
-    fontFamily: tokens.fonts.uiMedium,
-    fontSize: 15,
-    fontWeight: '500',
-    color: tokens.colors.cream[50],
-  },
-  removeSheetCancel: {
-    height: 48,
-    borderRadius: 12,
-    backgroundColor: tokens.bgColors.surface,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  removeSheetCancelLabel: {
-    fontFamily: tokens.fonts.uiMedium,
-    fontSize: 15,
-    fontWeight: '500',
-    color: tokens.textColors.muted,
-  },
 
   // Reading-stats card (above the book grid). Width-wise it sits inside
   // the scroll container's existing horizontal padding (same as

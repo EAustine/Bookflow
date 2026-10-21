@@ -12,7 +12,17 @@ import {
 } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Badge, Button, Icon, TabBar, type TabKey, Text } from '~/components';
+import {
+  Badge,
+  BottomSheet,
+  type BottomSheetRef,
+  Button,
+  Icon,
+  RemoveBookSheetBody,
+  TabBar,
+  type TabKey,
+  Text,
+} from '~/components';
 import { tokens } from '~/design/tokens';
 import { SUPPORT_EMAIL } from '~/lib/legalUrls';
 import { formatNetworkError } from '~/lib/networkErrors';
@@ -299,6 +309,14 @@ export function DiscoverScreen({
   const [activeCategory, setActiveCategory] = useState<Category>('For you');
   const [detailBook, setDetailBook] = useState<DiscoverBook | null>(null);
   const [detailFrom, setDetailFrom] = useState<'home' | 'category'>('home');
+  // Destructive confirmation. Hard rule 5 says this is a bottom sheet,
+  // never a native alert — Library already did it this way and Discover
+  // did not, so the same destruction looked like two different products
+  // depending on where you reached it from. (F-26.)
+  const removeSheetRef = useRef<BottomSheetRef>(null);
+  const [removeTarget, setRemoveTarget] = useState<DiscoverBook | null>(null);
+  const [removeMatchId, setRemoveMatchId] = useState<string | null>(null);
+  const [removing, setRemoving] = useState(false);
   // "In library" derives from the real books table (via useBooks
   // realtime). We match by source_url because Discover books carry
   // their Gutenberg URL on `epubUrl`, and the import flow writes that
@@ -1136,65 +1154,64 @@ export function DiscoverScreen({
         return false;
       });
       if (!match) {
+        // Still a native alert, deliberately. This is not a
+        // destructive confirmation — nothing is about to be deleted.
+        // It fires when `libraryIds` still lists the book but the row
+        // is gone: removed on another device, or realtime has not
+        // caught up yet. An informational dead end, so an alert is the
+        // honest shape. (F-26.)
         Alert.alert(
           'Already removed',
           'This book is no longer in your library.',
         );
         return;
       }
-      Alert.alert(
-        'Remove from library?',
-        `"${book.title}" will be removed from your library along with any saved progress.`,
-        [
-          { text: 'Cancel', style: 'cancel' },
-          {
-            text: 'Remove',
-            style: 'destructive',
-            onPress: () => {
-              void (async () => {
-                try {
-                  const {
-                    data: { user },
-                  } = await supabase.auth.getUser();
-                  // Clear the user's storage prefix for this book
-                  // first so the row delete doesn't orphan files.
-                  if (user) {
-                    const prefix = `${user.id}/${match.id}`;
-                    const { data: objects } = await supabase.storage
-                      .from('books')
-                      .list(prefix);
-                    if (objects?.length) {
-                      await supabase.storage
-                        .from('books')
-                        .remove(
-                          objects.map(
-                            (o: { name: string }) => `${prefix}/${o.name}`,
-                          ),
-                        );
-                    }
-                  }
-                  // Cascade deletes chapters / pages / audio_cache.
-                  const { error } = await supabase
-                    .from('books')
-                    .delete()
-                    .eq('id', match.id);
-                  if (error) {
-                    console.warn('[Discover] removeBook delete failed:', error);
-                    Alert.alert("Couldn't remove", formatNetworkError(error, 'removing this book'));
-                  }
-                  // realtime in useBooks() updates libraryIds for us
-                } catch (err) {
-                  console.warn('[Discover] removeBook threw:', err);
-                  Alert.alert("Couldn't remove", formatNetworkError(err, 'removing this book'));
-                }
-              })();
-            },
-          },
-        ],
-      );
+      setRemoveTarget(book);
+      setRemoveMatchId(match.id);
+      removeSheetRef.current?.present();
     },
     [userBooks],
   );
+
+  const confirmRemoveFromLibrary = useCallback(() => {
+    if (!removeMatchId) return;
+    setRemoving(true);
+    void (async () => {
+      try {
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
+        // Clear the user's storage prefix for this book first so the
+        // row delete doesn't orphan files.
+        if (user) {
+          const prefix = `${user.id}/${removeMatchId}`;
+          const { data: objects } = await supabase.storage
+            .from('books')
+            .list(prefix);
+          if (objects?.length) {
+            await supabase.storage
+              .from('books')
+              .remove(objects.map((o) => `${prefix}/${o.name}`));
+          }
+        }
+        const { error } = await supabase
+          .from('books')
+          .delete()
+          .eq('id', removeMatchId);
+        if (error) {
+          console.warn('[Discover] removeBook delete failed:', error);
+          Alert.alert("Couldn't remove", formatNetworkError(error, 'removing this book'));
+        }
+        // realtime in useBooks() updates libraryIds for us
+      } catch (err) {
+        console.warn('[Discover] removeBook threw:', err);
+        Alert.alert("Couldn't remove", formatNetworkError(err, 'removing this book'));
+      } finally {
+        setRemoving(false);
+        removeSheetRef.current?.dismiss();
+      }
+    })();
+  }, [removeMatchId]);
 
   // Drop any pendingIds that have made it into libraryIds — keeps the
   // pending state in sync with the realtime feed without leaking.
@@ -1224,6 +1241,7 @@ export function DiscoverScreen({
 
   if (view === 'detail' && detailBook) {
     return (
+      <>
       <DetailView
         book={detailBook}
         inLibrary={libraryIds.has(detailBook.id)}
@@ -1233,11 +1251,50 @@ export function DiscoverScreen({
         onRemove={() => handleRemoveFromLibrary(detailBook)}
         onTabChange={onTabChange}
       />
+      <BottomSheet
+        ref={removeSheetRef}
+        onDismiss={() => {
+          if (!removing) {
+            setRemoveTarget(null);
+            setRemoveMatchId(null);
+          }
+        }}
+      >
+        <RemoveBookSheetBody
+          title={removeTarget?.title ?? ''}
+          author={removeTarget?.author}
+          cover={
+            <View
+              style={[
+                s.removeSheetCover,
+                { backgroundColor: removeTarget?.coverColor ?? tokens.colors.amber[500] },
+              ]}
+            >
+              {removeTarget?.coverUrl ? (
+                <Image
+                  source={{ uri: removeTarget.coverUrl }}
+                  style={StyleSheet.absoluteFill}
+                  resizeMode="cover"
+                />
+              ) : (
+                <Text style={s.removeSheetCoverText}>
+                  {(removeTarget?.title ?? '??').slice(0, 2).toUpperCase()}
+                </Text>
+              )}
+            </View>
+          }
+          removing={removing}
+          onConfirm={confirmRemoveFromLibrary}
+          onCancel={() => removeSheetRef.current?.dismiss()}
+        />
+      </BottomSheet>
+      </>
     );
   }
 
   if (view === 'category') {
     return (
+      <>
       <CategoryView
         category={activeCategory}
         books={categoryBooks}
@@ -1258,10 +1315,49 @@ export function DiscoverScreen({
         }}
         onTabChange={onTabChange}
       />
+      <BottomSheet
+        ref={removeSheetRef}
+        onDismiss={() => {
+          if (!removing) {
+            setRemoveTarget(null);
+            setRemoveMatchId(null);
+          }
+        }}
+      >
+        <RemoveBookSheetBody
+          title={removeTarget?.title ?? ''}
+          author={removeTarget?.author}
+          cover={
+            <View
+              style={[
+                s.removeSheetCover,
+                { backgroundColor: removeTarget?.coverColor ?? tokens.colors.amber[500] },
+              ]}
+            >
+              {removeTarget?.coverUrl ? (
+                <Image
+                  source={{ uri: removeTarget.coverUrl }}
+                  style={StyleSheet.absoluteFill}
+                  resizeMode="cover"
+                />
+              ) : (
+                <Text style={s.removeSheetCoverText}>
+                  {(removeTarget?.title ?? '??').slice(0, 2).toUpperCase()}
+                </Text>
+              )}
+            </View>
+          }
+          removing={removing}
+          onConfirm={confirmRemoveFromLibrary}
+          onCancel={() => removeSheetRef.current?.dismiss()}
+        />
+      </BottomSheet>
+      </>
     );
   }
 
   return (
+    <>
     <HomeView
       activeCategory={activeCategory}
       featured={featured}
@@ -1287,6 +1383,44 @@ export function DiscoverScreen({
       refreshing={refreshing}
       onRefresh={onPullToRefresh}
     />
+      <BottomSheet
+        ref={removeSheetRef}
+        onDismiss={() => {
+          if (!removing) {
+            setRemoveTarget(null);
+            setRemoveMatchId(null);
+          }
+        }}
+      >
+        <RemoveBookSheetBody
+          title={removeTarget?.title ?? ''}
+          author={removeTarget?.author}
+          cover={
+            <View
+              style={[
+                s.removeSheetCover,
+                { backgroundColor: removeTarget?.coverColor ?? tokens.colors.amber[500] },
+              ]}
+            >
+              {removeTarget?.coverUrl ? (
+                <Image
+                  source={{ uri: removeTarget.coverUrl }}
+                  style={StyleSheet.absoluteFill}
+                  resizeMode="cover"
+                />
+              ) : (
+                <Text style={s.removeSheetCoverText}>
+                  {(removeTarget?.title ?? '??').slice(0, 2).toUpperCase()}
+                </Text>
+              )}
+            </View>
+          }
+          removing={removing}
+          onConfirm={confirmRemoveFromLibrary}
+          onCancel={() => removeSheetRef.current?.dismiss()}
+        />
+      </BottomSheet>
+    </>
   );
 }
 
@@ -3022,6 +3156,20 @@ const s = StyleSheet.create({
     color: tokens.colors.ink[700],
     lineHeight: 21.45,
     marginBottom: 16,
+  },
+  removeSheetCover: {
+    width: 40,
+    height: 60,
+    borderRadius: tokens.radii.xs,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+    flexShrink: 0,
+  },
+  removeSheetCoverText: {
+    fontFamily: tokens.fonts.display,
+    fontSize: 16,
+    color: tokens.colors.cream[50],
   },
   detailTags: {
     flexDirection: 'row',
