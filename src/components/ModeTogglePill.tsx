@@ -9,8 +9,12 @@
  * the active half is filled, the inactive half is hairline-only.
  *
  * Variant ("dark" / "light") lets the caller match the surrounding
- * chrome — PDF reader uses a black-translucent header so it needs the
- * dark variant; EPUB reader uses the page surface so it needs the light.
+ * chrome. The one caller that passes it is `ReaderScreen`, which sends
+ * "dark" when the reader is on its Dark theme so the capsule nests into
+ * the chrome instead of glaring as a bright tag. `PdfReaderScreen` and
+ * `EpubFullReaderScreen` both take the light default — despite an
+ * earlier version of this comment, the PDF header is not translucent
+ * black, it is `bgColors.canvas`. (F-18.)
  */
 import { Pressable, StyleSheet, View } from 'react-native';
 import { Text } from './Text';
@@ -21,7 +25,7 @@ export type ReaderMode = 'full' | 'text';
 export type ModeTogglePillProps = {
   mode: ReaderMode;
   onChange: (mode: ReaderMode) => void;
-  /** Light by default; dark for translucent-on-black headers (PDF reader). */
+  /** Light by default; dark for the reader's Dark theme. */
   variant?: 'light' | 'dark';
   /** Override labels — defaults are "Full" and "Text". */
   fullLabel?: string;
