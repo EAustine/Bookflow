@@ -4,17 +4,32 @@
  * Plays once after the native splash dismisses. Background must match the
  * native splash (cream-50) so the handoff is seamless.
  *
- * Timeline (5s total):
- *   0–1200ms · main curve draws on (stroke-dashoffset 110 → 0)
+ * Timeline (3.1s):
+ *   0–1200ms · main curve draws on (stroke-dashoffset 40 → 0)
  *   200–1400ms · echo curve draws + fades to 0.4 opacity
  *   800–1400ms · wordmark fades in
- *   1400–4800ms · gentle "breathing" scale pulse on the logomark
- *                 (1.0 → 1.06 → 1.0, 1.7s per breath, ~2 cycles)
- *   5000ms · onComplete() — caller routes onward
+ *   1400–3100ms · one "breath": a gentle scale pulse on the logomark
+ *                 (1.0 → 1.06 → 1.0, 1.7s)
+ *   3100ms · onComplete() — the splash has played out; the caller is
+ *            free to route onward
  *
- * Why the pulse: a 5s static hold reads as "frozen" — users start to
+ * Why the pulse: a static hold reads as "frozen" — users start to
  * wonder if the app crashed. A subtle inhale/exhale animation signals
- * "still alive, still loading."
+ * "still alive, still loading." The loop is infinite, so a slow boot
+ * keeps breathing past 3100ms rather than freezing (see below).
+ *
+ * `onComplete` is a release, not a command. App.tsx only leaves the
+ * splash once this has fired *and* session restore has answered, so if
+ * restore is slow this stays mounted past TOTAL_DURATION_MS — the pulse
+ * repeats indefinitely, which is exactly the honest "still working"
+ * state we want. (It used to be the other way round: restore set
+ * `stage` directly and won the race at ~1.2s, so the pulse never ran
+ * once.)
+ *
+ * Measured on an iPhone 17 Pro simulator (2026-10-21, 600fps capture):
+ * the main arc sweeps the mark's full 96pt width — no gap, no early
+ * stop — settling ~1.0s after first ink, the echo ~1.15s, both on the
+ * expected Material-standard S-curve.
  *
  * Web: Reanimated animated SVG nodes cause "Node cannot be found in the
  * current page." in React Strict Mode (dev) because Reanimated queues RAF
@@ -38,19 +53,38 @@ import Animated, {
 } from 'react-native-reanimated';
 import Svg, { Path } from 'react-native-svg';
 import { tokens } from '~/design/tokens';
+import {
+  LOGOMARK_ECHO,
+  LOGOMARK_MAIN,
+  LOGOMARK_STROKE,
+  LOGOMARK_VIEWBOX,
+  Logomark,
+} from '~/components/Logomark';
 
 const AnimatedPath = Animated.createAnimatedComponent(Path);
 
-// Path lengths from the canonical v2 logomark (cubic curves). Slight buffer
-// above the measured values (107.16 / 76.51) so the stroke is fully hidden
-// at offset = dash.
-const MAIN_DASH = 110;
-const ECHO_DASH = 80;
+// Path lengths of the canonical arcs in LOGOMARK_VIEWBOX units, rounded
+// up so the dash fully covers the stroke (main 39.25, echo 25.12).
+// Were 110 / 80, the lengths of the old non-canonical curves. See F-8.
+const MAIN_DASH = 40;
+const ECHO_DASH = 26;
+
+// 96 wide at the mark's fixed 28.32 : 18.72 aspect.
+const LOGO_W = 96;
+const LOGO_H = Math.round((LOGO_W * 18.72) / 28.32);
 // Total visible duration. Native splash dismisses → React mounts this →
 // onComplete fires. The native splash adds a few hundred ms before the
-// JS animation even starts, so 5s is the total user-perceived time
+// JS animation even starts, so this is most of the user-perceived time
 // from "tap icon" to "first interactive screen".
-const TOTAL_DURATION_MS = 5000;
+//
+// 3100 = DRAW_DURATION_MS + one full breath (1700). Deliberately one
+// breath, not two: a second cycle cost ~1.7s on every cold start, and
+// Ama opening the app on a bus does not need to watch the logo inhale
+// twice. Raise to 4800 for two cycles if the hold ever needs to cover
+// slower boot work.
+const TOTAL_DURATION_MS = 3100;
+// When the breathing pulse starts — after the draw-on has fully
+// settled, so the reveal stays crisp.
 const DRAW_DURATION_MS = 1400;
 
 export type SplashScreenProps = {
@@ -86,8 +120,10 @@ export function SplashScreen({ onComplete }: SplashScreenProps) {
     );
     // Start the breathing pulse after the draw-on completes, so the
     // initial reveal is crisp and the loop kicks in as a "settled"
-    // motion. 1.7s per breath × 2 cycles ≈ 3.4s of pulsing fits the
-    // remaining ~3.6s of hold time before onComplete fires.
+    // motion. One 1.7s breath fills the hold exactly: 1400 + 1700 =
+    // TOTAL_DURATION_MS, so onComplete fires as the logo settles back
+    // to ×1.0. The repeat is infinite anyway — that only matters when
+    // a slow session restore holds the splash open longer.
     breathScale.value = withDelay(
       DRAW_DURATION_MS,
       withRepeat(
@@ -133,23 +169,7 @@ export function SplashScreen({ onComplete }: SplashScreenProps) {
     return (
       <View style={styles.root}>
         <View style={styles.stack}>
-          <Svg width={96} height={96} viewBox="0 0 100 100">
-            <Path
-              d="M 25 80 C 33.5 22 66.5 22 75 80"
-              stroke={tokens.colors.forest[800]}
-              strokeWidth={9}
-              strokeLinecap="round"
-              fill="none"
-            />
-            <Path
-              d="M 35 78 C 45 33 55 33 65 78"
-              stroke={tokens.colors.forest[800]}
-              strokeWidth={9}
-              strokeLinecap="round"
-              fill="none"
-              opacity={0.4}
-            />
-          </Svg>
+          <Logomark width={LOGO_W} echoOpacity={0.4} />
           <Text style={styles.wordmark}>Bookflow</Text>
         </View>
       </View>
@@ -160,20 +180,22 @@ export function SplashScreen({ onComplete }: SplashScreenProps) {
     <View style={styles.root}>
       <View style={styles.stack}>
         <Animated.View style={logomarkStyle}>
-          <Svg width={96} height={96} viewBox="0 0 100 100">
+          {/* Same canonical arcs as <Logomark>, drawn inline because the
+              draw-on animates strokeDashoffset per path. */}
+          <Svg width={LOGO_W} height={LOGO_H} viewBox={LOGOMARK_VIEWBOX}>
             <AnimatedPath
-              d="M 25 80 C 33.5 22 66.5 22 75 80"
+              d={LOGOMARK_MAIN}
               stroke={tokens.colors.forest[800]}
-              strokeWidth={9}
+              strokeWidth={LOGOMARK_STROKE}
               strokeLinecap="round"
               fill="none"
               strokeDasharray={MAIN_DASH}
               animatedProps={mainProps}
             />
             <AnimatedPath
-              d="M 35 78 C 45 33 55 33 65 78"
+              d={LOGOMARK_ECHO}
               stroke={tokens.colors.forest[800]}
-              strokeWidth={9}
+              strokeWidth={LOGOMARK_STROKE}
               strokeLinecap="round"
               fill="none"
               strokeDasharray={ECHO_DASH}

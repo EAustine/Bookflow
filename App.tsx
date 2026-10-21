@@ -12,6 +12,7 @@ import {
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { BottomSheetModalProvider } from '@gorhom/bottom-sheet';
+import { ToastHost } from '~/components/ToastHost';
 import { useFonts } from 'expo-font';
 import * as Linking from 'expo-linking';
 import * as DocumentPicker from 'expo-document-picker';
@@ -41,7 +42,7 @@ import {
   useNotificationPermission,
   useStreakWarningSync,
 } from '~/lib/notifications';
-import { useReaderStore } from '~/stores/readerStore';
+import { PLAYBACK_SPEEDS, useReaderStore } from '~/stores/readerStore';
 
 // Install the global unhandled-rejection silencer for network
 // errors. Idempotent and side-effect free unless a rejection fires.
@@ -82,6 +83,11 @@ import { useBackHandler } from '~/lib/useBackHandler';
 import { useCurrentUser } from '~/hooks/useCurrentUser';
 import { useMonthlyListenStats } from '~/lib/readingStats';
 import {
+  useMonthlyAiUsage,
+  useMonthlyAudioUsage,
+  usePurchasedBalances,
+} from '~/lib/aiUsage';
+import {
   type ListenPlaybackState,
   type MonthStats,
 } from '~/screens/ListenNowPlayingScreen';
@@ -107,6 +113,38 @@ import { SplashScreen } from '~/screens/SplashScreen';
 import { WelcomeScreen } from '~/screens/WelcomeScreen';
 import { YouScreen, type YouPlan, type YouProfile } from '~/screens/YouScreen';
 
+/**
+ * The top-level navigation states. There is no router: `stage` is the
+ * whole machine, and each stage renders one screen (see the JSX below).
+ */
+type Stage =
+  | 'splash'
+  | 'welcome'
+  | 'signin'
+  | 'signup'
+  | 'authCallback'
+  | 'authCallbackError'
+  | 'onboardingIntent'
+  | 'onboardingFirstBook'
+  | 'library';
+
+/**
+ * How long to wait for session restore before giving up and showing
+ * Welcome. Only reached if `getSession()` itself hangs — it reads
+ * AsyncStorage, so in practice it resolves in single-digit milliseconds.
+ * The ceiling exists so a pathological boot can't pin the user on a
+ * splash that breathes forever.
+ */
+const SESSION_RESTORE_CEILING_MS = 8000;
+
+/**
+ * Same idea one level down: the `profiles` lookup is a network call, and
+ * a hung one shouldn't hold the splash open. On timeout we fall through
+ * to Library, matching the error branch — we already know there's a
+ * session, we just don't know the onboarding flag.
+ */
+const PROFILE_LOOKUP_TIMEOUT_MS = 4000;
+
 // Prevents React Strict Mode's double-mount from firing two simultaneous
 // completeAuthCallback calls, which race on Supabase's Web Locks API and
 // produce a NavigatorLockAcquireTimeoutError. Module-level so it survives
@@ -122,16 +160,18 @@ const FALLBACK_MONTH: MonthStats = {
   listeningHoursDelta: undefined,
   booksStarted: 0,
   booksFinished: 0,
-  audioRemainingMin: 90,
+  audioRemainingMin: 60,
   audioResetLabel: undefined,
 };
 
 // Free-tier plan limits. Real RevenueCat-driven entitlements would
 // override these; until then we report a static "Free" plan with these
 // caps so the YouScreen progress meters look correct against actual
-// usage data we DO have (books count, listening minutes this month).
+// usage data we DO have (books count, audio generated this month).
+// audioMinutesPerMonth is the monthly NEW-narration (generation) allowance —
+// cached + downloaded playback is free and uncapped (server enforces this).
 const FREE_PLAN_LIMITS = {
-  audioMinutesPerMonth: 90,
+  audioMinutesPerMonth: 60,
   aiCreditsPerMonth: 50_000,
   booksTotal: 5,
 };
@@ -151,17 +191,7 @@ export default function App() {
     Lexend_400Regular,
     Literata_400Regular,
   });
-  const [stage, setStage] = useState<
-    | 'splash'
-    | 'welcome'
-    | 'signin'
-    | 'signup'
-    | 'authCallback'
-    | 'authCallbackError'
-    | 'onboardingIntent'
-    | 'onboardingFirstBook'
-    | 'library'
-  >('splash');
+  const [stage, setStage] = useState<Stage>('splash');
   // Within the logged-in 'library' stage, this picks which tab is rendered.
   // Lifted to App so tab state survives re-renders of any single screen and
   // so future deep-links (e.g. "open Bookflow on the You tab") have one
@@ -191,12 +221,28 @@ export default function App() {
   // arch and there's no book audio in the pipeline yet anyway. The Listen
   // tab shows its empty state until M2 wires real playback.
   const [listenState, setListenState] = useState<ListenPlaybackState>('paused');
-  // Functional setter so a late-firing splash timer can't drag us back to
-  // 'welcome' after the deep-link handler has already moved past splash.
-  const onSplashComplete = useCallback(
-    () => setStage((prev) => (prev === 'splash' ? 'welcome' : prev)),
-    [],
-  );
+  // ── Splash hand-off ───────────────────────────────────────────
+  // Two things have to land before we leave the splash, and they race:
+  // session restore decides *where* we go, the splash animation decides
+  // *when*. Previously restore won outright — it resolved in ~1.2s and
+  // set `stage` directly, so the splash was yanked mid-animation and the
+  // breathing pulse (scheduled at 1400ms) never ran once. Now restore
+  // parks its answer here and the splash timer releases it.
+  //
+  // Null means "still resolving". If the splash finishes first we stay
+  // on it — the pulse loops indefinitely, which reads as an honest
+  // "still working" state rather than a frozen logo.
+  const [postSplashStage, setPostSplashStage] = useState<Stage | null>(null);
+  const [splashDone, setSplashDone] = useState(false);
+  const onSplashComplete = useCallback(() => setSplashDone(true), []);
+
+  useEffect(() => {
+    if (!splashDone || !postSplashStage) return;
+    // Guarded because the deep-link handler keeps precedence: a magic
+    // link tapped during the splash routes straight to the verifying
+    // screen, and a late hand-off must not drag the user back out of it.
+    setStage((prev) => (prev === 'splash' ? postSplashStage : prev));
+  }, [splashDone, postSplashStage]);
   const goToSignIn = useCallback(() => setStage('signin'), []);
   const goToSignUp = useCallback(() => setStage('signup'), []);
   const goToWelcome = useCallback(() => setStage('welcome'), []);
@@ -556,43 +602,77 @@ export default function App() {
 
   /**
    * Session restoration on cold start. If the user has a persisted Supabase
-   * session, look up their `onboarding_complete` flag and route directly to
-   * Library (completed) or back into the onboarding flow (incomplete — e.g.
-   * they killed the app mid-onboarding). The functional setStage guard
-   * makes sure the deep-link handler — which can race with this — keeps
-   * its precedence: a fresh sign-in via magic link should still see the
-   * verifying screen.
+   * session, look up their `onboarding_complete` flag and pick Library
+   * (completed) or the onboarding flow (incomplete — e.g. they killed the
+   * app mid-onboarding); no session means Welcome.
    *
-   * Profile fetch failures fall through to Library — RLS enforces the row
-   * filter, so a missing/errored profile shouldn't strand the user on
-   * splash. Better to let them in and surface any DB issue downstream.
+   * This only *decides* the destination — it parks it in
+   * `postSplashStage` and the splash timer performs the actual move. See
+   * the hand-off block above for why.
+   *
+   * Every branch sets a destination, including the failures: a user who
+   * never gets one would sit on the splash indefinitely. Profile fetch
+   * failures and timeouts fall through to Library — RLS enforces the row
+   * filter, so a missing or errored profile shouldn't strand someone we
+   * already know is signed in. Better to let them in and surface any DB
+   * issue downstream.
    */
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
         const { data: { session } } = await supabase.auth.getSession();
-        if (cancelled || !session?.user) return;
+        if (cancelled) return;
+        if (!session?.user) {
+          setPostSplashStage('welcome');
+          return;
+        }
 
-        const { data: profile, error } = await supabase
+        // Cap the network leg the same way `estimateDownload` does — a
+        // hung query would otherwise hold the splash open past its own
+        // timer, and we already know enough to let the user in.
+        const lookup = supabase
           .from('profiles')
           .select('onboarding_complete')
           .eq('id', session.user.id)
           .single();
+        const timeout = new Promise<{ data: null; error: { message: string } }>(
+          (resolve) =>
+            setTimeout(
+              () => resolve({ data: null, error: { message: 'timeout' } }),
+              PROFILE_LOOKUP_TIMEOUT_MS,
+            ),
+        );
+        const { data: profile, error } = await Promise.race([lookup, timeout]);
         if (cancelled) return;
         if (error) {
           console.warn('[boot] profile lookup failed:', error.message);
         }
 
-        const next = profile?.onboarding_complete ? 'library' : 'onboardingIntent';
-        setStage((prev) => (prev === 'splash' ? next : prev));
+        setPostSplashStage(profile?.onboarding_complete ? 'library' : 'onboardingIntent');
       } catch (err) {
         console.warn('[boot] session restore threw:', err);
+        if (!cancelled) setPostSplashStage('welcome');
       }
     })();
     return () => {
       cancelled = true;
     };
+  }, []);
+
+  /**
+   * Last-resort ceiling on the splash. Every branch of session restore
+   * above sets a destination, so this should never fire — it's here so
+   * that a boot path nobody anticipated degrades to "sign in again"
+   * rather than to a logo breathing forever. `prev ?? 'welcome'` makes it
+   * a no-op whenever restore already answered.
+   */
+  useEffect(() => {
+    const timer = setTimeout(
+      () => setPostSplashStage((prev) => prev ?? 'welcome'),
+      SESSION_RESTORE_CEILING_MS,
+    );
+    return () => clearTimeout(timer);
   }, []);
 
   if (!fontsLoaded) return null;
@@ -695,6 +775,7 @@ export default function App() {
             <StatusBar style="dark" />
           </BottomSheetModalProvider>
         </AudioSessionProvider>
+        <ToastHost />
       </SafeAreaProvider>
     </GestureHandlerRootView>
   );
@@ -711,8 +792,10 @@ export default function App() {
  * to 1× if the input is nonsensical.
  */
 function snapSpeed(rate: number): import('~/screens/PlaybackSpeedSheet').Speed {
+  // Single source of truth — see F-7. Previously a local literal that
+  // included 3×, a speed the store rejected.
   const allowed: import('~/screens/PlaybackSpeedSheet').Speed[] = [
-    0.5, 0.75, 1, 1.25, 1.5, 1.75, 2, 3,
+    ...PLAYBACK_SPEEDS,
   ];
   if (!Number.isFinite(rate) || rate <= 0) return 1;
   let best = allowed[0];
@@ -764,7 +847,10 @@ function buildNowPlayingProps(
   const remaining = Math.max(0, dur - pos);
   const progress = dur > 0 ? Math.round((pos / dur) * 100) : 0;
   const voiceLabel =
-    VOICE_OPTIONS.find((v) => v.id === audio.voiceId)?.label ?? 'Rachel';
+    // Falls back to the free voice. Was 'Rachel' — not one of the six
+    // voices the app ships, so the fallback could only ever render a
+    // name that does not exist (F-16).
+    VOICE_OPTIONS.find((v) => v.id === audio.voiceId)?.label ?? 'Aria';
 
   return {
     state: (audio.isPlaying ? 'playing' : 'paused') as ListenPlaybackState,
@@ -870,7 +956,7 @@ function buildNowPlayingProps(
     // Direct, instant feedback; no sheet roundtrip. Wrapping at 2× →
     // 0.75× matches the Listen-screen transport's cycleSpeed order.
     onOpenSpeedSheet: () => {
-      const order: number[] = [0.75, 1, 1.25, 1.5, 1.75, 2];
+      const order: number[] = [...PLAYBACK_SPEEDS];
       const current = snapSpeed(audio.playbackRate);
       const idx = order.indexOf(current);
       const next = order[(idx + 1) % order.length];
@@ -1109,8 +1195,35 @@ function LibraryStage({
   // Real "this month" stats — listening hours / books started / books
   // finished, aggregated from reading_sessions + books. Falls back to
   // zeros until the first fetch resolves (~< 1s on a normal connection).
-  const { stats: realMonthStats } = useMonthlyListenStats();
+  const { stats: realMonthStats, refetch: refetchMonthStats } =
+    useMonthlyListenStats();
   const monthStats: MonthStats = realMonthStats ?? FALLBACK_MONTH;
+  // Real AI-credit usage this month (server-maintained counter on profiles).
+  const { used: aiCreditsUsed, refresh: refreshAiUsage } = useMonthlyAiUsage();
+  // Real audio usage this month (minutes) — same server counter the
+  // generate-audio function enforces against.
+  const { usedMinutes: audioUsedMin, refresh: refreshAudioUsage } =
+    useMonthlyAudioUsage();
+  // Purchased top-up balances (audio minutes + AI credits), shown on the plan
+  // card's "Top-up balance" block.
+  const balances = usePurchasedBalances();
+  const refreshBalances = balances.refresh;
+
+  // One place to re-read every plan-card data source — drives the You-tab
+  // pull-to-refresh AND a refresh on tab entry (these hooks live in this
+  // always-mounted stage, so they don't re-read on their own when the user
+  // opens the tab — only on app-foreground). Cached/replayed audio never moves
+  // the audio meter; only NEW narration does, the thing the cap protects.
+  const refreshYou = useCallback(async () => {
+    refreshAiUsage();
+    refreshAudioUsage();
+    refreshBalances();
+    await refetchMonthStats();
+  }, [refreshAiUsage, refreshAudioUsage, refreshBalances, refetchMonthStats]);
+
+  useEffect(() => {
+    if (activeTab === 'you') void refreshYou();
+  }, [activeTab, refreshYou]);
 
   // Plan card on YouScreen — name comes from RevenueCat now (Free vs
   // Standard/Premium per the entitlement). Meters come from data we
@@ -1137,11 +1250,11 @@ function LibraryStage({
     name: planName,
     meters: {
       audio: {
-        used: Math.round(monthStats.listeningHours * 60),
+        used: audioUsedMin,
         total: planLimits.audioMinutesPerMonth,
       },
       aiCredits: {
-        used: 0,
+        used: aiCreditsUsed,
         total: planLimits.aiCreditsPerMonth,
       },
       books: {
@@ -1149,6 +1262,7 @@ function LibraryStage({
         total: planLimits.booksTotal,
       },
     },
+    balances,
   };
   // Real user info from Supabase auth + profiles. Falls back to the
   // signup-time name we captured during the auth flow (signupName) so
@@ -1190,6 +1304,13 @@ function LibraryStage({
 
   const handleStartListening = useCallback(
     (book: Book) => {
+      // No client-side audio gate: playing already-narrated audio (cached or
+      // downloaded) is free and unlimited. The only thing that costs money —
+      // generating NEW narration — is capped server-side in generate-audio,
+      // which returns audio_limit_reached per uncached page; useAudio surfaces
+      // the paywall there. So a user past their generation cap can still start
+      // any listen and play anything already narrated; only an uncached page
+      // prompts the upgrade, exactly when the cost would be incurred.
       audio.start(book);
       // "Listen" on a book opens the foreground listen mode (bimodal).
       // We don't switch tabs — the user stays on whichever tab they
@@ -1257,6 +1378,7 @@ function LibraryStage({
           onTabChange={setActiveTab}
           onSignOut={onSignOut}
           onSubViewOpenChange={setYouSubViewOpen}
+          onRefresh={refreshYou}
         />
       )}
       {activeTab === 'discover' && (
