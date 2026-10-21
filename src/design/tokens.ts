@@ -164,14 +164,17 @@ export const fonts = {
    * renders Medium, the app moves to the weight both can actually use.
    * One weight, one source of truth. (Decision 2026-10-21.)
    *
-   * Note `displayBold` now resolves to the same family. The two names are
-   * kept apart because the splash wordmark and the onboarding cover title
-   * ask for the heavier of the two by intent; they just no longer differ
-   * in render. Promote `displayBold` to `Fraunces_700Bold` if that
-   * contrast is wanted back.
+   * `displayBold` sits one step above at **Bold 700** — promoted when
+   * `display` took SemiBold, so the two keep the contrast the splash
+   * wordmark and the onboarding cover title were asking for.
+   *
+   * None of these are paired with a `fontWeight` at the call sites. Expo
+   * Google Fonts registers every weight as its own family, so the family
+   * name *is* the weight and a `fontWeight` beside it has nothing to
+   * select. Don't reintroduce one.
    */
   display: 'Fraunces_600SemiBold',
-  displayBold: 'Fraunces_600SemiBold',
+  displayBold: 'Fraunces_700Bold',
   displayItalic: 'Fraunces_400Regular_Italic',
   ui: 'Geist_400Regular',
   uiMedium: 'Geist_500Medium',

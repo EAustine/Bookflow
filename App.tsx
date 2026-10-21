@@ -20,6 +20,7 @@ import { useShareIntent } from 'expo-share-intent';
 import {
   Fraunces_400Regular_Italic,
   Fraunces_600SemiBold,
+  Fraunces_700Bold,
 } from '@expo-google-fonts/fraunces';
 import {
   Geist_400Regular,
@@ -184,6 +185,7 @@ export default function App() {
   const [fontsLoaded] = useFonts({
     Fraunces_400Regular_Italic,
     Fraunces_600SemiBold,
+    Fraunces_700Bold,
     Geist_400Regular,
     Geist_500Medium,
     Lexend_400Regular,
