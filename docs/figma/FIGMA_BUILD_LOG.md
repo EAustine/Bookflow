@@ -1145,6 +1145,7 @@ Answered items are **not** kept here; they live in §"Open questions F-1 … F-1
 
 | ID | Question | Blocks |
 |---|---|---|
+| **F-39** | Discover home shows "Couldn't reach the catalog" while other sources returned 748 books. Observed on device. | Phase D |
 | **F-38** | The EPUB WebView renders fallback fonts, not the brand faces — both Fraunces and Literata resolve to Georgia. Measured, not assumed. | architecture discussion |
 | **F-17** | `Button.tsx` and `ListRow.tsx` pair `fontWeight: '500'` with `fonts.ui` (Geist **Regular**), so their labels render Regular while Figma shows Medium. | Phase B |
 | **F-18** | `ModeTogglePill`'s `variant="dark"` is passed by no caller, and its code comment describing the PDF header as black-translucent is stale. | Phase B |
@@ -1368,3 +1369,45 @@ Conclusion: Expo Google Fonts registers each weight as its own family on both
 platforms, so a `fontWeight` beside a fully-qualified family name has nothing to
 select. Removing 107 of them changed nothing — which is the point: they were
 documentation that had gone false, not instructions.
+
+---
+
+### F-39 — Discover shows total failure while most sources succeeded
+
+Observed on the iPhone 17 Pro simulator, 2026-10-21, while verifying F-25.
+
+The Discover home rendered its full-page error state — *"Couldn't reach the
+catalog / Something went wrong reaching the catalog…"* — with no rails at all.
+The Metro log for the same load:
+
+```
+WARN  [Discover] DOAB rail fetch FAILED: DOAB returned 403
+LOG   [Discover] Wikisource rail fetch ok, books: 24
+LOG   [Discover] Wikisource search pool fetch ok, books: 200
+LOG   [Discover] Open Library rail fetch ok, books: 24
+LOG   [Discover] Open Library search pool fetch ok, books: 500
+```
+
+**748 books came back** across two sources, and the user was shown nothing.
+
+This contradicts the product principle the rest of the app follows carefully —
+*honest empty/edge states: explain what still works*. The offline banner does
+this well (*"No connection · Reading still works · Streaming unavailable"*); the
+Discover error state does the opposite, hiding working content behind a blanket
+failure.
+
+**Not yet diagnosed.** The Gutenberg rail logged nothing either way, so it
+either failed silently or was never attempted, and the home `error` state looks
+to be driven by it alone rather than by whether *any* rail has content. The
+build log's own Flow 7 note claims the opposite behaviour — *"a cold start with
+one slow source shows a shorter page rather than empty headings"* — so either
+the note or the code is wrong. Needs a read of the home fetch orchestration.
+
+Recorded rather than fixed: this is a code bug surfaced by running the app, not
+a Figma reconciliation, and it was found mid-F-25. Figma's
+`Discover / Home / Error` frame (`201:395`) is a faithful drawing of the state
+as built, so it stays — the question is when the state should be *entered*.
+
+**Side effect for Phase D:** book detail is unreachable from Discover while the
+catalog is failing, so F-25's CTA bar could not be visually confirmed on device.
+It is type-checked and structurally simple, but it is **not** visually verified.
