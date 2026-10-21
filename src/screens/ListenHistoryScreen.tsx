@@ -282,7 +282,6 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontFamily: tokens.fonts.display,
     fontSize: 16,
-    fontWeight: '500',
     color: tokens.textColors.primary,
     letterSpacing: -0.2,
   },
@@ -302,7 +301,6 @@ const styles = StyleSheet.create({
   emptyTitle: {
     fontFamily: tokens.fonts.display,
     fontSize: 18,
-    fontWeight: '500',
     color: tokens.textColors.primary,
     marginTop: 6,
   },
@@ -358,7 +356,6 @@ const styles = StyleSheet.create({
   title: {
     fontFamily: tokens.fonts.display,
     fontSize: 14,
-    fontWeight: '500',
     color: tokens.textColors.primary,
   },
   meta: {

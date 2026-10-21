@@ -763,7 +763,6 @@ const styles = StyleSheet.create({
     flex: 1,
     fontFamily: tokens.fonts.display,
     fontSize: 17,
-    fontWeight: '500',
     color: tokens.textColors.primary,
     textAlign: 'center',
   },
@@ -883,7 +882,6 @@ const styles = StyleSheet.create({
   themeSwatchLetter: {
     fontFamily: tokens.fonts.display,
     fontSize: 16,
-    fontWeight: '500',
   },
   themeLabel: {
     flex: 1,
@@ -1054,7 +1052,6 @@ const styles = StyleSheet.create({
   upsellTitle: {
     fontFamily: tokens.fonts.display,
     fontSize: 14,
-    fontWeight: '500',
     color: tokens.textColors.primary,
   },
   upsellSub: {

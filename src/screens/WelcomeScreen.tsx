@@ -152,7 +152,6 @@ const styles = StyleSheet.create({
   headline: {
     fontFamily: tokens.fonts.display,
     fontSize: 32,
-    fontWeight: '500',
     lineHeight: 36,
     letterSpacing: -0.64,
     color: tokens.textColors.primary,
@@ -161,7 +160,6 @@ const styles = StyleSheet.create({
   },
   headlineEm: {
     fontFamily: tokens.fonts.displayItalic,
-    fontWeight: '400',
     fontStyle: 'italic',
     color: tokens.textColors.accent,
   },

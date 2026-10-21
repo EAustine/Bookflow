@@ -138,7 +138,6 @@ const styles = StyleSheet.create({
   title: {
     fontFamily: tokens.fonts.display,
     fontSize: 15,
-    fontWeight: '500',
     color: '#fff',
     marginBottom: 4,
   },

@@ -228,7 +228,6 @@ const styles = StyleSheet.create({
   title: {
     fontFamily: tokens.fonts.display,
     fontSize: 17,
-    fontWeight: '500',
     color: tokens.textColors.primary,
   },
   preview: {
@@ -305,7 +304,6 @@ const styles = StyleSheet.create({
   stepValue: {
     fontFamily: tokens.fonts.display,
     fontSize: 26,
-    fontWeight: '500',
     color: tokens.textColors.primary,
   },
   stepLabel: {

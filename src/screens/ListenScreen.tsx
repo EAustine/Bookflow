@@ -1417,7 +1417,6 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontFamily: tokens.fonts.display,
     fontSize: 13,
-    fontWeight: '500',
     color: tokens.textColors.primary,
   },
 
@@ -1712,7 +1711,6 @@ const styles = StyleSheet.create({
   sheetTitle: {
     fontFamily: tokens.fonts.display,
     fontSize: 16,
-    fontWeight: '500',
     color: tokens.textColors.primary,
   },
   sheetClose: {
@@ -1766,7 +1764,6 @@ const styles = StyleSheet.create({
   voiceAvatarText: {
     fontFamily: tokens.fonts.display,
     fontSize: 14,
-    fontWeight: '500',
   },
   voiceInfo: { flex: 1 },
   voiceName: {

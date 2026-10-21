@@ -675,7 +675,6 @@ const styles = StyleSheet.create({
   subHeaderTitle: {
     fontFamily: tokens.fonts.display,
     fontSize: 16,
-    fontWeight: '500',
     color: tokens.textColors.primary,
     flex: 1,
   },
@@ -914,7 +913,6 @@ const styles = StyleSheet.create({
   notifSheetTitle: {
     fontFamily: tokens.fonts.display,
     fontSize: 20,
-    fontWeight: '500',
     color: tokens.textColors.primary,
     lineHeight: 26,
     marginBottom: 6,

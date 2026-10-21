@@ -207,7 +207,6 @@ const styles = StyleSheet.create({
   title: {
     fontFamily: tokens.fonts.display,
     fontSize: 24,
-    fontWeight: '500',
     color: tokens.textColors.primary,
     textAlign: 'center',
     letterSpacing: -0.3,
@@ -274,7 +273,6 @@ const styles = StyleSheet.create({
   resumeCoverInitial: {
     fontFamily: tokens.fonts.display,
     fontSize: 28,
-    fontWeight: '500',
     color: tokens.colors.cream[50],
   },
   resumeBody: {
@@ -284,7 +282,6 @@ const styles = StyleSheet.create({
   resumeTitle: {
     fontFamily: tokens.fonts.display,
     fontSize: 15,
-    fontWeight: '500',
     color: tokens.textColors.primary,
     lineHeight: 19,
   },

@@ -719,7 +719,6 @@ const readingOptionsStyles = StyleSheet.create({
   title: {
     fontFamily: tokens.fonts.display,
     fontSize: 17,
-    fontWeight: '500',
     color: tokens.textColors.primary,
     marginBottom: 8,
   },
@@ -1047,7 +1046,6 @@ const styles = StyleSheet.create({
   statusTitle: {
     fontFamily: tokens.fonts.display,
     fontSize: 16,
-    fontWeight: '500',
     color: tokens.textColors.primary,
     marginTop: 6,
   },

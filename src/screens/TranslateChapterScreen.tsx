@@ -368,7 +368,6 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontFamily: tokens.fonts.display,
     fontSize: 15,
-    fontWeight: '500',
     color: tokens.textColors.primary,
   },
   headerSub: {
@@ -455,7 +454,6 @@ const styles = StyleSheet.create({
   statusTitle: {
     fontFamily: tokens.fonts.display,
     fontSize: 16,
-    fontWeight: '500',
     color: tokens.textColors.primary,
     marginTop: 6,
   },

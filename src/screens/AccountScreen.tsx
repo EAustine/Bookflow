@@ -1374,7 +1374,6 @@ const styles = StyleSheet.create({
   subHeaderTitle: {
     fontFamily: tokens.fonts.display,
     fontSize: 17,
-    fontWeight: '500',
     color: tokens.textColors.primary,
     flex: 1,
   },
@@ -1408,7 +1407,6 @@ const styles = StyleSheet.create({
   avatarInitials: {
     fontFamily: tokens.fonts.display,
     fontSize: 20,
-    fontWeight: '500',
     color: tokens.colors.cream[50],
     lineHeight: 24,
   },
@@ -1479,7 +1477,6 @@ const styles = StyleSheet.create({
   planName: {
     fontFamily: tokens.fonts.display,
     fontSize: 18,
-    fontWeight: '500',
     color: tokens.textColors.primary,
     lineHeight: 22,
   },
@@ -1565,7 +1562,6 @@ const styles = StyleSheet.create({
   planNamePro: {
     fontFamily: tokens.fonts.display,
     fontSize: 18,
-    fontWeight: '500',
     color: tokens.colors.cream[50],
     lineHeight: 22,
   },
@@ -1802,7 +1798,6 @@ const styles = StyleSheet.create({
     fontFamily: tokens.fonts.display,
     fontSize: 28,
     lineHeight: 32,
-    fontWeight: '500',
     color: tokens.colors.forest[800],
     // No letterSpacing — added a slight forward shift that made the
     // serif feet straddle the circle's vertical center awkwardly.

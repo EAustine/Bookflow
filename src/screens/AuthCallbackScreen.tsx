@@ -236,7 +236,6 @@ const styles = StyleSheet.create({
   verifyTitle: {
     fontFamily: tokens.fonts.display,
     fontSize: 20,
-    fontWeight: '500',
     lineHeight: 26,
     letterSpacing: -0.2,
     color: tokens.textColors.primary,
@@ -302,7 +301,6 @@ const styles = StyleSheet.create({
   errorTitle: {
     fontFamily: tokens.fonts.display,
     fontSize: 26,
-    fontWeight: '500',
     lineHeight: 32,
     letterSpacing: -0.52,
     color: tokens.textColors.primary,

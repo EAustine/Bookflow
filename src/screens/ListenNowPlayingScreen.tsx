@@ -745,7 +745,6 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontFamily: tokens.fonts.display,
     fontSize: 28,
-    fontWeight: '500',
     // Fraunces' display variant has tall ascenders; without an explicit
     // lineHeight, RN's auto-line-height clips the top of the cap on iOS.
     // 36 gives the glyphs comfortable breathing room without bloating the
@@ -792,7 +791,6 @@ const styles = StyleSheet.create({
   coverText: {
     fontFamily: tokens.fonts.display,
     fontSize: 7,
-    fontWeight: '500',
     color: 'rgba(255,255,255,0.6)',
     lineHeight: 9,
   },
@@ -825,7 +823,6 @@ const styles = StyleSheet.create({
   title: {
     fontFamily: tokens.fonts.display,
     fontSize: 18,
-    fontWeight: '500',
     color: '#fff',
     letterSpacing: -0.18,
     marginBottom: 4,
@@ -1024,7 +1021,6 @@ const styles = StyleSheet.create({
   recentTitle: {
     fontFamily: tokens.fonts.display,
     fontSize: 13,
-    fontWeight: '500',
     color: tokens.textColors.primary,
   },
   recentMeta: {
@@ -1073,7 +1069,6 @@ const styles = StyleSheet.create({
   statValue: {
     fontFamily: tokens.fonts.display,
     fontSize: 22,
-    fontWeight: '500',
     color: tokens.textColors.primary,
     letterSpacing: -0.4,
     marginBottom: 3,

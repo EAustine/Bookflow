@@ -238,7 +238,6 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontFamily: tokens.fonts.display,
     fontSize: 16,
-    fontWeight: '500',
     color: tokens.textColors.primary,
   },
 

@@ -224,7 +224,6 @@ const styles = StyleSheet.create({
     fontFamily: tokens.fonts.displayBold,
     fontSize: 36,
     lineHeight: 40,
-    fontWeight: '600',
     color: tokens.textColors.primary,
     letterSpacing: -0.72,
   },

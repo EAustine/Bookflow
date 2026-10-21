@@ -104,7 +104,6 @@ const styles = StyleSheet.create({
   title: {
     fontFamily: tokens.fonts.display,
     fontSize: tokens.fontSizes.display.sm,
-    fontWeight: '500',
     color: tokens.colors.ink[900],
     paddingTop: tokens.space.sm,
     paddingBottom: tokens.space.md,

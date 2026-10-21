@@ -469,7 +469,6 @@ const styles = StyleSheet.create({
   addTitle: {
     fontFamily: tokens.fonts.display,
     fontSize: 17,
-    fontWeight: '500',
     color: tokens.textColors.primary,
     marginBottom: 2,
   },
@@ -543,7 +542,6 @@ const styles = StyleSheet.create({
   confirmTitle: {
     fontFamily: tokens.fonts.display,
     fontSize: 17,
-    fontWeight: '500',
     color: tokens.textColors.primary,
     marginBottom: 2,
   },
@@ -578,7 +576,6 @@ const styles = StyleSheet.create({
   confirmCoverLabel: {
     fontFamily: tokens.fonts.display,
     fontSize: 6,
-    fontWeight: '500',
     color: tokens.colors.cream[50],
     lineHeight: 9,
   },
@@ -591,7 +588,6 @@ const styles = StyleSheet.create({
   confirmBookTitle: {
     fontFamily: tokens.fonts.display,
     fontSize: 15,
-    fontWeight: '500',
     color: tokens.textColors.primary,
     lineHeight: 20,
   },
@@ -703,13 +699,11 @@ const styles = StyleSheet.create({
   ringLabelText: {
     fontFamily: tokens.fonts.display,
     fontSize: 22,
-    fontWeight: '500',
     color: tokens.textColors.primary,
   },
   processingTitle: {
     fontFamily: tokens.fonts.display,
     fontSize: 20,
-    fontWeight: '500',
     color: tokens.textColors.primary,
     textAlign: 'center',
     letterSpacing: -0.2,
@@ -1076,7 +1070,6 @@ const scanStyles = StyleSheet.create({
     textAlign: 'center',
     fontFamily: tokens.fonts.display,
     fontSize: 16,
-    fontWeight: '500',
     color: tokens.textColors.primary,
   },
   headerSpacer: {
@@ -1106,7 +1099,6 @@ const scanStyles = StyleSheet.create({
   errorTitle: {
     fontFamily: tokens.fonts.display,
     fontSize: 22,
-    fontWeight: '500',
     color: tokens.textColors.primary,
     letterSpacing: -0.2,
     lineHeight: 28,

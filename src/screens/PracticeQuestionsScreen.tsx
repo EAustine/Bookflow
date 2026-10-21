@@ -1205,7 +1205,6 @@ const styles = StyleSheet.create({
   loadingTitle: {
     fontFamily: tokens.fonts.display,
     fontSize: 17,
-    fontWeight: '500',
     color: tokens.textColors.primary,
     textAlign: 'center',
   },
@@ -1270,7 +1269,6 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontFamily: tokens.fonts.display,
     fontSize: 13,
-    fontWeight: '500',
     color: tokens.textColors.primary,
   },
   headerSub: {
@@ -1696,7 +1694,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     fontFamily: tokens.fonts.display,
     fontSize: 14,
-    fontWeight: '500',
     color: tokens.textColors.primary,
   },
   resultsBody: {
@@ -1710,7 +1707,6 @@ const styles = StyleSheet.create({
   scoreNumber: {
     fontFamily: tokens.fonts.display,
     fontSize: 56,
-    fontWeight: '600',
     color: tokens.textColors.primary,
     letterSpacing: -1.5,
     lineHeight: 64,
@@ -1720,7 +1716,6 @@ const styles = StyleSheet.create({
     fontFamily: tokens.fonts.display,
     fontSize: 28,
     color: tokens.colors.ink[300],
-    fontWeight: '600',
   },
   scoreRaw: {
     fontFamily: tokens.fonts.ui,

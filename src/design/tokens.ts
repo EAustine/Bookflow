@@ -542,10 +542,10 @@ export const space = {
  * the composition inline.
  */
 export const textStyles = {
-  'display-xl': { fontFamily: fonts.displayBold, fontSize: 48, lineHeight: 56, fontWeight: '600' },
-  'display-lg': { fontFamily: fonts.display, fontSize: 36, lineHeight: 44, fontWeight: '500' },
-  'display-md': { fontFamily: fonts.display, fontSize: 28, lineHeight: 36, fontWeight: '500' },
-  'display-sm': { fontFamily: fonts.display, fontSize: 22, lineHeight: 30, fontWeight: '500' },
+  'display-xl': { fontFamily: fonts.displayBold, fontSize: 48, lineHeight: 56 },
+  'display-lg': { fontFamily: fonts.display, fontSize: 36, lineHeight: 44 },
+  'display-md': { fontFamily: fonts.display, fontSize: 28, lineHeight: 36 },
+  'display-sm': { fontFamily: fonts.display, fontSize: 22, lineHeight: 30 },
 
   'heading-lg': { fontFamily: fonts.uiMedium, fontSize: 20, lineHeight: 28, fontWeight: '500' },
   'heading-md': { fontFamily: fonts.uiMedium, fontSize: 16, lineHeight: 24, fontWeight: '500' },

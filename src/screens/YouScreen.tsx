@@ -933,7 +933,6 @@ const styles = StyleSheet.create({
   avatarText: {
     fontFamily: tokens.fonts.display,
     fontSize: 20,
-    fontWeight: '500',
     lineHeight: 24,
     color: tokens.colors.cream[50],
   },
@@ -1126,7 +1125,6 @@ const styles = StyleSheet.create({
     fontFamily: tokens.fonts.display,
     fontSize: 28,
     lineHeight: 31,
-    fontWeight: '500',
     letterSpacing: -0.5,
     color: tokens.colors.cream[50],
     marginBottom: 4,

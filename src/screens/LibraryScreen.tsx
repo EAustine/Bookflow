@@ -2573,7 +2573,6 @@ const styles = StyleSheet.create({
     fontFamily: tokens.fonts.display,
     fontSize: 28,
     lineHeight: 34,
-    fontWeight: '500',
     color: tokens.textColors.primary,
     letterSpacing: -0.4,
   },
@@ -2736,7 +2735,6 @@ const styles = StyleSheet.create({
   noResultsTitle: {
     fontFamily: tokens.fonts.display,
     fontSize: 16,
-    fontWeight: '500',
     color: tokens.textColors.primary,
     textAlign: 'center',
     marginBottom: tokens.space.sm,
@@ -2813,7 +2811,6 @@ const styles = StyleSheet.create({
   bookTitleHero: {
     fontFamily: tokens.fonts.display,
     fontSize: 15,
-    fontWeight: '500',
     color: tokens.textColors.primary,
   },
   continueStatus: {
@@ -2890,7 +2887,6 @@ const styles = StyleSheet.create({
   bookRowTitle: {
     fontFamily: tokens.fonts.display,
     fontSize: 13,
-    fontWeight: '500',
     color: tokens.textColors.primary,
   },
   rowProgressWrap: {
@@ -2916,7 +2912,6 @@ const styles = StyleSheet.create({
   coverInitial: {
     fontFamily: tokens.fonts.display,
     color: tokens.textColors.inverse,
-    fontWeight: '500',
   },
 
   // Progress bar
@@ -2942,7 +2937,6 @@ const styles = StyleSheet.create({
   sheetTitle: {
     fontFamily: tokens.fonts.display,
     fontSize: 17,
-    fontWeight: '500',
     color: tokens.textColors.primary,
   },
   sheetReset: {
@@ -3032,7 +3026,6 @@ const styles = StyleSheet.create({
   greetingName: {
     fontFamily: tokens.fonts.display,
     fontSize: 22,
-    fontWeight: '500',
     color: tokens.textColors.primary,
     letterSpacing: -0.2,
   },
@@ -3052,7 +3045,6 @@ const styles = StyleSheet.create({
   uploadTitle: {
     fontFamily: tokens.fonts.display,
     fontSize: 17,
-    fontWeight: '500',
     color: tokens.textColors.primary,
     textAlign: 'center',
     lineHeight: 24,
@@ -3112,7 +3104,6 @@ const styles = StyleSheet.create({
   bookCardTitle: {
     fontFamily: tokens.fonts.display,
     fontSize: 11,
-    fontWeight: '500',
     color: tokens.textColors.primary,
     lineHeight: 15,
   },
@@ -3140,7 +3131,6 @@ const styles = StyleSheet.create({
   actionSheetTitle: {
     fontFamily: tokens.fonts.display,
     fontSize: 16,
-    fontWeight: '500',
     color: tokens.textColors.primary,
     marginBottom: 2,
   },
@@ -3229,7 +3219,6 @@ const styles = StyleSheet.create({
   removeSheetTitle: {
     fontFamily: tokens.fonts.display,
     fontSize: 17,
-    fontWeight: '500',
     color: tokens.textColors.primary,
     marginBottom: 2,
   },
@@ -3331,7 +3320,6 @@ const styles = StyleSheet.create({
   statsCardHeadline: {
     fontFamily: tokens.fonts.display,
     fontSize: 18,
-    fontWeight: '500',
     color: tokens.textColors.primary,
     lineHeight: 22,
   },
@@ -3393,7 +3381,6 @@ const styles = StyleSheet.create({
   statsStreakValue: {
     fontFamily: tokens.fonts.display,
     fontSize: 22,
-    fontWeight: '500',
     color: tokens.colors.amber[500],
     lineHeight: 26,
   },

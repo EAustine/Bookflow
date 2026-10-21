@@ -3060,7 +3060,6 @@ const styles = StyleSheet.create({
   notFoundTitle: {
     fontFamily: tokens.fonts.display,
     fontSize: 18,
-    fontWeight: '500',
     textAlign: 'center',
   },
   notFoundBody: {
@@ -3146,7 +3145,6 @@ const styles = StyleSheet.create({
   headerBookTitle: {
     fontFamily: tokens.fonts.display,
     fontSize: 13,
-    fontWeight: '500',
     marginBottom: 1,
   },
   headerActions: {
@@ -3167,7 +3165,6 @@ const styles = StyleSheet.create({
   chapterTitle: {
     fontFamily: tokens.fonts.display,
     fontSize: 20,
-    fontWeight: '500',
     lineHeight: 26,
     letterSpacing: -0.2,
     marginBottom: tokens.space.lg,
@@ -3251,7 +3248,6 @@ const styles = StyleSheet.create({
   popoverWord: {
     fontFamily: tokens.fonts.display,
     fontSize: 16,
-    fontWeight: '500',
     color: tokens.colors.cream[50],
     marginBottom: 2,
   },
@@ -3345,7 +3341,6 @@ const styles = StyleSheet.create({
   sheetTitle: {
     fontFamily: tokens.fonts.display,
     fontSize: 16,
-    fontWeight: '500',
     color: tokens.textColors.primary,
   },
   sheetReset: {

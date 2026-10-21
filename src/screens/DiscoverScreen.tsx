@@ -3028,7 +3028,6 @@ const s = StyleSheet.create({
     textAlign: 'center',
     fontFamily: tokens.fonts.display,
     fontSize: 17,
-    fontWeight: '500',
     color: tokens.textColors.primary,
   },
   detailScroll: {

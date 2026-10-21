@@ -501,7 +501,6 @@ const styles = StyleSheet.create({
   title: {
     fontFamily: tokens.fonts.display,
     fontSize: 32,
-    fontWeight: '500',
     lineHeight: 36,
     letterSpacing: -0.64,
     color: tokens.textColors.primary,
@@ -608,7 +607,6 @@ const styles = StyleSheet.create({
   successTitle: {
     fontFamily: tokens.fonts.display,
     fontSize: 28,
-    fontWeight: '500',
     lineHeight: 32,
     letterSpacing: -0.56,
     color: tokens.textColors.primary,

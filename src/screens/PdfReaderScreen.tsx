@@ -838,7 +838,6 @@ const readingOptionsStyles = StyleSheet.create({
   title: {
     fontFamily: tokens.fonts.display,
     fontSize: 17,
-    fontWeight: '500',
     color: tokens.textColors.primary,
     marginBottom: 8,
   },
@@ -942,7 +941,6 @@ const styles = StyleSheet.create({
   errorTitle: {
     fontFamily: tokens.fonts.display,
     fontSize: 16,
-    fontWeight: '500',
     color: tokens.textColors.primary,
     marginTop: 8,
   },
@@ -986,7 +984,6 @@ const styles = StyleSheet.create({
   topTitle: {
     fontFamily: tokens.fonts.display,
     fontSize: 13,
-    fontWeight: '500',
     color: tokens.textColors.primary,
   },
   topRight: {

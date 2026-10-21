@@ -213,7 +213,6 @@ const styles = StyleSheet.create({
   title: {
     fontFamily: tokens.fonts.display,
     fontSize: 30,
-    fontWeight: '500',
     lineHeight: 34,
     letterSpacing: -0.6,
     color: tokens.textColors.primary,

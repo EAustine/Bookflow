@@ -158,7 +158,6 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontFamily: tokens.fonts.display,
     fontSize: 16,
-    fontWeight: '500',
     color: tokens.textColors.primary,
   },
 
@@ -184,7 +183,6 @@ const styles = StyleSheet.create({
   title: {
     fontFamily: tokens.fonts.display,
     fontSize: 20,
-    fontWeight: '500',
     color: tokens.textColors.primary,
     marginBottom: 6,
     textAlign: 'center',

@@ -176,7 +176,6 @@ const styles = StyleSheet.create({
   title: {
     fontFamily: tokens.fonts.display,
     fontSize: 16,
-    fontWeight: '500',
     color: tokens.textColors.primary,
   },
   closeBtn: {
@@ -215,7 +214,6 @@ const styles = StyleSheet.create({
   cellValue: {
     fontFamily: tokens.fonts.display,
     fontSize: 17,
-    fontWeight: '500',
     color: tokens.textColors.primary,
     lineHeight: 18,
   },

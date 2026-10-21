@@ -258,7 +258,6 @@ const styles = StyleSheet.create({
   title: {
     fontFamily: tokens.fonts.display,
     fontSize: 22,
-    fontWeight: '500',
     color: tokens.textColors.primary,
     textAlign: 'center',
     marginBottom: 6,

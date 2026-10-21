@@ -390,7 +390,6 @@ const styles = StyleSheet.create({
   title: {
     fontFamily: tokens.fonts.display,
     fontSize: 22,
-    fontWeight: '500',
     color: tokens.colors.ink[900],
     letterSpacing: -0.2,
     marginBottom: 5,
@@ -480,7 +479,6 @@ const styles = StyleSheet.create({
   cardName: {
     fontFamily: tokens.fonts.display,
     fontSize: 15,
-    fontWeight: '500',
     color: tokens.colors.ink[900],
     marginBottom: 3,
   },
@@ -494,7 +492,6 @@ const styles = StyleSheet.create({
   price: {
     fontFamily: tokens.fonts.display,
     fontSize: 17,
-    fontWeight: '500',
     color: tokens.colors.ink[900],
     marginBottom: 2,
   },

@@ -207,7 +207,6 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontFamily: tokens.fonts.display,
     fontSize: 14,
-    fontWeight: '500',
     color: tokens.textColors.primary,
   },
   headerSpacer: { width: 28 },

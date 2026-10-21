@@ -442,7 +442,6 @@ const styles = StyleSheet.create({
   title: {
     fontFamily: tokens.fonts.display,
     fontSize: 30,
-    fontWeight: '500',
     lineHeight: 34,
     letterSpacing: -0.6,
     color: tokens.textColors.primary,
@@ -573,7 +572,6 @@ const styles = StyleSheet.create({
   coverTitle: {
     fontFamily: tokens.fonts.displayBold,
     fontSize: 11,
-    fontWeight: '600',
     lineHeight: 13,
     letterSpacing: -0.1,
     textAlign: 'center',
@@ -640,7 +638,6 @@ const styles = StyleSheet.create({
   dropzoneHeadline: {
     fontFamily: tokens.fonts.display,
     fontSize: 17,
-    fontWeight: '500',
     lineHeight: 22,
     color: tokens.textColors.primary,
     textAlign: 'center',

@@ -1581,7 +1581,6 @@ const sheetStyles = StyleSheet.create({
   title: {
     fontFamily: tokens.fonts.display,
     fontSize: 16,
-    fontWeight: '500',
     color: tokens.textColors.primary,
   },
   subtitle: {
@@ -1689,7 +1688,6 @@ const sumStyles = StyleSheet.create({
   headerTitle: {
     fontFamily: tokens.fonts.display,
     fontSize: 14,
-    fontWeight: '500',
     color: tokens.textColors.primary,
     marginBottom: 1,
   },
@@ -2011,7 +2009,6 @@ const sumStyles = StyleSheet.create({
   errorTitle: {
     fontFamily: tokens.fonts.display,
     fontSize: 20,
-    fontWeight: '500',
     color: tokens.textColors.primary,
     textAlign: 'center',
     lineHeight: 26,
@@ -2141,7 +2138,6 @@ const wbStyles = StyleSheet.create({
   title: {
     fontFamily: tokens.fonts.display,
     fontSize: 18,
-    fontWeight: '500',
     color: tokens.textColors.primary,
     lineHeight: 24,
     marginBottom: 6,
@@ -2294,7 +2290,6 @@ const chatStyles = StyleSheet.create({
   headerTitle: {
     fontFamily: tokens.fonts.display,
     fontSize: 14,
-    fontWeight: '500',
     color: tokens.textColors.primary,
     marginBottom: 1,
   },

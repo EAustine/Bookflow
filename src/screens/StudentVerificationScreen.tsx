@@ -272,7 +272,6 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontFamily: tokens.fonts.display,
     fontSize: 16,
-    fontWeight: '500',
     color: tokens.textColors.primary,
   },
 
@@ -319,7 +318,6 @@ const styles = StyleSheet.create({
   title: {
     fontFamily: tokens.fonts.display,
     fontSize: 22,
-    fontWeight: '500',
     color: tokens.textColors.primary,
     textAlign: 'center',
     marginBottom: 6,
@@ -360,7 +358,6 @@ const styles = StyleSheet.create({
   priceChipValue: {
     fontFamily: tokens.fonts.display,
     fontSize: 28,
-    fontWeight: '500',
     color: tokens.colors.forest[800],
     letterSpacing: -0.4,
     marginBottom: 4,
