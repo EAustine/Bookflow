@@ -1145,7 +1145,7 @@ Answered items are **not** kept here; they live in §"Open questions F-1 … F-1
 
 | ID | Question | Blocks |
 |---|---|---|
-| **F-42** | Every shipped brand asset — app icon, Android launcher icon, favicon, notification icon — is still the **retired** logomark (0.893–0.906 against a canonical 0.661). F-8 never reached them. | needs your call |
+| ~~**F-42**~~ | ~~Every brand asset still carries the retired logomark~~ — **FIXED.** All four regenerated with composition preserved; verified on device, splash now renders at **0.662**. | ✅ done |
 | ~~**F-41**~~ | ~~Native splash ships the retired logomark~~ — **FIXED.** Asset regenerated from the canonical path data; ink ratio 0.895 → **0.659** against a canonical 0.661, and sized/placed so the handoff to the JS splash no longer jumps. | ✅ done |
 | **F-40** | `List row` models Trailing as one choice, so a row can show a hint OR a chevron. The app shows both on every Settings drill-in. | Phase D |
 | **F-39** | Discover home shows "Couldn't reach the catalog" while other sources returned 748 books. Observed on device. | Phase D |
@@ -1595,11 +1595,32 @@ F-8 corrected the mark in code. It never reached a single shipped brand asset.
 The icon on both stores, the launcher icon, the favicon and the notification
 icon are all the retired shape.
 
-**Not fixed, and deliberately so.** These are not a geometry swap like the splash
-was. `icon.png` and `favicon.png` are full-bleed on a forest-800 field with the
-mark knocked out in a lighter tone; `adaptive-icon.png` has Android's safe-zone
-rules, where the outer ~33% can be masked away by the launcher. Regenerating
-them is a brand decision about composition and padding, not a trace of a path.
+**Fixed** (`25bb718`), with each composition preserved exactly — same canvas,
+same background, same ink colours, same mark width and the same mark centre.
+Only the curve geometry changed.
+
+| asset | before | after | mark |
+|---|---|---|---|
+| `icon.png` | 0.893 | **0.663** | 450px @ (511.5, 572.5), cream on forest-800 |
+| `adaptive-icon.png` | 0.894 | **0.663** | 388px @ (511.5, 564.0), forest on transparent |
+| `favicon.png` | 0.906 | **0.667** | 32px @ (31.5, 36.0) |
+| `notification-icon.png` | 0.906 | **0.662** | 194px @ (127.5, 127.5), monochrome white |
+
+**Width** is held constant rather than height: in a square icon the horizontal
+extent sets how large the logo reads, and holding it means nothing can overflow
+a safe area that previously fit. The canonical mark is shorter, so each sits a
+little lower in its optical box than the taller retired one did; the centre is
+unchanged.
+
+Echo opacity preserved per asset — 0.45 on the icon, adaptive icon and favicon
+(cream-50 at 0.45 over forest-800 resolves to exactly the `(127,147,136)` the
+old icon used), and fully opaque on the notification icon, which Android
+requires to be monochrome.
+
+**Verified on device.** Clean uninstall, reinstall and relaunch on the Pixel 9
+emulator: the Android splash now renders the mark at ratio **0.662** against the
+canonical 0.661. It was 0.895. Capture in
+`docs/figma/verification/android/01-splash.png`.
 
 `/ios` and `/android` are gitignored and regenerate from these files, so the
 committed fix is the asset alone. `npx expo prebuild` confirmed the pipeline
