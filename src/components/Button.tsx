@@ -229,8 +229,10 @@ const styles = StyleSheet.create({
     gap: tokens.button.gap,
   },
   label: {
-    fontFamily: tokens.fonts.ui,
-    fontWeight: '500',
+    // Geist **Medium**. Was `fonts.ui` (Regular) with `fontWeight: '500'`
+    // beside it, which renders Regular — the family is the weight. Every
+    // Figma button is Medium; this is the code catching up. (F-17.)
+    fontFamily: tokens.fonts.uiMedium,
   },
   fullWidth: {
     width: '100%',

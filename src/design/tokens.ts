@@ -352,9 +352,14 @@ export const listRow = {
     label: { standard: 14, compact: 13 },
     sublabel: 11,
   },
-  fontWeight: {
-    label: { standard: '500', compact: '400' },
-  },
+  /**
+   * Label family per size. Standard rows are Medium, compact rows
+   * Regular — the spec's two weights. Expressed as a family, not a
+   * `fontWeight`: Expo Google Fonts registers each weight as its own
+   * family, so a `fontWeight` has nothing to select and the row was
+   * rendering Regular at both sizes. (F-17.)
+   */
+  labelFont: { standard: fonts.uiMedium, compact: fonts.ui },
   iconBgSize: { standard: 32, compact: 28 },
   iconSize: { standard: 18, compact: 16 },
   chevronSize: { standard: 16, compact: 14 },

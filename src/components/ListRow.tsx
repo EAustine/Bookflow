@@ -60,9 +60,6 @@ export function ListRow({
       ? tokens.colors.error
       : tokens.colors.ink[900];
 
-  const labelWeight = (
-    tokens.listRow.fontWeight.label[size] as '400' | '500'
-  );
 
   return (
     <Pressable
@@ -109,8 +106,8 @@ export function ListRow({
           style={[
             styles.label,
             {
+              fontFamily: tokens.listRow.labelFont[size],
               fontSize: tokens.listRow.fontSize.label[size],
-              fontWeight: labelWeight,
               color: labelColor,
             },
           ]}
@@ -172,6 +169,7 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   label: {
+    // Family is set per size at the call site — see `listRow.labelFont`.
     fontFamily: tokens.fonts.ui,
   },
   sublabel: {
