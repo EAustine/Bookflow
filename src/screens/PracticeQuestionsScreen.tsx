@@ -280,7 +280,7 @@ export function PracticeQuestionsScreen({ book, onBack, pageIndex }: PracticeQue
     return (
       <SafeAreaView style={styles.safe} edges={['top', 'left', 'right', 'bottom']}>
         <View style={styles.loadingWrap}>
-          <Icon name="AlertCircle" size={28} color={tokens.colors.error} strokeWidth={1.5} />
+          <Icon name="AlertCircle" size={28} color={tokens.colors.error} />
           <Text style={styles.loadingTitle}>Couldn't generate questions</Text>
           <Text style={styles.loadingBody}>
             {errorMessage ?? 'The model couldn\'t produce a quiz for this page. Try again in a moment.'}
@@ -415,7 +415,7 @@ function ConfigScreen({
                 Tap to change · {totalPages} pages total
               </Text>
             </View>
-            <Icon name="ChevronDown" size={14} color={tokens.textColors.muted} strokeWidth={1.5} />
+            <Icon name="ChevronDown" size={14} color={tokens.textColors.muted} />
           </Pressable>
         </SectionBlock>
 
@@ -560,7 +560,6 @@ function PagePickerBody({
                 name="Check"
                 size={16}
                 color={tokens.colors.cream[50]}
-                strokeWidth={2.5}
               />
             )}
           </Pressable>
@@ -736,7 +735,6 @@ function MCQBody({
               name={answer?.isCorrect ? 'Check' : 'AlertCircle'}
               size={14}
               color={answer?.isCorrect ? C.success : C.error}
-              strokeWidth={2}
             />
             <Text
               style={[
@@ -817,7 +815,7 @@ function ShortAnswerBody({
           {/* Verdict */}
           <View style={styles.gradingHeader}>
             <View style={[styles.gradingIcon, { backgroundColor: tokens.colors.amber[500] }]}>
-              <Icon name="Check" size={11} color={tokens.colors.cream[50]} strokeWidth={2.5} />
+              <Icon name="Check" size={11} color={tokens.colors.cream[50]} />
             </View>
             <Text style={[styles.gradingVerdict, { color: C.warn }]}>
               Mostly correct — partial credit
@@ -955,7 +953,7 @@ function ResultsScreen({
                       ]}
                     >
                       {g === 'incorrect' ? (
-                        <Icon name="X" size={10} color={C.error} strokeWidth={2.5} />
+                        <Icon name="X" size={10} color={C.error} />
                       ) : (
                         <Text style={[styles.reviewStatusText, { color: C.warn }]}>~</Text>
                       )}
@@ -997,7 +995,6 @@ function ResultsScreen({
                     ? tokens.colors.forest[800]
                     : tokens.textColors.secondary
                 }
-                strokeWidth={1.75}
               />
             </Pressable>
             <Pressable
@@ -1019,7 +1016,6 @@ function ResultsScreen({
                     ? tokens.colors.error
                     : tokens.textColors.secondary
                 }
-                strokeWidth={1.75}
               />
             </Pressable>
           </View>
@@ -1039,7 +1035,6 @@ function ResultsScreen({
               name="PlayerSkipBack"
               size={14}
               color={tokens.colors.cream[50]}
-              strokeWidth={1.5}
             />
             <Text style={styles.retryBtnLabel}>
               Retry the {missedCount} you missed
@@ -1051,7 +1046,6 @@ function ResultsScreen({
             name="Refresh"
             size={14}
             color={tokens.colors.forest[800]}
-            strokeWidth={1.75}
           />
           <Text style={styles.redoAllBtnLabel}>Redo all questions</Text>
         </Pressable>
@@ -1079,7 +1073,7 @@ function PQHeader({
   return (
     <View style={styles.header}>
       <Pressable style={styles.closeBtn} onPress={onClose} hitSlop={8}>
-        <Icon name="X" size={12} color={tokens.textColors.secondary} strokeWidth={2} />
+        <Icon name="X" size={12} color={tokens.textColors.secondary} />
       </Pressable>
       <View style={styles.headerCenter}>
         <Text style={styles.headerTitle}>{title}</Text>

@@ -134,3 +134,73 @@ export const DISCOVER_SEED: DiscoverBook[] = SEED_RAW.map((s) => ({
   source: 'gutenberg',
   downloadCount: s.downloadCount,
 }));
+
+/**
+ * Curated Bible collection for the dedicated "The Holy Bible" rail.
+ *
+ * COPYRIGHT NOTE: only public-domain translations are listed here. Modern
+ * copyrighted versions (NKJV, NLT, NIV, ESV, NASB, …) are NOT free to
+ * distribute and would require a publisher licence or an official Bible API
+ * agreement — do not add them as bundled texts. The three below are complete,
+ * verified Project Gutenberg editions:
+ *   - #10   King James Version (1611) — the classic English translation
+ *   - #8294 World English Bible — a readable modern-English PD translation
+ *   - #8300 Douay-Rheims (Challoner Revision) — traditional English Catholic
+ */
+const BIBLE_RAW: Array<{
+  id: number;
+  title: string;
+  author: string;
+  tags: string[];
+  about: string;
+  downloadCount: number;
+}> = [
+  {
+    id: 10,
+    title: 'Holy Bible: King James Version',
+    author: 'KJV · 1611',
+    tags: ['Bible', 'Scripture', 'KJV'],
+    about:
+      'The complete King James Version of the Old and New Testaments — the classic 1611 English translation.',
+    downloadCount: 17381,
+  },
+  {
+    id: 8294,
+    title: 'Holy Bible: World English Bible',
+    author: 'WEB · Modern English',
+    tags: ['Bible', 'Scripture', 'Modern English'],
+    about:
+      'A complete, readable modern-English translation in the public domain — a contemporary update of the American Standard Version.',
+    downloadCount: 1445,
+  },
+  {
+    id: 8300,
+    title: 'Holy Bible: Douay-Rheims',
+    author: 'Catholic · Challoner Revision',
+    tags: ['Bible', 'Scripture', 'Catholic'],
+    about:
+      'The complete Douay-Rheims Bible (Challoner Revision) — the traditional English Catholic translation.',
+    downloadCount: 3175,
+  },
+];
+
+/**
+ * Always-available Bible versions for the Discover "Holy Bible" rail. Built
+ * from baked-in Gutenberg references (same URL conventions as the seed), so
+ * the rail renders instantly and never empties on a network miss.
+ */
+export const BIBLE_VERSIONS: DiscoverBook[] = BIBLE_RAW.map((s) => ({
+  id: `gutenberg:${s.id}`,
+  title: s.title,
+  author: s.author,
+  language: 'en',
+  tags: s.tags,
+  coverUrl: proxyCover(`https://www.gutenberg.org/cache/epub/${s.id}/pg${s.id}.cover.medium.jpg`),
+  epubUrl: `https://www.gutenberg.org/ebooks/${s.id}.epub.images`,
+  formats: {
+    'application/epub+zip': `https://www.gutenberg.org/ebooks/${s.id}.epub.images`,
+  },
+  about: s.about,
+  source: 'gutenberg',
+  downloadCount: s.downloadCount,
+}));

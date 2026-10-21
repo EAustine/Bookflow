@@ -11,7 +11,9 @@ import {
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BottomSheet, ChapterSheet, type BottomSheetRef, Icon, Text } from '~/components';
+import { VoiceAvatar } from '~/components/VoiceAvatar';
 import { tokens } from '~/design/tokens';
+import { PLAYBACK_SPEEDS } from '~/stores/readerStore';
 import type { Book } from '~/types/book';
 import { type AudioVoice, DEFAULT_VOICE } from '~/lib/aiAudio';
 import { useAudioSession } from '~/lib/audioSession';
@@ -26,7 +28,10 @@ import {
   subscribeVoicePreview,
 } from '~/lib/voicePreview';
 
-const SPEEDS = [0.75, 1, 1.25, 1.5, 2] as const;
+// The speed pill cycles the same set the store accepts and the speed
+// sheet lists. Was a separate 5-value literal (0.75–2, no 0.5/1.75),
+// so the pill could not reach two speeds the sheet offered. See F-7.
+const SPEEDS = PLAYBACK_SPEEDS;
 type Speed = (typeof SPEEDS)[number];
 
 // ─── Voices ───────────────────────────────────────────────────────────────────
@@ -34,7 +39,7 @@ type Speed = (typeof SPEEDS)[number];
 type VoiceTier = 'free' | 'pro';
 
 // Voices are ElevenLabs default IDs (22-char alphanumeric). 'free'
-// tier exposes Rachel; the rest are gated as 'pro' for paywall
+// tier exposes Aria; the rest are gated as 'pro' for paywall
 // framing — they cost the same on our side, the gating is product
 // UX, not technical.
 const VOICES: {
@@ -325,7 +330,6 @@ export function ListenScreen({ book, onBack, onMinimize, pageIndex }: ListenScre
               name="AlertCircle"
               size={18}
               color={tokens.textColors.secondary}
-              strokeWidth={1.75}
             />
             <Text style={styles.textFallbackTitle}>
               Audio available, text couldn't load
@@ -387,7 +391,7 @@ export function ListenScreen({ book, onBack, onMinimize, pageIndex }: ListenScre
             sees it before they try to tap the disabled play button. */}
         {status.errorMessage ? (
           <View style={styles.audioErrorRow}>
-            <Icon name="AlertCircle" size={16} color={tokens.colors.error} strokeWidth={2} />
+            <Icon name="AlertCircle" size={16} color={tokens.colors.error} />
             <Text style={styles.audioErrorText}>{status.errorMessage}</Text>
           </View>
         ) : null}
@@ -905,7 +909,7 @@ function VoiceSheet({
           <View style={{ flex: 1 }}>
             <Text style={styles.upsellTitle}>Unlock all voices</Text>
             <Text style={styles.upsellSub}>
-              4 premium voices + faster audio on Standard
+              5 premium voices + faster audio on Standard
             </Text>
           </View>
           <Pressable
@@ -968,16 +972,7 @@ function VoiceRow({
         pressed && !locked && { backgroundColor: tokens.bgColors.raised },
       ]}
     >
-      <View
-        style={[
-          styles.voiceAvatar,
-          { backgroundColor: voice.bg },
-        ]}
-      >
-        <Text style={[styles.voiceAvatarText, { color: voice.fg }]}>
-          {voice.name[0]}
-        </Text>
-      </View>
+      <VoiceAvatar voiceId={voice.id} size={36} />
 
       <View style={styles.voiceInfo}>
         <Text style={styles.voiceName}>{voice.name}</Text>
@@ -1029,7 +1024,7 @@ function VoiceRow({
               </Text>
             </Pressable>
             {isSelected && (
-              <Icon name="Check" size={16} color={tokens.colors.forest[800]} strokeWidth={2} />
+              <Icon name="Check" size={16} color={tokens.colors.forest[800]} />
             )}
           </>
         )}
@@ -1121,7 +1116,6 @@ function SleepSheet({
                   name="Check"
                   size={16}
                   color={tokens.colors.forest[800]}
-                  strokeWidth={2}
                 />
               )}
             </View>

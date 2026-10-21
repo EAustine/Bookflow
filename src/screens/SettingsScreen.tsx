@@ -9,10 +9,18 @@ import {
   type IconName,
   ReminderTimePicker,
   Text,
+  Toggle,
 } from '~/components';
 import { tokens } from '~/design/tokens';
 import { useReaderStore, TRANSLATION_LANGUAGE_LABELS } from '~/stores/readerStore';
 import { VOICE_OPTIONS } from '~/lib/aiAudio';
+import { useDownloadsStore } from '~/stores/downloadsStore';
+import {
+  deleteBookDownload,
+  deleteAllDownloads,
+  totalDownloadBytes,
+  formatBytes,
+} from '~/lib/audioDownloads';
 import {
   DefaultVoiceScreen,
   PlaybackSpeedScreen,
@@ -436,52 +444,105 @@ function SettingsRow({
   return content;
 }
 
-// ─── Toggle ───────────────────────────────────────────────────────────────────
-
-function Toggle({
-  value,
-  onChange,
-  dimmed,
-}: {
-  value: boolean;
-  onChange: (v: boolean) => void;
-  dimmed?: boolean;
-}) {
-  const trackColor = dimmed
-    ? tokens.colors.ink[300]
-    : value
-    ? tokens.colors.forest[800]
-    : tokens.colors.ink[200];
-
-  return (
-    <Pressable
-      accessibilityRole="switch"
-      accessibilityState={{ checked: value }}
-      onPress={() => onChange(!value)}
-      style={[styles.toggle, { backgroundColor: trackColor }, dimmed && { opacity: 0.5 }]}
-    >
-      <View style={[styles.toggleKnob, value ? styles.toggleKnobRight : styles.toggleKnobLeft]} />
-    </Pressable>
-  );
-}
-
 // ─── Storage row (custom layout) ─────────────────────────────────────────────
 
 function StorageRow() {
-  // Offline audio downloads aren't implemented yet — narration streams from
-  // signed URLs and nothing is stored locally — so there's no real "downloaded"
-  // size to report. Show an honest empty state instead of the previous
-  // fabricated "124 MB of 360 MB". Wire this to a real measurement once an
-  // offline-download feature exists.
+  // Real offline-download usage. Subscribes to the downloads registry so the
+  // size + per-book list update live as downloads progress / complete.
+  const downloads = useDownloadsStore((s) => s.downloads);
+  const entries = Object.values(downloads).sort(
+    (a, b) => b.updatedAt - a.updatedAt,
+  );
+  const hasAny = entries.length > 0;
+  const totalBytes =
+    entries.reduce((sum, e) => sum + (e.bytes || 0), 0) || totalDownloadBytes();
+
+  const confirmRemoveAll = () => {
+    Alert.alert(
+      'Remove all downloads?',
+      'Deletes all offline audio + text from this device. Your books and reading progress stay.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Remove all',
+          style: 'destructive',
+          onPress: () => deleteAllDownloads(),
+        },
+      ],
+    );
+  };
+
+  const confirmRemoveOne = (bookId: string, title: string) => {
+    Alert.alert(
+      'Remove download?',
+      `Delete the offline copy of "${title || 'this book'}"? You can re-download it anytime.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Remove',
+          style: 'destructive',
+          onPress: () => deleteBookDownload(bookId),
+        },
+      ],
+    );
+  };
+
   return (
-    <View style={styles.settingsRow}>
-      <View style={styles.rowIconBg}>
-        <Icon name="Music" size={14} color={tokens.textColors.secondary} />
+    <View>
+      <View style={styles.settingsRow}>
+        <View style={styles.rowIconBg}>
+          <Icon name="Music" size={14} color={tokens.textColors.secondary} />
+        </View>
+        <View style={styles.storageContent}>
+          <Text style={styles.rowLabel}>Downloaded audio</Text>
+          <Text style={styles.storageMeta}>
+            {hasAny
+              ? `${entries.length} book${entries.length > 1 ? 's' : ''} · ${formatBytes(totalBytes)}`
+              : 'No audio downloaded yet'}
+          </Text>
+        </View>
+        {hasAny && (
+          <Pressable
+            accessibilityRole="button"
+            onPress={confirmRemoveAll}
+            hitSlop={8}
+            style={({ pressed }) => (pressed ? { opacity: 0.6 } : undefined)}
+          >
+            <Text style={styles.storageRemoveAll}>Remove all</Text>
+          </Pressable>
+        )}
       </View>
-      <View style={styles.storageContent}>
-        <Text style={styles.rowLabel}>Downloaded audio</Text>
-        <Text style={styles.storageMeta}>No audio downloaded yet</Text>
-      </View>
+      {entries.map((e) => (
+        <View key={e.bookId} style={styles.downloadItem}>
+          <View style={styles.downloadItemMeta}>
+            <Text style={styles.downloadItemTitle} numberOfLines={1}>
+              {e.title || 'Untitled'}
+            </Text>
+            <Text style={styles.downloadItemSub} numberOfLines={1}>
+              {e.status === 'downloading'
+                ? `Downloading… ${
+                    e.totalPages > 0
+                      ? Math.round((e.completedPages / e.totalPages) * 100)
+                      : 0
+                  }%`
+                : e.status === 'error'
+                ? e.error || 'Download failed — open the book to retry'
+                : formatBytes(e.bytes)}
+            </Text>
+          </View>
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => confirmRemoveOne(e.bookId, e.title)}
+            hitSlop={8}
+            style={({ pressed }) => [
+              styles.downloadItemDelete,
+              pressed && { opacity: 0.6 },
+            ]}
+          >
+            <Icon name="Trash" size={16} color={tokens.colors.error} />
+          </Pressable>
+        </View>
+      ))}
     </View>
   );
 }
@@ -691,29 +752,6 @@ const styles = StyleSheet.create({
     color: tokens.colors.ink[400],
   },
 
-  // Toggle
-  toggle: {
-    width: 44,
-    height: 26,
-    borderRadius: 13,
-    justifyContent: 'center',
-    flexShrink: 0,
-  },
-  toggleKnob: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    backgroundColor: tokens.colors.cream[50],
-    position: 'absolute',
-    top: 3,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.2,
-    shadowRadius: 2,
-    elevation: 2,
-  },
-  toggleKnobRight: { right: 3 },
-  toggleKnobLeft: { left: 3 },
 
   // Reminder trailing
   reminderTrailing: {
@@ -769,6 +807,35 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: tokens.textColors.muted,
     flexShrink: 0,
+  },
+  storageRemoveAll: {
+    fontFamily: tokens.fonts.uiMedium,
+    fontSize: 12,
+    color: tokens.colors.error,
+  },
+  downloadItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 8,
+    paddingLeft: 44,
+  },
+  downloadItemMeta: {
+    flex: 1,
+    gap: 2,
+  },
+  downloadItemTitle: {
+    fontFamily: tokens.fonts.uiMedium,
+    fontSize: 13,
+    color: tokens.textColors.primary,
+  },
+  downloadItemSub: {
+    fontFamily: tokens.fonts.ui,
+    fontSize: 11,
+    color: tokens.textColors.muted,
+  },
+  downloadItemDelete: {
+    padding: 4,
   },
 
   // Dimmed state (OS notifications off)

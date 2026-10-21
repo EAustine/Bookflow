@@ -99,7 +99,6 @@ export function ListenHistoryScreen({
             name="Headphones"
             size={28}
             color={tokens.colors.forest[800]}
-            strokeWidth={1.5}
           />
           <Text style={styles.emptyTitle}>No listening history yet</Text>
           <Text style={styles.emptySub}>

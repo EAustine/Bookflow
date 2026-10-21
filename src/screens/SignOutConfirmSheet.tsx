@@ -68,7 +68,7 @@ export const SignOutConfirmSheet = forwardRef<BottomSheetModal, SignOutConfirmSh
         <BottomSheetView style={styles.content}>
           {/* Icon */}
           <View style={[styles.iconWrap, { backgroundColor: ERROR_BG }]}>
-            <Icon name="Logout" size={26} color={ERROR_FG} strokeWidth={1.5} />
+            <Icon name="Logout" size={26} color={ERROR_FG} />
           </View>
 
           <Text style={styles.title}>Sign out of Bookflow?</Text>
@@ -82,7 +82,7 @@ export const SignOutConfirmSheet = forwardRef<BottomSheetModal, SignOutConfirmSh
             {PRESERVED.map((row, i) => (
               <View key={i} style={styles.preservedRow}>
                 <View style={styles.preservedCheck}>
-                  <Icon name="Check" size={9} color={SUCCESS_FG} strokeWidth={2.5} />
+                  <Icon name="Check" size={9} color={SUCCESS_FG} />
                 </View>
                 <Text style={styles.preservedText}>{row}</Text>
               </View>

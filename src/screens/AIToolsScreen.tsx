@@ -37,6 +37,7 @@ import { useSummary } from '~/lib/aiSummary';
 import { useChat, type ChatRecord } from '~/lib/aiChat';
 import { FALLBACK_STARTERS, useStarterQuestions } from '~/lib/aiStarters';
 import { presentPaywall, ENTITLEMENT_PRO, useIsPro } from '~/lib/revenuecat';
+import { useMonthlyAiUsage, aiCreditLimit } from '~/lib/aiUsage';
 
 // Offline colour aliases — defer to tokens so the slate palette
 // stays consistent with LibraryScreen's offline banner.
@@ -110,13 +111,26 @@ export const AIToolsSheet = forwardRef<BottomSheetRef, AIToolsSheetProps>(
   ) {
     const modalRef = useRef<BottomSheetModal>(null);
 
+    // Real AI-credit usage — drives the gauge + soft enforcement.
+    const { used: aiUsed, refresh: refreshCredits } = useMonthlyAiUsage();
+    const { isPro } = useIsPro();
+    const aiLimit = aiCreditLimit(isPro);
+    const creditsExceeded = !isPro && aiUsed >= aiLimit;
+    const creditsPct =
+      aiLimit > 0 ? Math.min(100, Math.round((aiUsed / aiLimit) * 100)) : 0;
+    const fmtK = (n: number) =>
+      n >= 1000 ? `${Math.round(n / 1000)}K` : String(Math.max(0, Math.round(n)));
+
     useImperativeHandle(
       ref,
       () => ({
-        present: () => modalRef.current?.present(),
+        present: () => {
+          refreshCredits(); // re-read usage each time the sheet opens
+          modalRef.current?.present();
+        },
         dismiss: () => modalRef.current?.dismiss(),
       }),
-      [],
+      [refreshCredits],
     );
 
     const renderBackdrop = useCallback(
@@ -144,11 +158,25 @@ export const AIToolsSheet = forwardRef<BottomSheetRef, AIToolsSheetProps>(
     const chNum = String(livePageIndex + 1);
     const dismiss = () => modalRef.current?.dismiss();
 
+    // Launch a tool — but divert a credit-exhausted free user to the paywall
+    // instead. (The edge functions record usage authoritatively; this is the
+    // instant-feedback UX gate.)
+    const launch = (fn: () => void) => {
+      dismiss();
+      if (creditsExceeded) {
+        void presentPaywall({ requiredEntitlement: ENTITLEMENT_PRO }).catch(
+          () => {},
+        );
+        return;
+      }
+      fn();
+    };
+
     const TOOLS: { icon: 'Notebook' | 'HelpCircle' | 'MessageCircle' | 'Globe'; label: string; cost: string; onPress: () => void }[] = [
-      { icon: 'Notebook',      label: 'Summarize page',            cost: '~2K AI credits',              onPress: () => { dismiss(); onSummarize(); } },
-      { icon: 'HelpCircle',    label: 'Practice questions',        cost: '~3K AI credits',              onPress: () => { dismiss(); onPractice(); } },
-      { icon: 'MessageCircle', label: 'Ask about the book',        cost: '~1K AI credits per message',  onPress: () => { dismiss(); onAsk(); } },
-      { icon: 'Globe',         label: 'Translate page',            cost: '~5K AI credits',              onPress: () => { dismiss(); onTranslate(); } },
+      { icon: 'Notebook',      label: 'Summarize page',            cost: '~2K AI credits',              onPress: () => launch(onSummarize) },
+      { icon: 'HelpCircle',    label: 'Practice questions',        cost: '~3K AI credits',              onPress: () => launch(onPractice) },
+      { icon: 'MessageCircle', label: 'Ask about the book',        cost: '~1K AI credits per message',  onPress: () => launch(onAsk) },
+      { icon: 'Globe',         label: 'Translate page',            cost: '~5K AI credits',              onPress: () => launch(onTranslate) },
     ];
 
     return (
@@ -188,17 +216,27 @@ export const AIToolsSheet = forwardRef<BottomSheetRef, AIToolsSheetProps>(
                   <Text style={sheetStyles.rowTitle}>{tool.label}</Text>
                   <Text style={sheetStyles.rowCost}>{tool.cost}</Text>
                 </View>
-                <Icon name="ChevronRight" size={14} color={tokens.colors.ink[300]} strokeWidth={1.5} />
+                <Icon name="ChevronRight" size={14} color={tokens.colors.ink[300]} />
               </Pressable>
             ))}
           </View>
 
-          {/* Credits footer removed — the real metering pipeline
-              (RevenueCat entitlement + per-user credit balance in
-              Supabase) isn't wired yet. Showing a hardcoded
-              "32K of 50K remaining" gauge that never moved was
-              misleading. Bring this back as a real component when
-              credit accounting lands. */}
+          {/* Real AI-credit gauge — fed by the monthly usage counter. */}
+          <View style={sheetStyles.creditsFooter}>
+            <View style={sheetStyles.creditsBarWrap}>
+              <Text style={sheetStyles.creditsLabel}>
+                {creditsExceeded
+                  ? 'Monthly AI credits used up'
+                  : `${fmtK(Math.max(0, aiLimit - aiUsed))} AI credits left this month`}
+              </Text>
+              <View style={sheetStyles.creditsTrack}>
+                <View style={[sheetStyles.creditsFill, { width: `${creditsPct}%` }]} />
+              </View>
+            </View>
+            <Text style={sheetStyles.creditsCount}>
+              {fmtK(aiUsed)} / {fmtK(aiLimit)}
+            </Text>
+          </View>
         </BottomSheetView>
       </BottomSheetModal>
     );
@@ -441,7 +479,7 @@ export function SummaryScreen({
       ) : failed ? (
         <View style={sumStyles.errorBody}>
           <View style={sumStyles.errorIconWrap}>
-            <Icon name="AlertCircle" size={32} color={tokens.colors.error} strokeWidth={1.5} />
+            <Icon name="AlertCircle" size={32} color={tokens.colors.error} />
           </View>
           <Text style={sumStyles.errorTitle}>Summary generation failed</Text>
           <Text style={sumStyles.errorSub}>
@@ -570,7 +608,7 @@ function QualityRatingCard({
     return (
       <View style={[sumStyles.qualityCard, sumStyles.qualityCardSuccess]}>
         <View style={sumStyles.qualitySuccessRow}>
-          <Icon name="CheckCircle" size={14} color={tokens.colors.success} strokeWidth={2} />
+          <Icon name="CheckCircle" size={14} color={tokens.colors.success} />
           <Text style={sumStyles.qualitySuccessText}>Thanks for the feedback</Text>
         </View>
       </View>
@@ -583,7 +621,7 @@ function QualityRatingCard({
         <View style={sumStyles.qualityNegHeader}>
           <Text style={sumStyles.qualityNegLabel}>What could be better?</Text>
           <Pressable style={sumStyles.qualityNegClose} onPress={() => setRating(null)} hitSlop={8}>
-            <Icon name="X" size={10} color={tokens.textColors.muted} strokeWidth={2.5} />
+            <Icon name="X" size={10} color={tokens.textColors.muted} />
           </Pressable>
         </View>
         <View style={sumStyles.reasonChips}>
@@ -616,7 +654,7 @@ function QualityRatingCard({
               setRating(null);
             }}
           >
-            <Icon name="Refresh" size={11} color={tokens.colors.cream[50]} strokeWidth={2} />
+            <Icon name="Refresh" size={11} color={tokens.colors.cream[50]} />
             <Text style={sumStyles.negBtnRegenLabel}>Submit &amp; regenerate</Text>
           </Pressable>
           <Pressable
@@ -646,7 +684,6 @@ function QualityRatingCard({
               name="ThumbUp"
               size={16}
               color={tokens.colors.forest[800]}
-              strokeWidth={0}
             />
           </Pressable>
           <Pressable
@@ -658,7 +695,6 @@ function QualityRatingCard({
               name="ThumbDown"
               size={16}
               color={tokens.textColors.muted}
-              strokeWidth={0}
             />
           </Pressable>
         </View>
@@ -730,7 +766,6 @@ function SummaryActionBar({
           name={isSpeaking ? 'Pause' : 'Headphones'}
           size={13}
           color={tokens.colors.cream[50]}
-          strokeWidth={1.5}
         />
         <Text style={sumStyles.listenBtnLabel}>
           {isSpeaking ? 'Stop' : 'Listen to summary'}
@@ -752,7 +787,6 @@ function SummaryActionBar({
           color={
             copied ? tokens.colors.forest[800] : tokens.textColors.secondary
           }
-          strokeWidth={1.5}
         />
       </Pressable>
     </View>
@@ -825,7 +859,7 @@ const WholeBookCreditSheet = forwardRef<BottomSheetModal, {
         {/* Soft pro upsell strip — free users only; Pro already has 500K. */}
         {!isPro && (
           <View style={wbStyles.upsellStrip}>
-            <Icon name="Moon" size={14} color={tokens.colors.forest[800]} strokeWidth={1.5} />
+            <Icon name="Moon" size={14} color={tokens.colors.forest[800]} />
             <Text style={wbStyles.upsellText}>
               Standard plan gives you 500K credits / month — enough for summaries every day.
             </Text>
@@ -842,7 +876,7 @@ const WholeBookCreditSheet = forwardRef<BottomSheetModal, {
             onPress={onConfirm}
             accessibilityRole="button"
           >
-            <Icon name="Wand" size={13} color={tokens.colors.cream[50]} strokeWidth={1.5} />
+            <Icon name="Wand" size={13} color={tokens.colors.cream[50]} />
             <Text style={wbStyles.generateBtnLabel}>Generate summary · ~15K credits</Text>
           </Pressable>
           <Pressable
@@ -1030,7 +1064,7 @@ export function ChatScreen({
       {/* Offline bar — replaces scope banner when offline */}
       {isOffline ? (
         <View style={chatStyles.offlineBar}>
-          <Icon name="WifiOff" size={14} color={OFFLINE_COLOR} strokeWidth={1.5} />
+          <Icon name="WifiOff" size={14} color={OFFLINE_COLOR} />
           <Text style={chatStyles.offlineBarText}>No connection · Q&A unavailable</Text>
         </View>
       ) : (
@@ -1239,7 +1273,7 @@ function ChatErrorCard({
   return (
     <View style={chatStyles.errorCard}>
       <View style={chatStyles.errorCardHeader}>
-        <Icon name="AlertTriangle" size={14} color={tokens.textColors.muted} strokeWidth={1.5} />
+        <Icon name="AlertTriangle" size={14} color={tokens.textColors.muted} />
         <Text style={chatStyles.errorCardLabel}>Couldn't send</Text>
       </View>
       <Text style={chatStyles.errorCardBody}>
@@ -1368,7 +1402,7 @@ function FeedbackRow() {
         ]}
         onPress={() => setThumbed((p) => (p === 'up' ? null : 'up'))}
       >
-        <Icon name="ThumbUp" size={14} color={colorFor('up')} strokeWidth={0} />
+        <Icon name={thumbed === 'up' ? 'ThumbUpFilled' : 'ThumbUp'} size={14} color={colorFor('up')} />
       </Pressable>
       <Pressable
         accessibilityRole="button"
@@ -1380,7 +1414,7 @@ function FeedbackRow() {
         ]}
         onPress={() => setThumbed((p) => (p === 'down' ? null : 'down'))}
       >
-        <Icon name="ThumbDown" size={14} color={colorFor('down')} strokeWidth={0} />
+        <Icon name={thumbed === 'down' ? 'ThumbDownFilled' : 'ThumbDown'} size={14} color={colorFor('down')} />
       </Pressable>
     </View>
   );
@@ -1442,7 +1476,7 @@ function AiErrorBubble({ onRetry, onSkip }: { onRetry: () => void; onSkip: () =>
       <View style={chatStyles.aiErrorBubble}>
         {/* Header */}
         <View style={chatStyles.aiErrorHeader}>
-          <Icon name="AlertCircle" size={14} color={tokens.colors.error} strokeWidth={1.5} />
+          <Icon name="AlertCircle" size={14} color={tokens.colors.error} />
           <Text style={chatStyles.aiErrorLabel}>Couldn't generate a response</Text>
         </View>
         {/* Body */}
@@ -1452,7 +1486,7 @@ function AiErrorBubble({ onRetry, onSkip }: { onRetry: () => void; onSkip: () =>
         </Text>
         {/* Inline credits chip */}
         <View style={chatStyles.inlineRefundChip}>
-          <Icon name="CheckCircle" size={11} color={tokens.colors.success} strokeWidth={1.5} />
+          <Icon name="CheckCircle" size={11} color={tokens.colors.success} />
           <Text style={chatStyles.inlineRefundText}>~800 AI credits refunded</Text>
         </View>
         {/* Actions */}
@@ -1497,7 +1531,7 @@ function OffTopicBubble({
     <View style={chatStyles.bubbleWrapAI}>
       <View style={chatStyles.offtopicBubble}>
         <View style={chatStyles.offtopicHeader}>
-          <Icon name="Info" size={12} color={tokens.textColors.muted} strokeWidth={1.5} />
+          <Icon name="Info" size={12} color={tokens.textColors.muted} />
           <Text style={chatStyles.offtopicLabel}>Out of scope</Text>
         </View>
         <Text style={chatStyles.offtopicBody}>{message.text}</Text>

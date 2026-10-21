@@ -236,7 +236,6 @@ export function ListenNowPlayingScreen({
                 name="PlayerSkipBack"
                 size={24}
                 color="rgba(255,255,255,0.85)"
-                strokeWidth={1.5}
               />
             </Pressable>
 
@@ -255,7 +254,6 @@ export function ListenNowPlayingScreen({
                 name="PlayerTrackPrev"
                 size={22}
                 color="rgba(255,255,255,0.85)"
-                strokeWidth={1.5}
               />
             </Pressable>
 
@@ -286,7 +284,6 @@ export function ListenNowPlayingScreen({
                 name="PlayerTrackNext"
                 size={22}
                 color="rgba(255,255,255,0.85)"
-                strokeWidth={1.5}
               />
             </Pressable>
 
@@ -300,7 +297,6 @@ export function ListenNowPlayingScreen({
                 name="PlayerSkipForward"
                 size={24}
                 color="rgba(255,255,255,0.85)"
-                strokeWidth={1.5}
               />
             </Pressable>
           </View>
@@ -677,7 +673,7 @@ function Pill({
       ]}
       accessibilityRole="button"
     >
-      <Icon name={icon} size={11} color="rgba(255,255,255,0.75)" strokeWidth={1.5} />
+      <Icon name={icon} size={11} color="rgba(255,255,255,0.75)" />
       <Text style={styles.pillLabel}>{label}</Text>
     </Pressable>
   );

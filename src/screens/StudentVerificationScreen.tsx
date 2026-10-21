@@ -66,7 +66,7 @@ export function StudentVerificationScreen({
       {/* Header */}
       <View style={styles.header}>
         <Pressable onPress={onBack} hitSlop={8} style={styles.iconBtn} accessibilityLabel="Back">
-          <Icon name="ArrowLeft" size={18} color={tokens.textColors.primary} strokeWidth={1.75} />
+          <Icon name="ArrowLeft" size={18} color={tokens.textColors.primary} />
         </Pressable>
         <Text style={styles.headerTitle}>Student verification</Text>
         <View style={styles.iconBtn} />
@@ -116,7 +116,6 @@ export function StudentVerificationScreen({
                   ? PENDING_FG
                   : tokens.colors.forest[800]
             }
-            strokeWidth={1.5}
           />
         </View>
 
@@ -139,7 +138,7 @@ export function StudentVerificationScreen({
             {/* Email field */}
             <Text style={styles.fieldLabel}>School email</Text>
             <View style={styles.fieldWrap}>
-              <Icon name="Mail" size={14} color={tokens.textColors.muted} strokeWidth={1.5} />
+              <Icon name="Mail" size={14} color={tokens.textColors.muted} />
               <TextInput
                 style={styles.field}
                 value={value}
@@ -184,7 +183,7 @@ export function StudentVerificationScreen({
             </Text>
 
             <View style={[styles.notice, { backgroundColor: PENDING_BG }]}>
-              <Icon name="Info" size={14} color={PENDING_FG} strokeWidth={1.75} />
+              <Icon name="Info" size={14} color={PENDING_FG} />
               <Text style={[styles.noticeText, { color: PENDING_FG }]}>
                 The link expires in 30 minutes. Open it on this device to
                 finish verifying.
@@ -196,7 +195,7 @@ export function StudentVerificationScreen({
               style={({ pressed }) => [styles.cta, styles.ctaSecondary, pressed && { opacity: 0.85 }]}
               accessibilityRole="button"
             >
-              <Icon name="Refresh" size={13} color={tokens.colors.forest[800]} strokeWidth={1.75} />
+              <Icon name="Refresh" size={13} color={tokens.colors.forest[800]} />
               <Text style={[styles.ctaLabel, styles.ctaLabelSecondary]}>Resend email</Text>
             </Pressable>
 
@@ -224,7 +223,7 @@ export function StudentVerificationScreen({
                 },
               ]}
             >
-              <Icon name="CheckCircle" size={14} color={SUCCESS_FG} strokeWidth={1.75} />
+              <Icon name="CheckCircle" size={14} color={SUCCESS_FG} />
               <View style={{ flex: 1 }}>
                 <Text style={[styles.noticeText, { color: SUCCESS_FG, fontFamily: tokens.fonts.uiMedium, fontWeight: '500' }]}>
                   Premium · Student rate
@@ -240,7 +239,7 @@ export function StudentVerificationScreen({
               style={({ pressed }) => [styles.cta, pressed && { opacity: 0.85 }]}
               accessibilityRole="button"
             >
-              <Icon name="Sparkles" size={14} color={tokens.colors.forest[900]} strokeWidth={1.75} />
+              <Icon name="Sparkles" size={14} color={tokens.colors.forest[900]} />
               <Text style={styles.ctaLabel}>Start using Premium</Text>
             </Pressable>
           </>

@@ -100,7 +100,7 @@ export function SendFeedbackScreen({
       {/* Header */}
       <View style={styles.header}>
         <Pressable onPress={onBack} hitSlop={8} style={styles.iconBtn} accessibilityLabel="Back">
-          <Icon name="ArrowLeft" size={16} color={tokens.textColors.primary} strokeWidth={1.75} />
+          <Icon name="ArrowLeft" size={16} color={tokens.textColors.primary} />
         </Pressable>
         <Text style={styles.headerTitle}>Send feedback</Text>
         <View style={styles.iconBtn} />
@@ -129,7 +129,6 @@ export function SendFeedbackScreen({
                   name={c.icon}
                   size={13}
                   color={active ? tokens.colors.forest[800] : tokens.textColors.secondary}
-                  strokeWidth={1.5}
                 />
                 <Text
                   style={[
@@ -178,7 +177,6 @@ export function SendFeedbackScreen({
               name={attachmentUri ? 'CheckCircle' : 'Eye'}
               size={15}
               color={attachmentUri ? tokens.colors.forest[800] : tokens.textColors.muted}
-              strokeWidth={1.5}
             />
           </View>
           <View style={styles.attachmentText}>
@@ -207,7 +205,7 @@ export function SendFeedbackScreen({
           ]}
           accessibilityRole="button"
         >
-          <Icon name="Mail" size={14} color={tokens.colors.cream[50]} strokeWidth={1.75} />
+          <Icon name="Mail" size={14} color={tokens.colors.cream[50]} />
           <Text style={styles.sendLabel}>
             {submitting ? 'Sending…' : 'Send to Bookflow'}
           </Text>

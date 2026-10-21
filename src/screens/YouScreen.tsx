@@ -24,8 +24,17 @@ import {
   useState,
   type ReactNode,
 } from 'react';
-import { Image, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import {
+  Image,
+  Pressable,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  View,
+} from 'react-native';
+import { pollBalanceAfterPurchase, type PurchasedBalances } from '~/lib/aiUsage';
 import { AccountScreen } from '~/screens/AccountScreen';
+import { TopupBalanceBlock } from '~/screens/TopupBalanceBlock';
 import { HelpFAQScreen } from '~/screens/HelpFAQScreen';
 import { SettingsScreen } from '~/screens/SettingsScreen';
 import {
@@ -51,6 +60,7 @@ import {
   type TabKey,
   Text,
 } from '~/components';
+import { BuyCreditsSheet, type BuyCreditsSheetRef } from '~/screens/BuyCreditsSheet';
 import { tokens } from '~/design/tokens';
 import {
   presentPaywall,
@@ -81,6 +91,8 @@ export type YouPlan = {
     aiCredits: { used: number; total: number }; // tokens
     books: { used: number; total: number };
   };
+  /** Purchased top-up balances, shown below the meters. */
+  balances: PurchasedBalances;
 };
 
 export type YouScreenProps = {
@@ -111,6 +123,8 @@ export type YouScreenProps = {
    * on LibraryScreen. Top-level "home" view emits `false`.
    */
   onSubViewOpenChange?: (open: boolean) => void;
+  /** Pull-to-refresh — re-reads the plan-card meters, balances, and stats. */
+  onRefresh?: () => Promise<void> | void;
 };
 
 // Sensible defaults so the screen still reads nicely if a hint isn't wired.
@@ -144,7 +158,18 @@ export function YouScreen({
   translationLanguageHint = DEFAULTS.translationLanguageHint,
   appVersion = DEFAULTS.appVersion,
   onSubViewOpenChange,
+  onRefresh,
 }: YouScreenProps) {
+  const [refreshing, setRefreshing] = useState(false);
+  const handlePullRefresh = useCallback(async () => {
+    if (!onRefresh) return;
+    setRefreshing(true);
+    try {
+      await onRefresh();
+    } finally {
+      setRefreshing(false);
+    }
+  }, [onRefresh]);
   // Resolve the upgrade handler once. Prefer the parent-provided handler
   // (App wires it to presentPaywall); if a caller ever forgets to thread
   // it, fall back to presenting the hosted paywall directly so the
@@ -171,6 +196,7 @@ export function YouScreen({
   }, []);
 
   const sheetRef = useRef<BottomSheetRef>(null);
+  const buyCreditsRef = useRef<BuyCreditsSheetRef>(null);
   const [signingOut, setSigningOut] = useState(false);
   const [view, setView] = useState<
     | 'home'
@@ -272,6 +298,16 @@ export function YouScreen({
           style={styles.scroll}
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
+          refreshControl={
+            onRefresh ? (
+              <RefreshControl
+                refreshing={refreshing}
+                onRefresh={handlePullRefresh}
+                tintColor={tokens.colors.forest[800]}
+                colors={[tokens.colors.forest[800]]}
+              />
+            ) : undefined
+          }
         >
           <PageHeader />
           <ProfileHeader
@@ -316,6 +352,14 @@ export function YouScreen({
               label="Account & subscription"
               drillsInto
               onPress={() => setView('account')}
+            />
+            <Divider />
+            <ListRow
+              leadingIcon="CreditCard"
+              label="Buy credits"
+              hint="AI + audio top-ups"
+              drillsInto
+              onPress={() => buyCreditsRef.current?.present()}
             />
             <Divider />
             <ListRow
@@ -370,6 +414,11 @@ export function YouScreen({
           loading={signingOut}
         />
       </BottomSheet>
+
+      <BuyCreditsSheet
+        ref={buyCreditsRef}
+        onPurchased={() => pollBalanceAfterPurchase(plan.balances.refresh)}
+      />
     </>
   );
 }
@@ -520,6 +569,8 @@ function PlanCard({
         />
       </View>
 
+      <TopupBalanceBlock balances={plan.balances} onDark />
+
       <Pressable
         accessibilityRole="button"
         accessibilityLabel="Upgrade to Standard"
@@ -584,7 +635,7 @@ function ProPlanCard({
         <View style={styles.proUsageRows}>
           <ProUsageRow
             icon={
-              <Icon name="Headphones" size={14} color={tokens.colors.ink[500]} strokeWidth={1.5} />
+              <Icon name="Headphones" size={14} color={tokens.colors.ink[500]} />
             }
             name="Audio"
             unlimited={plan.meters.audio.total === Infinity}
@@ -592,7 +643,7 @@ function ProPlanCard({
           />
           <ProUsageRow
             icon={
-              <Icon name="Books" size={14} color={tokens.colors.ink[500]} strokeWidth={1.5} />
+              <Icon name="Books" size={14} color={tokens.colors.ink[500]} />
             }
             name="Books"
             unlimited={plan.meters.books.total === Infinity}
@@ -600,7 +651,7 @@ function ProPlanCard({
           />
           <ProUsageRow
             icon={
-              <Icon name="Sparkles" size={14} color={tokens.colors.ink[500]} strokeWidth={1.5} />
+              <Icon name="Sparkles" size={14} color={tokens.colors.ink[500]} />
             }
             name="AI credits"
             value={`${formatTokens(aiUsed)} / ${formatTokens(aiTotal)}`}
@@ -608,6 +659,8 @@ function ProPlanCard({
             resetLabel={nextResetLabel()}
           />
         </View>
+
+        <TopupBalanceBlock balances={plan.balances} />
 
         <View style={styles.proDivider} />
 
@@ -618,14 +671,13 @@ function ProPlanCard({
           style={({ pressed }) => [styles.manageRow, pressed && { opacity: 0.6 }]}
         >
           <View style={styles.manageLeft}>
-            <Icon name="Settings" size={16} color={tokens.colors.ink[500]} strokeWidth={1.5} />
+            <Icon name="Settings" size={16} color={tokens.colors.ink[500]} />
             <Text style={styles.manageText}>Manage plan</Text>
           </View>
           <Icon
             name="ChevronRight"
             size={14}
             color={tokens.textColors.subtle}
-            strokeWidth={1.5}
           />
         </Pressable>
       </View>
@@ -710,10 +762,9 @@ function Meter({
    * instead of a progress bar, which would be meaningless. */
   unlimited?: boolean;
 }) {
-  // ≥80%: amber fill (soft "running low" cue, not alarming).
-  // <80%: muted forest fill — present but quiet.
-  const fillColor =
-    percent >= 80 ? tokens.colors.amber[500] : tokens.colors.forest[200];
+  // Uniform muted-forest fill across every meter (audio / AI / books) so they
+  // read as one consistent set, rather than one bar flipping amber at ≥80%.
+  const fillColor = tokens.colors.forest[200];
   const clamped = Math.max(0, Math.min(100, percent));
 
   // Unlimited row: no track. Name on the left, an "Unlimited" chip with
@@ -963,7 +1014,7 @@ const styles = StyleSheet.create({
   },
   meterTrack: {
     height: 4,
-    backgroundColor: 'rgba(255,255,255,0.12)',
+    backgroundColor: tokens.overlay.onDark.track,
     borderRadius: 2,
     overflow: 'hidden',
   },
@@ -982,7 +1033,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    backgroundColor: 'rgba(255,255,255,0.14)',
+    backgroundColor: tokens.overlay.onDark.chip,
     paddingHorizontal: 9,
     paddingVertical: 4,
     borderRadius: 11,
@@ -1026,7 +1077,7 @@ const styles = StyleSheet.create({
     borderRadius: tokens.radii['2xl'],
     overflow: 'hidden',
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: '#D8D5CC',
+    borderColor: tokens.colors.ink[200],
   },
   proTop: {
     backgroundColor: tokens.colors.forest[800],
@@ -1045,15 +1096,15 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     letterSpacing: 1,
     textTransform: 'uppercase',
-    color: '#4A7C59',
+    color: tokens.colors.forest[400],
   },
   activeBadge: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 5,
-    backgroundColor: 'rgba(212,165,116,0.15)',
+    backgroundColor: tokens.overlay.amber.fill,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(212,165,116,0.4)',
+    borderColor: tokens.overlay.amber.border,
     borderRadius: 99,
     paddingHorizontal: 10,
     paddingVertical: 3,
@@ -1087,7 +1138,7 @@ const styles = StyleSheet.create({
     color: tokens.colors.forest[200],
   },
   proBottom: {
-    backgroundColor: '#F5F1E8',
+    backgroundColor: tokens.colors.cream[100],
     paddingHorizontal: tokens.space.lg,
     paddingTop: tokens.space.md,
     paddingBottom: 18,
@@ -1098,7 +1149,7 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     letterSpacing: 0.8,
     textTransform: 'uppercase',
-    color: '#8A8780',
+    color: tokens.colors.ink[400],
     marginBottom: 12,
   },
   proUsageRows: {
@@ -1122,7 +1173,7 @@ const styles = StyleSheet.create({
     fontFamily: tokens.fonts.uiMedium,
     fontSize: 13,
     fontWeight: '500',
-    color: '#3D3A36',
+    color: tokens.colors.ink[700],
   },
   proUsageValue: {
     fontFamily: tokens.fonts.uiMedium,
@@ -1155,7 +1206,7 @@ const styles = StyleSheet.create({
   },
   proUsageTrack: {
     height: 4,
-    backgroundColor: '#ECE9E0',
+    backgroundColor: tokens.colors.ink[100],
     borderRadius: 2,
     overflow: 'hidden',
   },
@@ -1167,12 +1218,12 @@ const styles = StyleSheet.create({
   proUsageTrackLabel: {
     fontFamily: tokens.fonts.ui,
     fontSize: 10,
-    color: '#8A8780',
+    color: tokens.colors.ink[400],
     marginTop: 2,
   },
   proDivider: {
     height: StyleSheet.hairlineWidth,
-    backgroundColor: '#D8D5CC',
+    backgroundColor: tokens.colors.ink[200],
     marginBottom: 14,
   },
   manageRow: {
@@ -1189,7 +1240,7 @@ const styles = StyleSheet.create({
     fontFamily: tokens.fonts.uiMedium,
     fontSize: 13,
     fontWeight: '500',
-    color: '#3D3A36',
+    color: tokens.colors.ink[700],
   },
 
   // Settings sections

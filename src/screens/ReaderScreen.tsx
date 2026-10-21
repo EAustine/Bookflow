@@ -1047,7 +1047,6 @@ export function ReaderScreen({
             name="X"
             size={36}
             color={tokens.colors.error}
-            strokeWidth={1.5}
           />
           <Text style={[styles.notFoundTitle, { color: palette.text }]}>
             Could not load book
@@ -1095,7 +1094,6 @@ export function ReaderScreen({
             name="FileText"
             size={36}
             color={palette.subtle}
-            strokeWidth={1.5}
           />
           <Text style={[styles.notFoundTitle, { color: palette.text }]}>
             No text available
@@ -2599,7 +2597,7 @@ const SentenceTranslateSheet = forwardRef<BottomSheetModal, {
             hitSlop={8}
             accessibilityLabel="Close translation"
           >
-            <Icon name="X" size={11} color={tokens.colors.ink[400]} strokeWidth={2.5} />
+            <Icon name="X" size={11} color={tokens.colors.ink[400]} />
           </Pressable>
         </View>
 
@@ -2637,7 +2635,6 @@ const SentenceTranslateSheet = forwardRef<BottomSheetModal, {
               name={isSpeaking ? 'Pause' : 'Headphones'}
               size={13}
               color={tokens.colors.ink[300]}
-              strokeWidth={1.5}
             />
             <Text style={sentStyles.btnAudioText}>{isSpeaking ? 'Stop' : 'Audio'}</Text>
           </Pressable>
@@ -2655,7 +2652,6 @@ const SentenceTranslateSheet = forwardRef<BottomSheetModal, {
               name={saved ? 'Check' : 'Notebook'}
               size={13}
               color={tokens.colors.ink[300]}
-              strokeWidth={1.5}
             />
             <Text style={sentStyles.btnCopyText}>{saved ? 'Saved' : 'Save'}</Text>
           </Pressable>

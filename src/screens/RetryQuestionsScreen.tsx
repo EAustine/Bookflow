@@ -83,7 +83,7 @@ export function RetryQuestionsScreen({
           hitSlop={8}
           accessibilityLabel="Close"
         >
-          <Icon name="X" size={14} color={tokens.textColors.secondary} strokeWidth={2} />
+          <Icon name="X" size={14} color={tokens.textColors.secondary} />
         </Pressable>
         <Text style={styles.headerTitle}>Retry the ones you missed</Text>
         <View style={styles.headerSpacer} />
@@ -109,7 +109,7 @@ export function RetryQuestionsScreen({
                   ]}
                 >
                   {q.failureType === 'wrong' ? (
-                    <Icon name="X" size={9} color={ERROR_COLOR} strokeWidth={2.5} />
+                    <Icon name="X" size={9} color={ERROR_COLOR} />
                   ) : (
                     <Text style={[styles.partialDash, { color: WARN_COLOR }]}>—</Text>
                   )}
@@ -125,7 +125,7 @@ export function RetryQuestionsScreen({
           <View style={styles.settingRow}>
             <Text style={styles.settingLabel}>Questions</Text>
             <View style={styles.settingLocked}>
-              <Icon name="Lock" size={11} color={tokens.textColors.disabled} strokeWidth={1.5} />
+              <Icon name="Lock" size={11} color={tokens.textColors.disabled} />
               <Text style={styles.settingValue}>{questions.length} (fixed)</Text>
             </View>
           </View>
@@ -133,7 +133,7 @@ export function RetryQuestionsScreen({
           <View style={styles.settingRow}>
             <Text style={styles.settingLabel}>Question type</Text>
             <View style={styles.settingLocked}>
-              <Icon name="Lock" size={11} color={tokens.textColors.disabled} strokeWidth={1.5} />
+              <Icon name="Lock" size={11} color={tokens.textColors.disabled} />
               <Text style={styles.settingValue}>Mixed (fixed)</Text>
             </View>
           </View>
@@ -152,7 +152,6 @@ export function RetryQuestionsScreen({
                 name="ChevronDown"
                 size={12}
                 color={tokens.textColors.disabled}
-                strokeWidth={1.5}
               />
             </View>
           </Pressable>
@@ -160,7 +159,7 @@ export function RetryQuestionsScreen({
 
         {/* Free note */}
         <View style={styles.freeNote}>
-          <Icon name="Check" size={14} color={SUCCESS_COLOR} strokeWidth={1.5} />
+          <Icon name="Check" size={14} color={SUCCESS_COLOR} />
           <Text style={styles.freeNoteText}>
             No additional credits — using your existing questions
           </Text>
@@ -174,7 +173,7 @@ export function RetryQuestionsScreen({
           onPress={handleStart}
           accessibilityRole="button"
         >
-          <Icon name="Refresh" size={14} color={tokens.colors.cream[50]} strokeWidth={1.5} />
+          <Icon name="Refresh" size={14} color={tokens.colors.cream[50]} />
           <Text style={styles.startBtnLabel}>Start retry session</Text>
         </Pressable>
       </View>

@@ -37,7 +37,7 @@ const FEATURES: { text: string; badge?: string }[] = [
   { text: 'Unlimited audio streaming + offline downloads' },
   { text: 'Unlimited books in your library' },
   { text: '500K AI credits / month', badge: '10× more' },
-  { text: '3 premium AI voices' },
+  { text: '5 premium AI voices' },
   { text: 'Practice questions + conversational Q&A' },
   { text: 'Full chapter translation' },
 ];
@@ -55,7 +55,7 @@ export function PaywallPlanScreen({ onClose }: PaywallPlanScreenProps) {
       {/* Header */}
       <View style={s.planHeader}>
         <Pressable onPress={onClose} style={s.planCloseBtn} hitSlop={8}>
-          <Icon name="X" size={13} color={tokens.colors.ink[700]} strokeWidth={2} />
+          <Icon name="X" size={13} color={tokens.colors.ink[700]} />
         </Pressable>
         <Text style={s.planHeaderTitle}>Choose a plan</Text>
         <Pressable hitSlop={8}>
@@ -148,7 +148,7 @@ export function PaywallPlanScreen({ onClose }: PaywallPlanScreenProps) {
             {FEATURES.map((feat) => (
               <View key={feat.text} style={s.featureRow}>
                 <View style={s.featureCheck}>
-                  <Icon name="Check" size={10} color={tokens.colors.forest[800]} strokeWidth={2.5} />
+                  <Icon name="Check" size={10} color={tokens.colors.forest[800]} />
                 </View>
                 <Text style={s.featureText}>{feat.text}</Text>
                 {feat.badge && (
@@ -187,7 +187,7 @@ export type SoftWarningBannerProps = {
 export function SoftWarningBanner({ minutesLeft, onUpgrade, onDismiss }: SoftWarningBannerProps) {
   return (
     <Pressable onPress={onUpgrade} style={s.softWarning}>
-      <Icon name="AlertTriangle" size={16} color={WARN} strokeWidth={1.5} />
+      <Icon name="AlertTriangle" size={16} color={WARN} />
       <View style={s.warnTextCol}>
         <Text style={s.warnTitle}>{minutesLeft} minutes of audio left this month</Text>
         <Text style={s.warnSub}>Tap to see upgrade options before you hit the limit.</Text>
@@ -197,7 +197,7 @@ export function SoftWarningBanner({ minutesLeft, onUpgrade, onDismiss }: SoftWar
         style={s.warnDismissBtn}
         hitSlop={8}
       >
-        <Icon name="X" size={10} color={tokens.colors.ink[500]} strokeWidth={2.5} />
+        <Icon name="X" size={10} color={tokens.colors.ink[500]} />
       </Pressable>
     </Pressable>
   );

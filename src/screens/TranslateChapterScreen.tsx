@@ -192,7 +192,7 @@ export function TranslateChapterScreen({
         </View>
       ) : failed ? (
         <View style={styles.statusZone}>
-          <Icon name="AlertCircle" size={28} color={tokens.colors.error} strokeWidth={1.5} />
+          <Icon name="AlertCircle" size={28} color={tokens.colors.error} />
           <Text style={styles.statusTitle}>Translation failed</Text>
           <Text style={styles.statusBody}>{errorMessage}</Text>
           <Pressable
@@ -214,7 +214,7 @@ export function TranslateChapterScreen({
           showsVerticalScrollIndicator={false}
         >
           <View style={styles.sourceNote}>
-            <Icon name="Globe" size={12} color={tokens.textColors.disabled} strokeWidth={1.5} />
+            <Icon name="Globe" size={12} color={tokens.textColors.disabled} />
             <Text style={styles.sourceNoteText}>
               Translated to {activeLabel}
               {state.status === 'success' && state.cached ? ' · cached' : ''}

@@ -16,6 +16,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { BottomSheet, type BottomSheetRef, Button, Icon, Text } from '~/components';
 import { tokens } from '~/design/tokens';
+import { TopupBalanceBlock } from '~/screens/TopupBalanceBlock';
 import { refreshCurrentUser } from '~/hooks/useCurrentUser';
 import { supabase } from '~/lib/supabase';
 import {
@@ -758,7 +759,6 @@ function EditProfileScreen({
                   name="Camera"
                   size={14}
                   color={tokens.colors.cream[50]}
-                  strokeWidth={1.5}
                 />
               )}
             </View>
@@ -1029,6 +1029,9 @@ function FreePlanCard({ plan, onUpgrade }: { plan: YouPlan; onUpgrade: () => voi
           percent={pct(books.used, books.total)}
         />
       </View>
+      <View style={styles.topupInset}>
+        <TopupBalanceBlock balances={plan.balances} />
+      </View>
     </View>
   );
 }
@@ -1039,7 +1042,7 @@ const PRO_FEATURES = [
   'Unlimited audio streaming & offline downloads',
   'Unlimited library',
   '500K AI credits / month',
-  '3 premium AI voices',
+  '5 premium AI voices',
 ];
 
 function ProPlanCard({ plan }: { plan: YouPlan }) {
@@ -1060,7 +1063,7 @@ function ProPlanCard({ plan }: { plan: YouPlan }) {
           <Text style={styles.planStatusPro}>{statusLabel}</Text>
         </View>
         <View style={styles.proCheck}>
-          <Icon name="Check" size={11} color={tokens.colors.forest[800]} strokeWidth={2.5} />
+          <Icon name="Check" size={11} color={tokens.colors.forest[800]} />
         </View>
       </View>
 
@@ -1077,11 +1080,15 @@ function ProPlanCard({ plan }: { plan: YouPlan }) {
         {PRO_FEATURES.map((f) => (
           <View key={f} style={styles.proFeatureRow}>
             <View style={styles.featureCheck}>
-              <Icon name="Check" size={9} color={tokens.colors.forest[800]} strokeWidth={2.5} />
+              <Icon name="Check" size={9} color={tokens.colors.forest[800]} />
             </View>
             <Text style={styles.proFeatureText}>{f}</Text>
           </View>
         ))}
+      </View>
+
+      <View style={styles.topupInset}>
+        <TopupBalanceBlock balances={plan.balances} />
       </View>
 
       <View style={styles.proActions}>
@@ -1124,7 +1131,8 @@ function MeterRow({
   percent: number;
 }) {
   const clamped = Math.max(0, Math.min(100, percent));
-  const fillColor = percent >= 80 ? tokens.colors.amber[500] : tokens.colors.forest[800];
+  // Uniform fill across audio / AI / books so the meters read as one set.
+  const fillColor = tokens.colors.forest[800];
   return (
     <View style={styles.meterRow}>
       <View style={styles.meterMeta}>
@@ -1503,6 +1511,9 @@ const styles = StyleSheet.create({
     gap: 12,
     backgroundColor: tokens.bgColors.canvas,
   },
+  // Inset the top-up block to match the meters' horizontal padding (the
+  // subCard itself has no padding; each section pads its own content).
+  topupInset: { paddingHorizontal: 14 },
   meterRow: { gap: 5 },
   meterMeta: {
     flexDirection: 'row',

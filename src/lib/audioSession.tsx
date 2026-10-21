@@ -18,6 +18,7 @@ import {
 } from '~/lib/aiAudio';
 import { persistReadingPosition } from '~/lib/useBookChapters';
 import { peekCachedCoverUrl, resolveCoverUrl } from '~/lib/bookCovers';
+import { readJsonFile } from '~/lib/audioDownloads';
 import type { Book } from '~/types/book';
 import { useReaderStore } from '~/stores/readerStore';
 import { useIsPro } from '~/lib/revenuecat';
@@ -442,15 +443,27 @@ export function AudioSessionProvider({ children }: { children: ReactNode }) {
     let cancelled = false;
     void (async () => {
       try {
-        const res = await fetch(url);
-        if (cancelled) return;
-        if (!res.ok) {
-          // Non-fatal — the audio still works. Just no highlight.
-          console.warn('[audioSession] alignment fetch non-2xx:', res.status);
-          setAlignment(null);
-          return;
+        let data: AudioAlignment | null;
+        if (url.startsWith('file://')) {
+          // Locally-downloaded alignment sidecar. fetch('file://…') is
+          // unreliable across platforms, so read it off disk directly.
+          data = await readJsonFile<AudioAlignment>(url);
+          if (cancelled) return;
+          if (!data) {
+            setAlignment(null);
+            return;
+          }
+        } else {
+          const res = await fetch(url);
+          if (cancelled) return;
+          if (!res.ok) {
+            // Non-fatal — the audio still works. Just no highlight.
+            console.warn('[audioSession] alignment fetch non-2xx:', res.status);
+            setAlignment(null);
+            return;
+          }
+          data = (await res.json()) as AudioAlignment;
         }
-        const data = (await res.json()) as AudioAlignment;
         if (
           cancelled ||
           alignmentUrlRef.current !== url || // stale (page changed)

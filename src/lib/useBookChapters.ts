@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '~/lib/supabase';
+import { getCachedPages } from '~/lib/audioDownloads';
 
 /**
  * Reader-side data hooks for pages (the unit since the chapters→pages
@@ -34,6 +35,18 @@ export type PageListItem = {
   title: string | null;
   word_count: number | null;
 };
+
+/** Project a full page row down to the lightweight list-item shape — used
+ * when falling back to downloaded (offline) page text. */
+function toListItem(p: PageRow): PageListItem {
+  return {
+    id: p.id,
+    page_index: p.page_index,
+    pdf_page_number: p.pdf_page_number,
+    title: p.title,
+    word_count: p.word_count,
+  };
+}
 
 /**
  * Fetch the page list for a book (no `content`, to keep payload tiny —
@@ -82,14 +95,19 @@ export function usePageList(bookId: string) {
         if (cancelled) return;
         if (error) {
           console.warn('[usePageList] fetch failed:', error.message);
-          setPages([]);
+          const cached = await getCachedPages(bookId);
+          if (cancelled) return;
+          setPages(cached ? cached.map(toListItem) : []);
         } else {
           setPages((data ?? []) as PageListItem[]);
         }
       } catch (err) {
         if (cancelled) return;
         console.warn('[usePageList] fetch threw:', err);
-        setPages([]);
+        // Offline fallback: list pages from downloaded text if present.
+        const cached = await getCachedPages(bookId);
+        if (cancelled) return;
+        setPages(cached ? cached.map(toListItem) : []);
       }
       setLoading(false);
     })();
@@ -147,7 +165,12 @@ export function usePage(bookId: string, pageIndex: number) {
         if (cancelled) return;
 
         if (queryError) {
-          setError(queryError.message);
+          // Offline / server error: fall back to downloaded page text.
+          const cached = await getCachedPages(bookId);
+          if (cancelled) return;
+          const hit = cached?.find((p) => p.page_index === pageIndex);
+          if (hit) setData(hit);
+          else setError(queryError.message);
         } else if (!row) {
           setNotFound(true);
         } else {
@@ -156,7 +179,11 @@ export function usePage(bookId: string, pageIndex: number) {
       } catch (err) {
         if (cancelled) return;
         console.warn('[usePage] fetch threw:', err);
-        setError(err instanceof Error ? err.message : String(err));
+        const cached = await getCachedPages(bookId);
+        if (cancelled) return;
+        const hit = cached?.find((p) => p.page_index === pageIndex);
+        if (hit) setData(hit);
+        else setError(err instanceof Error ? err.message : String(err));
       }
       setLoading(false);
     })();
@@ -245,16 +272,25 @@ export function useAllPagesContent(bookId: string) {
         if (cancelled) return;
         clearTimeout(timeoutId);
         if (queryError) {
-          // Supabase surfaces the abort either as a thrown error
-          // (caught below) or a `queryError` whose message mentions
-          // "abort". Translate to our timeout sentinel so the reader
-          // UI shows the right empty state rather than a raw
-          // Postgres-error string.
-          const looksAborted =
-            /abort/i.test(queryError.message ?? '') ||
-            abortController.signal.aborted;
-          setError(looksAborted ? 'request_timeout' : queryError.message);
-          setPages([]);
+          // Offline / server error: fall back to downloaded page text if
+          // this book was saved for offline use.
+          const cached = await getCachedPages(bookId);
+          if (cancelled) return;
+          if (cached && cached.length) {
+            setPages(cached);
+            setError(null);
+          } else {
+            // Supabase surfaces the abort either as a thrown error
+            // (caught below) or a `queryError` whose message mentions
+            // "abort". Translate to our timeout sentinel so the reader
+            // UI shows the right empty state rather than a raw
+            // Postgres-error string.
+            const looksAborted =
+              /abort/i.test(queryError.message ?? '') ||
+              abortController.signal.aborted;
+            setError(looksAborted ? 'request_timeout' : queryError.message);
+            setPages([]);
+          }
         } else {
           setPages((data ?? []) as PageRow[]);
         }
@@ -262,6 +298,15 @@ export function useAllPagesContent(bookId: string) {
       } catch (err) {
         if (cancelled) return;
         clearTimeout(timeoutId);
+        // Offline fallback: use downloaded page text if available.
+        const cached = await getCachedPages(bookId);
+        if (cancelled) return;
+        if (cached && cached.length) {
+          setPages(cached);
+          setError(null);
+          setLoading(false);
+          return;
+        }
         const isAbort =
           abortController.signal.aborted ||
           (err instanceof Error &&

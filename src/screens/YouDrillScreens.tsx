@@ -24,6 +24,7 @@ import {
   Icon,
   ReminderTimePicker,
   Text,
+  Toggle,
 } from '~/components';
 import { tokens } from '~/design/tokens';
 import {
@@ -35,6 +36,7 @@ import {
   useReaderStore,
 } from '~/stores/readerStore';
 import { VOICE_OPTIONS } from '~/lib/aiAudio';
+import { VoiceAvatar } from '~/components/VoiceAvatar';
 import { presentPaywall, ENTITLEMENT_PRO, useIsPro } from '~/lib/revenuecat';
 import { SUPPORT_EMAIL } from '~/lib/legalUrls';
 import { useBackHandler } from '~/lib/useBackHandler';
@@ -254,6 +256,7 @@ export function DefaultVoiceScreen({ onBack }: { onBack: () => void }) {
           {freeVoices.map((voice) => (
             <RadioRow
               key={voice.id}
+              leading={<VoiceAvatar voiceId={voice.id} size={36} />}
               label={voice.label}
               hint={voice.description}
               selected={defaultVoiceId === voice.id}
@@ -266,6 +269,7 @@ export function DefaultVoiceScreen({ onBack }: { onBack: () => void }) {
           {proVoices.map((voice) => (
             <RadioRow
               key={voice.id}
+              leading={<VoiceAvatar voiceId={voice.id} size={36} />}
               label={voice.label}
               hint={voice.description}
               selected={isPro && defaultVoiceId === voice.id}
@@ -282,7 +286,7 @@ export function DefaultVoiceScreen({ onBack }: { onBack: () => void }) {
             <View style={styles.upsellTextCol}>
               <Text style={styles.upsellTitle}>Unlock all voices</Text>
               <Text style={styles.upsellSub}>
-                4 premium voices plus faster audio on Standard.
+                5 premium voices plus faster audio on Standard.
               </Text>
             </View>
             <Pressable
@@ -673,6 +677,7 @@ function RadioRow({
   hint,
   selected,
   locked,
+  leading,
   onPress,
 }: {
   label: string;
@@ -682,6 +687,8 @@ function RadioRow({
    * radio dot. Tap is disabled so the row can't be selected. Used by
    * the Default voice screen to gate Pro voices on free plans. */
   locked?: boolean;
+  /** Optional element rendered before the label (e.g. a voice avatar). */
+  leading?: React.ReactNode;
   onPress: () => void;
 }) {
   return (
@@ -696,6 +703,7 @@ function RadioRow({
       accessibilityRole="radio"
       accessibilityState={{ selected, disabled: !!locked }}
     >
+      {leading}
       <View style={styles.radioLabelCol}>
         <Text style={styles.radioLabel}>{label}</Text>
         {hint && <Text style={styles.radioHint}>{hint}</Text>}
@@ -728,47 +736,8 @@ function ToggleRow({
         <Text style={styles.toggleLabel}>{label}</Text>
         {sublabel && <Text style={styles.toggleSublabel}>{sublabel}</Text>}
       </View>
-      <CustomToggle value={value} onChange={onChange} />
+      <Toggle value={value} onChange={onChange} />
     </View>
-  );
-}
-
-/**
- * Custom toggle that matches the rest of the app (Settings screen,
- * Reading display options). The native iOS `Switch` looked out of
- * place — different proportions, no shadow on the knob, system-blue
- * focus tint that fought the forest accent. This is a Pressable
- * shaped like a 44×26 capsule with a cream knob that slides between
- * the two ends; same shape and palette the Settings toggle uses.
- */
-function CustomToggle({
-  value,
-  onChange,
-}: {
-  value: boolean;
-  onChange: (v: boolean) => void;
-}) {
-  return (
-    <Pressable
-      accessibilityRole="switch"
-      accessibilityState={{ checked: value }}
-      onPress={() => onChange(!value)}
-      style={[
-        styles.customToggleTrack,
-        {
-          backgroundColor: value
-            ? tokens.colors.forest[800]
-            : tokens.colors.ink[200],
-        },
-      ]}
-    >
-      <View
-        style={[
-          styles.customToggleKnob,
-          value ? styles.customToggleKnobRight : styles.customToggleKnobLeft,
-        ]}
-      />
-    </Pressable>
   );
 }
 
@@ -977,28 +946,6 @@ const styles = StyleSheet.create({
   // capsule, cream knob with shadow, forest fill when on, ink[200]
   // when off). Native iOS Switch was visually inconsistent; this
   // shape is what the rest of the app uses for boolean controls.
-  customToggleTrack: {
-    width: 44,
-    height: 26,
-    borderRadius: 13,
-    justifyContent: 'center',
-    flexShrink: 0,
-  },
-  customToggleKnob: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    backgroundColor: tokens.colors.cream[50],
-    position: 'absolute',
-    top: 3,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.2,
-    shadowRadius: 2,
-    elevation: 2,
-  },
-  customToggleKnobRight: { right: 3 },
-  customToggleKnobLeft: { left: 3 },
 
   faqRow: {
     paddingHorizontal: 14,

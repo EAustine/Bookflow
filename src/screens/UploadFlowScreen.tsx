@@ -214,7 +214,7 @@ export function ProcessingScreen({
             />
           </Svg>
           <View style={styles.ringLabelAbsolute}>
-            <Icon name="X" size={22} color={tokens.colors.error} strokeWidth={2} />
+            <Icon name="X" size={22} color={tokens.colors.error} />
           </View>
         </View>
 
@@ -263,7 +263,7 @@ export function ProcessingScreen({
 
         {/* What was saved */}
         <View style={styles.savedCard}>
-          <Icon name="CheckCircle" size={16} color={tokens.colors.success} strokeWidth={1.5} />
+          <Icon name="CheckCircle" size={16} color={tokens.colors.success} />
           <View style={styles.savedCardText}>
             <Text style={styles.savedCardTitle}>Text reading is ready now</Text>
             <Text style={styles.savedCardSub}>
@@ -315,7 +315,12 @@ export function ProcessingScreen({
     {
       state: 'pending',
       label: 'Generating audio',
-      sublabel: 'Starts after text is ready',
+      // Audio is generated on demand when the user first taps Listen,
+      // not during upload. The old sublabel ("Starts after text is
+      // ready") promised a step that never runs here, which is exactly
+      // the kind of dishonest progress state the product principles
+      // rule out. See F-16.
+      sublabel: 'When you first tap Listen',
     },
   ];
   const stepsToRender = stepsProp ?? defaultSteps;
@@ -417,13 +422,13 @@ function StepRow({
   return (
     <View style={[styles.stepRow, !isLast && styles.stepRowBorder]}>
       <View style={[styles.stepIndicator, { backgroundColor: indicatorBg }]}>
-        {state === 'done' && <Icon name="Check" size={11} color="#fff" strokeWidth={2.5} />}
+        {state === 'done' && <Icon name="Check" size={11} color="#fff" />}
         {state === 'active' && spinAnim && (
           <Animated.View style={{ transform: [{ rotate: spinAnim }] }}>
             <Icon name="Loader" size={12} color={tokens.colors.cream[50]} />
           </Animated.View>
         )}
-        {state === 'failed' && <Icon name="X" size={11} color="#fff" strokeWidth={2.5} />}
+        {state === 'failed' && <Icon name="X" size={11} color="#fff" />}
         {state === 'pending' && (
           <Icon name="Clock" size={11} color={tokens.colors.ink[400]} />
         )}
@@ -924,7 +929,7 @@ export function ScannedPdfErrorScreen({
           style={({ pressed }) => [scanStyles.closeBtn, pressed && { opacity: 0.7 }]}
           hitSlop={8}
         >
-          <Icon name="X" size={14} color={tokens.textColors.secondary} strokeWidth={2} />
+          <Icon name="X" size={14} color={tokens.textColors.secondary} />
         </Pressable>
         <Text style={scanStyles.headerTitle}>Can't read this file</Text>
         <View style={scanStyles.headerSpacer} />
@@ -938,7 +943,7 @@ export function ScannedPdfErrorScreen({
       >
         {/* Error icon */}
         <View style={scanStyles.iconCircle}>
-          <Icon name="FileText" size={34} color={tokens.colors.error} strokeWidth={1.5} />
+          <Icon name="FileText" size={34} color={tokens.colors.error} />
         </View>
 
         <Text style={scanStyles.errorTitle}>This PDF is a scanned image</Text>

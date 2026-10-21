@@ -53,7 +53,7 @@ export function TooltipBubble({
           hitSlop={8}
           accessibilityLabel="Dismiss"
         >
-          <Icon name="X" size={9} color={tokens.colors.ink[400]} strokeWidth={2.5} />
+          <Icon name="X" size={9} color={tokens.colors.ink[400]} />
         </Pressable>
       </View>
 

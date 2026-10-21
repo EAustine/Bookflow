@@ -61,7 +61,7 @@ export function BookSearchScreen({ book, onClose, onJumpToPage }: BookSearchScre
           <Icon name="ArrowLeft" size={18} color={tokens.textColors.primary} />
         </Pressable>
         <View style={styles.fieldWrap}>
-          <Icon name="Search" size={14} color={tokens.textColors.muted} strokeWidth={1.5} />
+          <Icon name="Search" size={14} color={tokens.textColors.muted} />
           <TextInput
             style={styles.field}
             value={query}
@@ -80,7 +80,7 @@ export function BookSearchScreen({ book, onClose, onJumpToPage }: BookSearchScre
               onPress={() => setQuery('')}
               hitSlop={6}
             >
-              <Icon name="X" size={11} color={tokens.colors.ink[400]} strokeWidth={2} />
+              <Icon name="X" size={11} color={tokens.colors.ink[400]} />
             </Pressable>
           )}
         </View>
@@ -93,7 +93,6 @@ export function BookSearchScreen({ book, onClose, onJumpToPage }: BookSearchScre
             name="Search"
             size={28}
             color={tokens.textColors.muted}
-            strokeWidth={1.5}
           />
           <Text style={styles.emptyTitle}>Find anything in this book</Text>
           <Text style={styles.emptyBody}>

@@ -144,7 +144,7 @@ export const PaywallSheet = forwardRef<BottomSheetModal, PaywallSheetProps>(
         <BottomSheetView style={styles.content}>
           {/* Icon */}
           <View style={[styles.iconWrap, { backgroundColor: tint.iconBg }]}>
-            <Icon name={iconName} size={22} color={tint.fg} strokeWidth={1.5} />
+            <Icon name={iconName} size={22} color={tint.fg} />
           </View>
 
           {/* Eyebrow */}
@@ -187,7 +187,7 @@ export const PaywallSheet = forwardRef<BottomSheetModal, PaywallSheetProps>(
               </Text>
               {features.map((f, i) => (
                 <View key={i} style={styles.featureRow}>
-                  <Icon name={f.icon} size={14} color={tint.fg} strokeWidth={1.75} />
+                  <Icon name={f.icon} size={14} color={tint.fg} />
                   <Text style={styles.featureText}>{f.text}</Text>
                 </View>
               ))}
@@ -200,7 +200,7 @@ export const PaywallSheet = forwardRef<BottomSheetModal, PaywallSheetProps>(
             style={({ pressed }) => [styles.cta, pressed && { opacity: 0.85 }]}
             accessibilityRole="button"
           >
-            <Icon name="Sparkles" size={14} color={tokens.colors.forest[900]} strokeWidth={1.75} />
+            <Icon name="Sparkles" size={14} color={tokens.colors.forest[900]} />
             <Text style={styles.ctaLabel}>{ctaLabel}</Text>
           </Pressable>
 

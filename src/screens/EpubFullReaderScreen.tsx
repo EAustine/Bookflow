@@ -577,7 +577,6 @@ export function EpubFullReaderScreen({
                 name="Notebook"
                 size={24}
                 color={tokens.textColors.muted}
-                strokeWidth={1.5}
               />
               <Text style={styles.statusTitle}>No formatted content</Text>
               <Text style={styles.statusBody}>
@@ -602,7 +601,7 @@ export function EpubFullReaderScreen({
             </View>
           ) : resolveError ? (
             <View style={styles.statusWrap}>
-              <Icon name="X" size={20} color={tokens.colors.error} strokeWidth={2} />
+              <Icon name="X" size={20} color={tokens.colors.error} />
               <Text style={styles.statusTitle}>Could not load book</Text>
               <Text style={styles.statusBody}>{resolveError}</Text>
             </View>

@@ -57,7 +57,7 @@ export function RestorePurchasesScreen({
           style={styles.iconBtn}
           accessibilityLabel="Back"
         >
-          <Icon name="ArrowLeft" size={16} color={tokens.textColors.primary} strokeWidth={1.75} />
+          <Icon name="ArrowLeft" size={16} color={tokens.textColors.primary} />
         </Pressable>
         <Text style={styles.headerTitle}>Restore purchases</Text>
         <View style={styles.iconBtn} />
@@ -76,7 +76,7 @@ export function RestorePurchasesScreen({
         {state === 'restored' && (
           <View style={styles.center}>
             <View style={[styles.iconCircle, { backgroundColor: SUCCESS_BG }]}>
-              <Icon name="CheckCircle" size={32} color={SUCCESS_FG} strokeWidth={2} />
+              <Icon name="CheckCircle" size={32} color={SUCCESS_FG} />
             </View>
             <Text style={styles.title}>Purchase restored</Text>
             <Text style={styles.sub}>
@@ -86,7 +86,7 @@ export function RestorePurchasesScreen({
             {plan && (
               <View style={styles.planCard}>
                 <View style={styles.planIcon}>
-                  <Icon name="Check" size={16} color={tokens.colors.cream[50]} strokeWidth={2.25} />
+                  <Icon name="Check" size={16} color={tokens.colors.cream[50]} />
                 </View>
                 <View style={styles.planText}>
                   <Text style={styles.planName}>{plan.name}</Text>
@@ -108,7 +108,7 @@ export function RestorePurchasesScreen({
         {state === 'nothing' && (
           <View style={styles.center}>
             <View style={[styles.iconCircle, { backgroundColor: tokens.bgColors.surface }]}>
-              <Icon name="Refresh" size={28} color={tokens.colors.ink[400]} strokeWidth={1.5} />
+              <Icon name="Refresh" size={28} color={tokens.colors.ink[400]} />
             </View>
             <Text style={styles.title}>No purchase found</Text>
 

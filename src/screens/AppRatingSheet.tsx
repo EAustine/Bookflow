@@ -74,7 +74,7 @@ export const AppRatingSheet = forwardRef<BottomSheetModal, AppRatingSheetProps>(
       >
         <BottomSheetView style={styles.content}>
           <View style={styles.iconWrap}>
-            <Icon name="Star" size={22} color={tokens.colors.amber[500]} strokeWidth={1.5} />
+            <Icon name="Star" size={22} color={tokens.colors.amber[500]} />
           </View>
 
           <Text style={styles.title}>Enjoying Bookflow?</Text>

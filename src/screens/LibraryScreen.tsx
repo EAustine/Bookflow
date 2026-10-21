@@ -51,6 +51,14 @@ import { useMonthlyListenStats } from '~/lib/readingStats';
 import { useReaderStore } from '~/stores/readerStore';
 import { presentPaywall, ENTITLEMENT_PRO, useIsPro } from '~/lib/revenuecat';
 import { reprocessBook } from '~/lib/reprocessBook';
+import { DEFAULT_VOICE, estimateDownload, type AudioVoice } from '~/lib/aiAudio';
+import { toast } from '~/lib/toast';
+import { useDownloadsStore, type BookDownload } from '~/stores/downloadsStore';
+import {
+  downloadBook,
+  cancelDownload,
+  deleteBookDownload,
+} from '~/lib/audioDownloads';
 import { useNetworkState } from '~/hooks/useNetworkState';
 import { LibrarySkeleton } from '~/screens/SkeletonScreens';
 import { HighlightsScreen } from '~/screens/HighlightsScreen';
@@ -62,6 +70,37 @@ import { useReadingStats } from '~/lib/readingStats';
  * Flip to `true` to preview the library first-load skeleton.
  */
 const MOCK_LIBRARY_LOADING = false;
+
+/**
+ * Confirm an offline download when it will generate NEW narration, showing a
+ * rough estimate so the ElevenLabs cost (and monthly-allowance spend) isn't a
+ * surprise. Skips the prompt entirely when nothing needs generating — every
+ * page already cached means an instant, free local download.
+ */
+async function confirmAndDownload(book: Book, voiceId: AudioVoice): Promise<void> {
+  const est = await estimateDownload(book.id, voiceId);
+  // Nothing to generate (all pages already narrated) → just cache locally.
+  if (est && est.newPages === 0) {
+    void downloadBook(book, voiceId);
+    return;
+  }
+  let body: string;
+  if (est) {
+    const newLabel =
+      est.newMinutes >= 1 ? `${est.newMinutes} min` : 'less than a minute';
+    body =
+      `“${book.title}” is about ${est.totalMinutes} min of audio. ` +
+      `${est.cachedPages} of ${est.totalPages} pages are already available, so downloading ` +
+      `generates about ${newLabel} of new narration — this uses your monthly audio allowance.`;
+  } else {
+    body =
+      'This generates audio for the whole book, which uses your monthly audio allowance.';
+  }
+  Alert.alert('Download for offline?', body, [
+    { text: 'Cancel', style: 'cancel' },
+    { text: 'Download', onPress: () => void downloadBook(book, voiceId) },
+  ]);
+}
 
 // Offline banner colour constants (slate palette — not in design tokens)
 const OFFLINE_COLOR = tokens.colors.offline;
@@ -126,10 +165,11 @@ export function LibraryScreen({
   pendingUploadAssets,
   onPendingUploadAssetsConsumed,
 }: LibraryScreenProps) {
-  const { isConnected } = useNetworkState();
+  const { isConnected, refresh: refreshNetwork } = useNetworkState();
   const isOffline = !isConnected;
   // Pro users never see the free-tier "running low" upsell banner.
   const { isPro } = useIsPro();
+  const downloads = useDownloadsStore((s) => s.downloads);
   // Real audio usage drives the "running low" banner — show it only when
   // the free user is actually near their monthly audio limit, and only if
   // they haven't turned usage warnings off (Settings / Notifications).
@@ -621,6 +661,16 @@ export function LibraryScreen({
     setTimeout(() => setHighlightsBook(target), 200);
   }, [actionBook]);
 
+  // Offline downloads (Pro). One state-aware handler: start / cancel /
+  // remove based on the book's current download status.
+  const handleDownloadFromSheet = useCallback(() => {
+    // Offline downloads are temporarily disabled (shipping soon) — acknowledge
+    // the tap with a toast instead of starting a download. The download
+    // machinery (confirmAndDownload) is left intact for the re-enable.
+    bookActionSheetRef.current?.dismiss();
+    toast.show('Offline downloads are coming soon');
+  }, []);
+
   const filtered = books.filter((b) => {
     if (appliedFilter === 'in-progress') return b.progressPercent > 0 && b.progressPercent < 100;
     if (appliedFilter === 'not-started') return b.progressPercent === 0;
@@ -922,7 +972,7 @@ export function LibraryScreen({
 
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
-      {isOffline && <OfflineBanner onRetry={() => {}} />}
+      {isOffline && <OfflineBanner onRetry={() => void refreshNetwork()} />}
       {!isOffline &&
         !isPro &&
         usageWarningsOn &&
@@ -993,6 +1043,8 @@ export function LibraryScreen({
       >
         <BookActionSheetContent
           book={actionBook}
+          download={actionBook ? downloads[actionBook.id] : undefined}
+          onDownload={handleDownloadFromSheet}
           onViewHighlights={handleViewHighlightsFromSheet}
           onReprocess={handleReprocessFromSheet}
           onRemove={handleRemoveFromSheet}
@@ -1478,6 +1530,12 @@ function ContinueCard({
   const statusLine = pageNum
     ? `Page ${pageNum} · ${book.progressPercent}% done`
     : `${book.progressPercent}% done`;
+  const isDownloaded = useDownloadsStore(
+    (s) => s.downloads[book.id]?.status === 'complete',
+  );
+  // A downloaded book plays from local files, so it stays listenable with
+  // no connection — only block Listen when offline AND not downloaded.
+  const audioBlocked = !!isOffline && !isDownloaded;
 
   return (
     <View style={styles.continueSection}>
@@ -1498,14 +1556,14 @@ function ContinueCard({
             <ProgressBar percent={book.progressPercent} height={3} />
           </View>
           <View style={styles.continueActions}>
-            <View style={[styles.listenWrap, isOffline && { opacity: 0.4 }]}>
+            <View style={[styles.listenWrap, audioBlocked && { opacity: 0.4 }]}>
               <Button
                 label="Listen"
                 variant="primary"
                 size="compact"
                 leadingIcon="Play"
                 fullWidth
-                disabled={isOffline}
+                disabled={audioBlocked}
                 onPress={() => onListen(book)}
               />
             </View>
@@ -1516,9 +1574,9 @@ function ContinueCard({
               onPress={() => onRead(book)}
             />
           </View>
-          {isOffline && (
+          {audioBlocked && (
             <View style={styles.streamingUnavailable}>
-              <Icon name="AlertTriangle" size={10} color={tokens.textColors.disabled} strokeWidth={1.5} />
+              <Icon name="AlertTriangle" size={10} color={tokens.textColors.disabled} />
               <Text style={styles.streamingUnavailableText}>
                 Audio streaming unavailable offline
               </Text>
@@ -1606,6 +1664,12 @@ function BookListItem({
   const status = book.processingStatus;
   const isProcessing = status === 'pending' || status === 'processing';
   const isFailed = typeof status === 'string' && status.startsWith('failed');
+  const download = useDownloadsStore((s) => s.downloads[book.id]);
+  const isDownloadingAudio = download?.status === 'downloading';
+  const dlPct =
+    download && download.totalPages > 0
+      ? Math.round((download.completedPages / download.totalPages) * 100)
+      : 0;
 
   const inProgress = book.progressPercent > 0 && book.progressPercent < 100;
   const finished = book.progressPercent === 100;
@@ -1659,6 +1723,13 @@ function BookListItem({
           <Text variant="body-xs" color="error" numberOfLines={1}>
             Upload failed · tap to remove
           </Text>
+        ) : isDownloadingAudio ? (
+          <View style={styles.processingRow}>
+            <ActivityIndicator size="small" color={tokens.colors.forest[600]} />
+            <Text variant="body-xs" color="subtle" numberOfLines={1}>
+              {`Downloading audio… ${dlPct}%`}
+            </Text>
+          </View>
         ) : (
           <Text
             variant="body-xs"
@@ -1825,12 +1896,16 @@ function RadioDot({ checked }: { checked: boolean }) {
  */
 function BookActionSheetContent({
   book,
+  download,
+  onDownload,
   onViewHighlights,
   onReprocess,
   onRemove,
   onCancel,
 }: {
   book: Book | null;
+  download?: BookDownload;
+  onDownload: () => void;
   onViewHighlights: () => void;
   onReprocess: () => void;
   onRemove: () => void;
@@ -1845,6 +1920,12 @@ function BookActionSheetContent({
 
   const status = book.processingStatus;
   const isProcessing = status === 'processing' || status === 'pending';
+  const isFailed = typeof status === 'string' && status.startsWith('failed');
+  const dlStatus = download?.status;
+  const dlPct =
+    download && download.totalPages > 0
+      ? Math.round((download.completedPages / download.totalPages) * 100)
+      : 0;
 
   return (
     <View>
@@ -1863,6 +1944,17 @@ function BookActionSheetContent({
       </View>
 
       <View style={styles.actionSheetDivider} />
+
+      {!isProcessing && !isFailed && (
+        <ActionRow
+          iconBg={tokens.colors.forest[50]}
+          iconName="Download"
+          iconColor={tokens.colors.forest[800]}
+          title="Offline download"
+          desc="Coming soon"
+          onPress={onDownload}
+        />
+      )}
 
       <ActionRow
         iconBg={tokens.colors.amber[200]}
@@ -1922,7 +2014,7 @@ function ActionRow({
   onPress,
 }: {
   iconBg: string;
-  iconName: 'Refresh' | 'Trash' | 'Notebook';
+  iconName: 'Refresh' | 'Trash' | 'Notebook' | 'Download' | 'Check';
   iconColor: string;
   title: string;
   desc: string;
@@ -1939,7 +2031,7 @@ function ActionRow({
       ]}
     >
       <View style={[styles.actionRowIcon, { backgroundColor: iconBg }]}>
-        <Icon name={iconName} size={20} color={iconColor} strokeWidth={1.75} />
+        <Icon name={iconName} size={20} color={iconColor} />
       </View>
       <View style={styles.actionRowText}>
         <Text
@@ -1997,7 +2089,6 @@ function RemoveBookSheetContent({
             name="Trash"
             size={18}
             color={tokens.colors.error}
-            strokeWidth={1.75}
           />
         </View>
         <View style={styles.removeSheetHeaderText}>
@@ -2048,7 +2139,6 @@ function RemoveBookSheetContent({
                 name="Trash"
                 size={14}
                 color={tokens.colors.cream[50]}
-                strokeWidth={2}
               />
               <Text style={styles.removeSheetDestructiveLabel}>Remove book</Text>
             </>
@@ -2088,6 +2178,9 @@ function BookCover({
 }) {
   const dims = COVER_DIMS[size];
   const path = book.coverStoragePath ?? null;
+  const isDownloaded = useDownloadsStore(
+    (s) => s.downloads[book.id]?.status === 'complete',
+  );
   const [coverUrl, setCoverUrl] = useState<string | null>(() =>
     path ? peekCachedCoverUrl(path) : null,
   );
@@ -2130,9 +2223,9 @@ function BookCover({
           {book.title.charAt(0)}
         </Text>
       )}
-      {book.downloaded && (
+      {isDownloaded && (
         <View style={[styles.downloadedBadge, size === 'sm' && styles.downloadedBadgeSm]}>
-          <Icon name="Download" size={size === 'sm' ? 7 : 8} color={tokens.colors.cream[50]} strokeWidth={2.5} />
+          <Icon name="Download" size={size === 'sm' ? 7 : 8} color={tokens.colors.cream[50]} />
         </View>
       )}
     </View>

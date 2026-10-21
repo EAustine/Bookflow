@@ -24,6 +24,7 @@
 
 import { useEffect, useState } from 'react';
 import { Linking, Platform } from 'react-native';
+import { useReaderStore } from '~/stores/readerStore';
 
 /**
  * Defensive lazy load of `expo-notifications`. The package is a
@@ -443,5 +444,35 @@ export async function fireBookReadyNotification(opts: {
     });
   } catch (err) {
     console.warn('[notifications] book-ready schedule failed:', err);
+  }
+}
+
+/**
+ * Fire an immediate local notification when a book's offline audio download
+ * finishes. Respects the user's "book ready" preference + OS permission, so
+ * it stays silent when either is off. Safe to call from non-React code (the
+ * download orchestrator) — reads the toggle via the store's getState().
+ */
+export async function fireDownloadCompleteNotification(opts: {
+  bookId: string;
+  title: string;
+}): Promise<void> {
+  if (!notificationsModule) return;
+  try {
+    if (!useReaderStore.getState().notifBookFinishedOn) return;
+    const perm = await notificationsModule.getPermissionsAsync();
+    if (!perm?.granted) return;
+    await notificationsModule.scheduleNotificationAsync({
+      content: {
+        title: 'Download complete',
+        body: `${opts.title} is ready to listen offline.`,
+        sound: true,
+        data: { bookId: opts.bookId, kind: 'download-complete' },
+      },
+      // Null trigger = fire immediately.
+      trigger: null,
+    });
+  } catch (err) {
+    console.warn('[notifications] download-complete schedule failed:', err);
   }
 }

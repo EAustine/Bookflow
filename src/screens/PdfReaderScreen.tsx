@@ -649,7 +649,6 @@ export function PdfReaderScreen({
               name="X"
               size={20}
               color={tokens.colors.error}
-              strokeWidth={2}
             />
             <Text style={styles.errorTitle}>Could not open this PDF</Text>
             <Text style={styles.errorBody}>{loadError}</Text>

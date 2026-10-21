@@ -38,7 +38,7 @@ import {
   importDiscoverBook,
   importErrorMessage,
 } from '~/lib/discoverImport';
-import { DISCOVER_SEED } from '~/lib/discoverSeed';
+import { DISCOVER_SEED, BIBLE_VERSIONS } from '~/lib/discoverSeed';
 import { useBooks } from '~/hooks/useBooks';
 import { useFreePlanUsage } from '~/lib/freePlanUsage';
 import { presentPaywall, ENTITLEMENT_PRO } from '~/lib/revenuecat';
@@ -1496,6 +1496,29 @@ function HomeView({
                   </>
                 )}
 
+                {/* The Holy Bible — curated public-domain versions
+                 *  (KJV, World English Bible, Douay-Rheims). Baked-in
+                 *  Gutenberg references rather than a network fetch, so
+                 *  the rail is always present and never empties. */}
+                <View style={s.sectionRow}>
+                  <Text style={s.sectionTitle}>The Holy Bible</Text>
+                  <Text style={s.sectionSubLabel}>Free · public domain</Text>
+                </View>
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={s.railScroll}
+                >
+                  {BIBLE_VERSIONS.map(fromApiBook).map((book) => (
+                    <RailCard
+                      key={book.id}
+                      book={book}
+                      inLibrary={libraryIds.has(book.id)}
+                      onPress={() => onBook(book)}
+                    />
+                  ))}
+                </ScrollView>
+
                 {/* Popular fiction. Mid-refresh, swap the real
                     cards for skeleton placeholders even when we
                     have cached books — gives the user visible
@@ -2000,7 +2023,6 @@ function AddPill({
           name="Check"
           size={10}
           color={tokens.colors.forest[800]}
-          strokeWidth={2.5}
         />
         <Text style={s.catAddedBtnText}>In library</Text>
       </Pressable>
@@ -2022,7 +2044,6 @@ function AddPill({
           name="Plus"
           size={10}
           color={tokens.colors.cream[50]}
-          strokeWidth={2.5}
         />
       )}
       <Text style={s.catAddBtnText}>{pending ? 'Adding…' : 'Add'}</Text>
@@ -2113,7 +2134,6 @@ function FeaturedCard({
               name={buttonIcon}
               size={11}
               color={inLibrary ? tokens.colors.forest[800] : tokens.colors.forest[900]}
-              strokeWidth={2}
             />
           )}
           <Text
@@ -2141,7 +2161,7 @@ function RailCard({ book, inLibrary, onPress }: { book: DiscoverBook; inLibrary:
         />
         {inLibrary && (
           <View style={s.addedBadge}>
-            <Icon name="Check" size={9} color={tokens.colors.cream[50]} strokeWidth={2.5} />
+            <Icon name="Check" size={9} color={tokens.colors.cream[50]} />
           </View>
         )}
       </View>

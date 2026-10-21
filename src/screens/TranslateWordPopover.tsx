@@ -46,7 +46,7 @@ export function TranslateWordPopover({
           <Text style={styles.langTo}>{toLang}</Text>
         </View>
         <Pressable onPress={onDismiss} style={styles.closeBtn} hitSlop={8} accessibilityLabel="Close">
-          <Icon name="X" size={9} color={tokens.colors.ink[400]} strokeWidth={2.5} />
+          <Icon name="X" size={9} color={tokens.colors.ink[400]} />
         </Pressable>
       </View>
 
@@ -72,7 +72,7 @@ export function TranslateWordPopover({
           onPress={onPlayAudio ?? (() => {})}
           accessibilityRole="button"
         >
-          <Icon name="Music" size={11} color={tokens.colors.cream[50]} strokeWidth={1.5} />
+          <Icon name="Music" size={11} color={tokens.colors.cream[50]} />
           <Text style={styles.btnAudioLabel}>Play</Text>
         </Pressable>
         <Pressable

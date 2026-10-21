@@ -195,7 +195,8 @@ const MONTH_NAMES = [
   'Dec',
 ];
 
-const MONTHLY_AUDIO_QUOTA_MIN = 90; // free-tier allowance, placeholder
+const MONTHLY_AUDIO_QUOTA_MIN = 60; // free-tier monthly generation allowance
+const PRO_AUDIO_QUOTA_MIN = 3000; // Pro generation backstop (50 hours)
 
 /**
  * Aggregate the user's listening / book-progress data into the shape
@@ -232,7 +233,7 @@ export async function fetchMonthlyListenStats(): Promise<MonthlyListenStats> {
 
   // Fan-out: sessions for delta comparison + this-month + books table
   // for started/finished counts. Parallel is fine — small payloads each.
-  const [sessionsResult, booksResult] = await Promise.all([
+  const [sessionsResult, booksResult, profileResult] = await Promise.all([
     supabase
       .from('reading_sessions')
       .select('started_at, duration_seconds')
@@ -244,6 +245,15 @@ export async function fetchMonthlyListenStats(): Promise<MonthlyListenStats> {
       .select('id, created_at, last_read_at, last_read_page, total_pages')
       .eq('user_id', user.id)
       .gte('created_at', prevMonthStart.toISOString()),
+    // Generation counter + plan + purchased balance, so "Audio remaining"
+    // matches the You-tab plan card (generation-based, not listening-based).
+    supabase
+      .from('profiles')
+      .select(
+        'plan, audio_seconds_used, audio_seconds_period_start, audio_seconds_limit, audio_seconds_balance, audio_seconds_balance_expires_at',
+      )
+      .eq('id', user.id)
+      .maybeSingle(),
   ]);
 
   if (sessionsResult.error) {
@@ -316,18 +326,50 @@ export async function fetchMonthlyListenStats(): Promise<MonthlyListenStats> {
     }
   }
 
+  // Audio remaining = monthly GENERATION allowance left (+ purchased balance),
+  // read from the same profile counter as the You-tab plan card so every audio
+  // meter agrees. Cached / downloaded / replayed audio is free and never
+  // decrements this — only newly generated narration does.
+  let audioRemainingMin = MONTHLY_AUDIO_QUOTA_MIN;
+  const prof = profileResult.data as {
+    plan?: string | null;
+    audio_seconds_used?: number | null;
+    audio_seconds_period_start?: string | null;
+    audio_seconds_limit?: number | null;
+    audio_seconds_balance?: number | null;
+    audio_seconds_balance_expires_at?: string | null;
+  } | null;
+  if (prof) {
+    const isPro = prof.plan === 'pro';
+    const ps = prof.audio_seconds_period_start
+      ? new Date(prof.audio_seconds_period_start)
+      : null;
+    const sameMonth =
+      !!ps &&
+      ps.getUTCFullYear() === now.getUTCFullYear() &&
+      ps.getUTCMonth() === now.getUTCMonth();
+    const usedMin = sameMonth
+      ? Math.round((prof.audio_seconds_used ?? 0) / 60)
+      : 0;
+    const allowanceMin = isPro
+      ? PRO_AUDIO_QUOTA_MIN
+      : Math.round((prof.audio_seconds_limit ?? 3600) / 60);
+    const balExp = prof.audio_seconds_balance_expires_at
+      ? new Date(prof.audio_seconds_balance_expires_at).getTime()
+      : 0;
+    const balMin =
+      balExp > now.getTime()
+        ? Math.round((prof.audio_seconds_balance ?? 0) / 60)
+        : 0;
+    audioRemainingMin = Math.max(0, allowanceMin - usedMin) + balMin;
+  }
+
   return {
     listeningHours: hoursThisMonth,
     listeningHoursDelta,
     booksStarted,
     booksFinished,
-    // Placeholder remaining = full allowance minus this-month listening
-    // (capped at the allowance so the number is never negative).
-    // Replaces with a real RC-driven number once entitlements are wired.
-    audioRemainingMin: Math.max(
-      0,
-      Math.round(MONTHLY_AUDIO_QUOTA_MIN - secsThisMonth / 60),
-    ),
+    audioRemainingMin,
     audioResetLabel: buildResetLabel(now),
   };
 }

@@ -281,7 +281,7 @@ export function HelpFAQScreen({
       {/* Header */}
       <View style={styles.header}>
         <Pressable onPress={onBack} hitSlop={8} style={styles.backBtn} accessibilityLabel="Back">
-          <Icon name="ArrowLeft" size={18} color={tokens.textColors.primary} strokeWidth={1.75} />
+          <Icon name="ArrowLeft" size={18} color={tokens.textColors.primary} />
         </Pressable>
         <Text style={styles.headerTitle}>Help & FAQ</Text>
         <View style={styles.backBtn} />
@@ -294,7 +294,7 @@ export function HelpFAQScreen({
       >
         {/* Search */}
         <View style={styles.searchWrap}>
-          <Icon name="Search" size={14} color={tokens.textColors.muted} strokeWidth={1.5} />
+          <Icon name="Search" size={14} color={tokens.textColors.muted} />
           <TextInput
             style={styles.searchField}
             value={query}
@@ -309,7 +309,7 @@ export function HelpFAQScreen({
               hitSlop={8}
               accessibilityLabel="Clear"
             >
-              <Icon name="X" size={12} color={tokens.textColors.muted} strokeWidth={2} />
+              <Icon name="X" size={12} color={tokens.textColors.muted} />
             </Pressable>
           )}
         </View>
@@ -344,7 +344,6 @@ export function HelpFAQScreen({
                             name="ChevronDown"
                             size={14}
                             color={tokens.textColors.muted}
-                            strokeWidth={1.75}
                           />
                         </View>
                       </Pressable>
@@ -364,7 +363,7 @@ export function HelpFAQScreen({
         {/* Contact card */}
         <View style={styles.contactCard}>
           <View style={styles.contactIcon}>
-            <Icon name="MessageCircle" size={18} color={tokens.colors.forest[800]} strokeWidth={1.5} />
+            <Icon name="MessageCircle" size={18} color={tokens.colors.forest[800]} />
           </View>
           <Text style={styles.contactTitle}>Still need help?</Text>
           <Text style={styles.contactBody}>
@@ -384,7 +383,6 @@ export function HelpFAQScreen({
               name={emailCopied ? 'Check' : 'Mail'}
               size={13}
               color={tokens.colors.cream[50]}
-              strokeWidth={1.75}
             />
             <Text style={styles.contactBtnLabel}>
               {emailCopied ? 'Copied — paste into your mail app' : supportEmail}

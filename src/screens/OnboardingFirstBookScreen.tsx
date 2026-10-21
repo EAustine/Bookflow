@@ -252,7 +252,7 @@ function BookCard({
             know what's selected. */}
         {selected && (
           <View style={styles.coverCheck}>
-            <Icon name="Check" size={12} color={tokens.colors.cream[50]} strokeWidth={3} />
+            <Icon name="Check" size={12} color={tokens.colors.cream[50]} />
           </View>
         )}
       </View>

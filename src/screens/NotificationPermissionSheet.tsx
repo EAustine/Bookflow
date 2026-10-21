@@ -135,13 +135,13 @@ export const NotificationPermissionSheet = forwardRef<
       <BottomSheetView style={styles.content}>
         {/* Context badge */}
         <View style={styles.triggerBadge}>
-          <Icon name={config.badgeIcon} size={12} color={tokens.colors.forest[800]} strokeWidth={1.5} />
+          <Icon name={config.badgeIcon} size={12} color={tokens.colors.forest[800]} />
           <Text style={styles.triggerBadgeText}>{config.badgeText}</Text>
         </View>
 
         {/* Icon */}
         <View style={[styles.iconWrap, { backgroundColor: config.iconBg }]}>
-          <Icon name={config.triggerIcon} size={26} color={config.iconColor} strokeWidth={1.5} />
+          <Icon name={config.triggerIcon} size={26} color={config.iconColor} />
         </View>
 
         {/* Title + subtitle */}
@@ -151,7 +151,7 @@ export const NotificationPermissionSheet = forwardRef<
         {/* Notification preview */}
         <View style={styles.notifPreview}>
           <View style={styles.notifAppIcon}>
-            <Icon name="Book" size={18} color={tokens.colors.cream[50]} strokeWidth={1.5} />
+            <Icon name="Book" size={18} color={tokens.colors.cream[50]} />
           </View>
           <View style={styles.notifContent}>
             <Text style={styles.notifAppName}>BOOKFLOW</Text>

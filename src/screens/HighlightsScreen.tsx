@@ -267,7 +267,7 @@ function HighlightRow({
         hitSlop={8}
         style={({ pressed }) => [styles.deleteBtn, pressed && { opacity: 0.6 }]}
       >
-        <Icon name="Trash" size={14} color={tokens.colors.ink[400]} strokeWidth={1.75} />
+        <Icon name="Trash" size={14} color={tokens.colors.ink[400]} />
       </Pressable>
     </View>
   );
@@ -287,7 +287,6 @@ function EmptyState({ filter, totalCount }: { filter: Filter; totalCount: number
           name="Notebook"
           size={28}
           color={tokens.colors.ink[400]}
-          strokeWidth={1.5}
         />
       </View>
       <Text style={styles.emptyTitle}>

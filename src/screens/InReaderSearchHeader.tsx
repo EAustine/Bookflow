@@ -50,7 +50,7 @@ export function InReaderSearchHeader({
       {/* Search field row */}
       <View style={styles.headerRow}>
         <View style={styles.fieldWrap}>
-          <Icon name="Search" size={13} color={tokens.colors.forest[800]} strokeWidth={1.5} />
+          <Icon name="Search" size={13} color={tokens.colors.forest[800]} />
           <TextInput
             style={styles.field}
             value={query}
@@ -67,7 +67,7 @@ export function InReaderSearchHeader({
               hitSlop={8}
               accessibilityLabel="Clear search"
             >
-              <Icon name="X" size={8} color={tokens.colors.cream[50]} strokeWidth={3} />
+              <Icon name="X" size={8} color={tokens.colors.cream[50]} />
             </Pressable>
           )}
         </View>
@@ -92,7 +92,7 @@ export function InReaderSearchHeader({
               hitSlop={6}
               accessibilityLabel="Previous match"
             >
-              <Icon name="ChevronDown" size={11} color={tokens.textColors.secondary} strokeWidth={2} />
+              <Icon name="ChevronDown" size={11} color={tokens.textColors.secondary} />
             </Pressable>
             <Pressable
               style={[styles.navBtn, resultCount === 0 && styles.navBtnDisabled]}
@@ -101,7 +101,7 @@ export function InReaderSearchHeader({
               hitSlop={6}
               accessibilityLabel="Next match"
             >
-              <Icon name="ChevronDown" size={11} color={tokens.textColors.secondary} strokeWidth={2} />
+              <Icon name="ChevronDown" size={11} color={tokens.textColors.secondary} />
             </Pressable>
           </View>
         </View>

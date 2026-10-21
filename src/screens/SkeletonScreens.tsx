@@ -105,15 +105,6 @@ export function ReaderSkeleton({ onBack }: { onBack: () => void }) {
         ))}
       </View>
 
-      {/* Progress bar */}
-      <View style={styles.readerProgress}>
-        <Skeleton width="100%" height={3} borderRadius={2} style={styles.readerProgressBar} />
-        <View style={styles.readerProgressMeta}>
-          <Skeleton width={55} height={9} borderRadius={99} />
-          <Skeleton width={90} height={9} borderRadius={99} />
-        </View>
-      </View>
-
       {/* Action bar — mirrors the real text-mode ReaderScreen ActionBar
        * exactly: 5 items (Listen / AI tools / Search / Highlights /
        * Reading options), 44×44 circular icon backgrounds, label
@@ -126,7 +117,7 @@ export function ReaderSkeleton({ onBack }: { onBack: () => void }) {
       <View style={styles.readerActionBar}>
         <View style={styles.readerActionItem}>
           <View style={styles.readerListenBtn}>
-            <Icon name="Headphones" size={18} color={tokens.colors.cream[50]} strokeWidth={1.5} />
+            <Icon name="Headphones" size={18} color={tokens.colors.cream[50]} />
           </View>
           <Text style={styles.readerActionLabel}>Listen</Text>
         </View>

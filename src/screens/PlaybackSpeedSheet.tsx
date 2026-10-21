@@ -16,10 +16,17 @@ import {
 } from '@gorhom/bottom-sheet';
 import { Icon, Text } from '~/components';
 import { tokens } from '~/design/tokens';
+import { PLAYBACK_SPEEDS } from '~/stores/readerStore';
 
 // ─── Speed catalog ────────────────────────────────────────────────────────────
 
-export type Speed = 0.5 | 0.75 | 1 | 1.25 | 1.5 | 1.75 | 2 | 3;
+/**
+ * The playback-speed set, derived from the single source of truth in
+ * `readerStore`. Was a separate literal union that also carried 3× —
+ * a speed the store never accepted, so picking it here produced a
+ * value that could not be saved as the user's default. See F-7.
+ */
+export type Speed = (typeof PLAYBACK_SPEEDS)[number];
 
 type SpeedDef = {
   value: Speed;
@@ -36,8 +43,14 @@ const SPEEDS: SpeedDef[] = [
   { value: 1.5,  display: '1.5×',  label: 'Fast',       description: '1.5× — noticeably faster. Comprehension stays high once your ear adjusts.' },
   { value: 1.75, display: '1.75×', label: 'Quick',      description: 'Fast pace — best for re-listening or when content is familiar.' },
   { value: 2,    display: '2×',    label: 'Rapid',      description: 'Twice natural speed. Great for review; harder for first listens.' },
-  { value: 3,    display: '3×',    label: 'Sprint',     description: 'Triple speed. Demanding to follow — use for skimming familiar material.' },
 ];
+
+// Fail the build if the catalog and the store ever drift apart again.
+const _speedCatalogCoversStore: Record<Speed, true> = SPEEDS.reduce(
+  (acc, s) => ({ ...acc, [s.value]: true }),
+  {} as Record<Speed, true>,
+);
+void _speedCatalogCoversStore;
 
 // ─── Props ────────────────────────────────────────────────────────────────────
 
@@ -95,7 +108,7 @@ export const PlaybackSpeedSheet = forwardRef<BottomSheetModal, PlaybackSpeedShee
               hitSlop={8}
               accessibilityLabel="Close"
             >
-              <Icon name="X" size={12} color={tokens.textColors.muted} strokeWidth={2.5} />
+              <Icon name="X" size={12} color={tokens.textColors.muted} />
             </Pressable>
           </View>
 
@@ -124,7 +137,7 @@ export const PlaybackSpeedSheet = forwardRef<BottomSheetModal, PlaybackSpeedShee
 
           {/* Description */}
           <View style={styles.desc}>
-            <Icon name="Info" size={14} color={tokens.colors.forest[800]} strokeWidth={1.5} />
+            <Icon name="Info" size={14} color={tokens.colors.forest[800]} />
             <Text style={styles.descText}>{current.description}</Text>
           </View>
 

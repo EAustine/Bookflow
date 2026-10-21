@@ -132,7 +132,6 @@ export function ListenHomeScreen({
                 name="Headphones"
                 size={16}
                 color={tokens.colors.cream[50]}
-                strokeWidth={1.75}
               />
             </View>
           </Pressable>
@@ -142,7 +141,7 @@ export function ListenHomeScreen({
             style={({ pressed }) => [styles.secondaryCta, pressed && { opacity: 0.7 }]}
             accessibilityRole="button"
           >
-            <Icon name="Book" size={13} color={tokens.colors.forest[800]} strokeWidth={1.75} />
+            <Icon name="Book" size={13} color={tokens.colors.forest[800]} />
             <Text style={styles.secondaryCtaLabel}>Pick a different book</Text>
           </Pressable>
         </View>
@@ -160,7 +159,6 @@ export function ListenHomeScreen({
             name="Headphones"
             size={36}
             color={tokens.colors.forest[800]}
-            strokeWidth={1.5}
           />
         </View>
         <Text style={styles.title}>Nothing playing</Text>
@@ -174,7 +172,7 @@ export function ListenHomeScreen({
           style={({ pressed }) => [styles.cta, pressed && { opacity: 0.85 }]}
           accessibilityRole="button"
         >
-          <Icon name="Book" size={14} color={tokens.colors.cream[50]} strokeWidth={1.75} />
+          <Icon name="Book" size={14} color={tokens.colors.cream[50]} />
           <Text style={styles.ctaLabel}>Browse library</Text>
         </Pressable>
       </View>
