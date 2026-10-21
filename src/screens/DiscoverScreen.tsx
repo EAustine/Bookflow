@@ -12,7 +12,7 @@ import {
 } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Icon, TabBar, type TabKey, Text } from '~/components';
+import { Button, Icon, TabBar, type TabKey, Text } from '~/components';
 import { tokens } from '~/design/tokens';
 import { SUPPORT_EMAIL } from '~/lib/legalUrls';
 import { formatNetworkError } from '~/lib/networkErrors';
@@ -2410,56 +2410,37 @@ function DetailView({
          *   - in library  → "Remove from library" (muted, taps to
          *                    confirm + delete). Was previously a
          *                    non-interactive "In library" badge. */}
-        <Pressable
-          onPress={() => {
-            if (pending) return;
-            if (inLibrary) onRemove();
-            else onAdd();
-          }}
-          style={[
-            s.detailPrimaryBtn,
-            inLibrary && s.detailPrimaryBtnAdded,
-            pending && { opacity: 0.7 },
-          ]}
-          disabled={pending}
-          accessibilityRole="button"
-          accessibilityLabel={
-            inLibrary
-              ? `Remove ${book.title} from library`
-              : `Add ${book.title} to library`
-          }
-        >
-          {pending ? (
-            <ActivityIndicator
-              size="small"
-              color={tokens.colors.cream[50]}
-            />
-          ) : (
-            <Icon
-              name={inLibrary ? 'Check' : 'Plus'}
-              size={15}
-              color={
-                inLibrary ? tokens.colors.forest[800] : tokens.colors.cream[50]
-              }
-            />
-          )}
-          <Text
-            style={[
-              s.detailPrimaryBtnText,
-              {
-                color: inLibrary
-                  ? tokens.colors.forest[800]
-                  : tokens.colors.cream[50],
-              },
-            ]}
-          >
-            {inLibrary
-              ? 'Remove from library'
-              : pending
-                ? 'Adding…'
-                : 'Add to library'}
-          </Text>
-        </Pressable>
+        {/* Canonical Button at Large (52 / radius 10 / 16), per F-25.
+            Was a screen-local 48 / 10 / 14 Pressable that matched no
+            button size in the system. Wrapped in a flex:1 View because
+            Button spreads `...rest` after its own `style`, so passing
+            flex through would clobber its internals. */}
+        <View style={s.detailPrimaryBtnWrap}>
+          <Button
+            fullWidth
+            size="large"
+            variant={inLibrary ? 'secondary' : 'primary'}
+            loading={pending}
+            leadingIcon={inLibrary ? 'Check' : 'Plus'}
+            label={
+              inLibrary
+                ? 'Remove from library'
+                : pending
+                  ? 'Adding…'
+                  : 'Add to library'
+            }
+            onPress={() => {
+              if (pending) return;
+              if (inLibrary) onRemove();
+              else onAdd();
+            }}
+            accessibilityLabel={
+              inLibrary
+                ? `Remove ${book.title} from library`
+                : `Add ${book.title} to library`
+            }
+          />
+        </View>
         {/* Listen-sample button — only shown for books already in
             the user's library. Playback runs against the user's
             books table row (page extraction, signed audio URLs,
@@ -3095,29 +3076,12 @@ const s = StyleSheet.create({
     borderTopColor: tokens.colors.ink[200],
     backgroundColor: tokens.bgColors.canvas,
   },
-  detailPrimaryBtn: {
-    flex: 1,
-    height: 48,
-    borderRadius: 10,
-    backgroundColor: tokens.colors.forest[800],
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-  },
-  detailPrimaryBtnAdded: {
-    backgroundColor: tokens.colors.forest[50],
-    borderWidth: 0.5,
-    borderColor: tokens.colors.forest[200],
-  },
-  detailPrimaryBtnText: {
-    fontFamily: tokens.fonts.uiMedium,
-    fontSize: 14,
-  },
+  detailPrimaryBtnWrap: { flex: 1 },
   detailSampleBtn: {
-    width: 48,
-    height: 48,
-    borderRadius: 10,
+    // 52x52 so it squares off against the Large CTA beside it (F-25).
+    width: tokens.button.height.large,
+    height: tokens.button.height.large,
+    borderRadius: tokens.button.radius.large,
     backgroundColor: tokens.colors.cream[100],
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: tokens.colors.ink[200],
