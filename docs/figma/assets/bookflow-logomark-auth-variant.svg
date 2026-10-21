@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100" fill="none">
+  <!-- SECOND, GEOMETRICALLY DIFFERENT logomark, from src/screens/AuthCallbackScreen.tsx:218.
+       NOT the same shape as bookflow-logomark.svg: height:width 1.16 vs 0.80,
+       control points at 17%/83% of span vs 33%/67%. Pending reconciliation (inventory F-8). -->
+  <path d="M 25 80 C 33.5 22 66.5 22 75 80" stroke="#1B4332" stroke-width="9" stroke-linecap="round" fill="none"/>
+  <path d="M 35 78 C 45 33 55 33 65 78" stroke="#1B4332" stroke-width="9" stroke-linecap="round" fill="none" opacity="0.45"/>
+</svg>

@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="52" height="52" viewBox="0 0 52 52" fill="none">
+  <!-- Bookflow logomark. Paths copied verbatim from src/components/Lockup.tsx.
+       Two cubic Bezier arcs: a main curve plus a smaller echo curve.
+       Coordinates are unchanged from the source 0 0 196 52 viewBox, cropped to 0 0 52 52. -->
+  <path d="M14 33.4C22 14.2 30 14.2 38 33.4" stroke="#1B4332" stroke-width="4.32" stroke-linecap="round"/>
+  <path d="M18.8 32.44C23.6 19.64 28.4 19.64 33.2 32.44" stroke="#1B4332" stroke-width="4.32" stroke-linecap="round" opacity="0.45"/>
+</svg>

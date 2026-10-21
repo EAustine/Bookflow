@@ -23,25 +23,24 @@ The full product scope, personas, MVP features, pricing, and beta plan are in `/
 **Core:**
 - React Native + Expo (managed workflow)
 - TypeScript with strict mode enabled (non-negotiable)
-- Expo Router for file-based routing
-- NativeWind for styling
+- **No router.** Navigation is a hand-rolled `stage` state machine in `App.tsx`, with screens swapping on local `view` state inside each tab. Expo Router was planned and never adopted — don't reach for it or for `src/app/`.
+- **`StyleSheet.create` + `tokens.ts` for styling.** NativeWind is installed but unused (0 `className` usages, no `tailwind.config`). Don't introduce Tailwind classes; follow the surrounding `StyleSheet` + tokens pattern.
 - Zustand for global state (not Redux, not Context for everything)
-- TanStack Query for server state and caching
+- TanStack Query is installed, but server state is mostly bespoke hooks (`useBooks`, `useChat`, `useAudio`) over Supabase + Zustand. Match the local pattern rather than introducing Query into a screen that doesn't use it.
 
 **Backend & services:**
 - Supabase for auth, database (Postgres), storage, edge functions, pgvector for RAG
 - RevenueCat for subscription management (handles App Store + Play Store)
 - Anthropic API for LLM features (Claude Sonnet 4.5 for hard tasks, Haiku 4.5 for cheap tasks)
 - ElevenLabs API for TTS (Turbo v2.5 model, supports streaming + word-level timestamps)
-- Resend for transactional email
-- PostHog for analytics
-- Sentry for crash reporting
+- Resend for transactional email *(planned — not yet in `package.json`)*
+- Analytics and crash reporting are **not wired yet** — PostHog and Sentry are planned but absent from `package.json`. Don't import them.
 
 **Specific libraries:**
-- `lucide-react-native` for icons (with `react-native-svg`) — always pass `strokeWidth={1.5}`
+- `@tabler/icons-react-native` for icons (with `react-native-svg`), wrapped by `src/components/Icon.tsx` — **never import Tabler directly**. The wrapper applies `tokens.iconStrokeWidth` (1.0); don't pass `strokeWidth` at all. The one exception is `strokeWidth={0}` on Tabler's `*Filled` glyphs (Play, Pause, ThumbUpFilled), which paint from `fill`.
 - `@gorhom/bottom-sheet` for bottom sheets (don't roll our own)
-- `expo-av` or `react-native-track-player` for audio playback
-- `epubjs` for EPUB parsing
+- `expo-audio` for audio playback (not `expo-av` or `react-native-track-player`)
+- `react-native-webview` + injected CSS for EPUB Full mode (not `epubjs`); `react-native-pdf` for PDF Full mode
 - Read `/docs/specs/bookflow_engineering_scoping.md` for the full rationale on each choice
 
 **Don't suggest alternatives** like "have you considered Flutter?" or "we should use Redux instead." These were debated; the answers are above. If a genuinely new constraint emerges, then revisit — but don't second-guess proactively.
@@ -53,15 +52,18 @@ The full product scope, personas, MVP features, pricing, and beta plan are in `/
 ### File structure
 
 ```
+App.tsx                   # Root. Holds the `stage` machine, the tab
+                          # switch, the audio session and the global
+                          # overlays (mini player, toast host).
 src/
-├── app/                  # Expo Router routes (file-based)
-│   ├── (tabs)/          # Tab navigator
-│   │   ├── library.tsx
-│   │   ├── discover.tsx
-│   │   ├── listen.tsx
-│   │   └── you.tsx
-│   ├── reader/[id].tsx  # Reader screen
-│   └── _layout.tsx
+├── screens/             # Every screen and sheet. Tabs swap on local
+│   │                    # `view` state; there is no router.
+│   ├── LibraryScreen.tsx
+│   ├── DiscoverScreen.tsx   # also holds Category + Book detail views
+│   ├── ListenHomeScreen.tsx / ListenNowPlayingScreen.tsx / ListenScreen.tsx
+│   ├── YouScreen.tsx / AccountScreen.tsx / SettingsScreen.tsx / YouDrillScreens.tsx
+│   ├── ReaderScreen.tsx / PdfReaderScreen.tsx / EpubFullReaderScreen.tsx
+│   └── ...
 ├── components/          # Reusable components
 │   ├── Button.tsx       # Canonical button — use, don't reinvent
 │   ├── Input.tsx
@@ -100,20 +102,20 @@ docs/
 - **Hooks**: camelCase prefixed with `use`. `useBookProgress.ts`, `useAudio.ts`.
 - **Utils**: camelCase verbs. `formatReadingTime.ts`, `parseEpub.ts`.
 - **Types**: PascalCase, suffixed appropriately. `Book`, `BookCardProps`, `UseAudioReturn`.
-- **Files in app/**: Follow Expo Router conventions (e.g., `[id].tsx` for dynamic routes).
+- **Screens**: PascalCase, suffixed `Screen` or `Sheet`. `LibraryScreen.tsx`, `BuyCreditsSheet.tsx`.
 
 ### Imports
 
 - Use `~/` as the root alias mapped to `src/`. Configured via `paths` in `tsconfig.json`; Metro picks them up at runtime via the `experiments.tsconfigPaths` flag in `app.json` (no `babel-plugin-module-resolver` needed).
 - Order: React → external libraries → `~/` internal → relative `./`.
 - Always use named imports for components and types.
-- Lucide icons: import individual icons, never `import * as Lucide`.
+- Icons: always `import { Icon } from '~/components'` and pass a name. Never import from `@tabler/icons-react-native` in a screen.
 
 ### Styling rules
 
-- Use NativeWind utility classes for everything possible.
-- Tokens come from `~/design/tokens.ts` — never hardcode hex colors or pixel values.
-- For complex styles or animations, use StyleSheet.create — but tokens still come from `tokens.ts`.
+- `StyleSheet.create` for everything, with every value from `~/design/tokens.ts`. Never hardcode a hex or a raw spacing number.
+- Reach for the semantic names first (`textColors.muted`, `bgColors.canvas`, `space.lg`, `textStyles['body-md']`), then the raw scales (`colors.ink[500]`, `spacing[4]`).
+- Translucent values live in `tokens.overlay`; shadows in `tokens.elevation[1-4]` (spread them: `...tokens.elevation[2]`).
 - Cream-50 (`#FAF7F2`) is the default background. NOT pure white.
 
 ---
@@ -142,9 +144,9 @@ These come from explicit decisions in the design system. Violating any creates i
 4. **Disabled rows must explain why** in a sub-label. Never just dim something without context.
 5. **Destructive actions always trigger a confirmation bottom sheet**, never fire on tap.
 6. **Tap target is the entire row**, not just the label. Especially for toggle rows.
-7. **Icons always use `strokeWidth={1.5}`**, not Lucide's default 2. Use the `<Icon />` wrapper, never raw Lucide imports.
+7. **Never pass `strokeWidth` to `<Icon />`.** The wrapper applies `tokens.iconStrokeWidth` (**1.0**) for you. The sole exception is `strokeWidth={0}` on Tabler's `*Filled` glyphs, which paint from `fill`. (Was 1.5 with 79 of 144 call sites overriding it; settled at 1.0 and the overrides removed.)
 8. **No more than one primary button per surface.** Two primaries = no primary.
-9. **Loading state on buttons uses a spinner** (16px, 1.5px stroke, 700ms rotate). Never replace label with "Loading...".
+9. **Loading state on buttons uses `<Spinner />`** (16px, 1.5px stroke, 700ms rotate — `tokens.button.spinner`). Never `ActivityIndicator`, never replace the label with "Loading…".
 10. **Background defaults to cream-50** (`#FAF7F2`). Pure white is wrong.
 
 ---
