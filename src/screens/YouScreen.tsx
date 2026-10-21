@@ -54,6 +54,7 @@ import {
   BottomSheet,
   type BottomSheetRef,
   Button,
+  ConfirmSheetBody,
   Icon,
   ListRow,
   TabBar,
@@ -837,36 +838,15 @@ function SignOutSheetBody({
   loading: boolean;
 }) {
   return (
-    <View>
-      <View style={styles.sheetIconWrap}>
-        <Icon name="Logout" size={22} color={tokens.colors.error} />
-      </View>
-      <Text variant="display-sm" style={styles.sheetTitle}>
-        Sign out?
-      </Text>
-      <Text variant="body-sm" color="muted" style={styles.sheetBody}>
-        You'll need to sign back in to access your library and reading
-        progress. Your data stays safe.
-      </Text>
-      <View style={styles.sheetActions}>
-        <Button
-          label="Sign out"
-          variant="destructive"
-          size="large"
-          fullWidth
-          loading={loading}
-          onPress={onConfirm}
-        />
-        <Button
-          label="Cancel"
-          variant="tertiary"
-          size="standard"
-          fullWidth
-          disabled={loading}
-          onPress={onCancel}
-        />
-      </View>
-    </View>
+    <ConfirmSheetBody
+      icon="Logout"
+      title="Sign out?"
+      body="You'll need to sign back in to access your library and reading progress. Your data stays safe."
+      confirmLabel="Sign out"
+      loading={loading}
+      onConfirm={onConfirm}
+      onCancel={onCancel}
+    />
   );
 }
 
@@ -1227,22 +1207,4 @@ const styles = StyleSheet.create({
   },
 
   // Sign-out sheet body
-  sheetIconWrap: {
-    width: 48,
-    height: 48,
-    borderRadius: tokens.radii['2xl'],
-    backgroundColor: tokens.bgColors.errorMuted,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: tokens.space.md,
-  },
-  sheetTitle: {
-    marginBottom: tokens.space.xs,
-  },
-  sheetBody: {
-    marginBottom: tokens.space.xl,
-  },
-  sheetActions: {
-    gap: tokens.space.sm,
-  },
 });

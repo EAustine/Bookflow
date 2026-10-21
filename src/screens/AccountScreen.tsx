@@ -18,6 +18,7 @@ import {
   BottomSheet,
   type BottomSheetRef,
   Button,
+  ConfirmSheetBody,
   Icon,
   SubHeader,
   Text,
@@ -1224,36 +1225,15 @@ function SignOutBody({
   onCancel: () => void;
 }) {
   return (
-    <View>
-      <View style={styles.sheetIconWrap}>
-        <Icon name="Logout" size={22} color={tokens.colors.error} />
-      </View>
-      <Text variant="display-sm" style={styles.sheetTitle}>
-        Sign out?
-      </Text>
-      <Text variant="body-sm" color="muted" style={styles.sheetBody}>
-        You'll need to sign back in to access your library and reading progress. Your data stays
-        safe.
-      </Text>
-      <View style={styles.sheetActions}>
-        <Button
-          label="Sign out"
-          variant="destructive"
-          size="large"
-          fullWidth
-          loading={loading}
-          onPress={onConfirm}
-        />
-        <Button
-          label="Cancel"
-          variant="tertiary"
-          size="standard"
-          fullWidth
-          disabled={loading}
-          onPress={onCancel}
-        />
-      </View>
-    </View>
+    <ConfirmSheetBody
+      icon="Logout"
+      title="Sign out?"
+      body="You'll need to sign back in to access your library and reading progress. Your data stays safe."
+      confirmLabel="Sign out"
+      loading={loading}
+      onConfirm={onConfirm}
+      onCancel={onCancel}
+    />
   );
 }
 
@@ -1277,36 +1257,15 @@ function DeleteAccountBody({
   onCancel: () => void;
 }) {
   return (
-    <View>
-      <View style={[styles.sheetIconWrap, { backgroundColor: tokens.colors.errorBg }]}>
-        <Icon name="Trash" size={22} color={tokens.colors.error} />
-      </View>
-      <Text variant="display-sm" style={styles.sheetTitle}>
-        Delete account?
-      </Text>
-      <Text variant="body-sm" color="muted" style={styles.sheetBody}>
-        This permanently removes your account, every book you{`’`}ve uploaded, your reading
-        progress, your highlights, and any AI conversations. It can{`’`}t be undone.
-      </Text>
-      <View style={styles.sheetActions}>
-        <Button
-          label="Delete my account"
-          variant="destructive"
-          size="large"
-          fullWidth
-          loading={loading}
-          onPress={onConfirm}
-        />
-        <Button
-          label="Cancel"
-          variant="tertiary"
-          size="standard"
-          fullWidth
-          disabled={loading}
-          onPress={onCancel}
-        />
-      </View>
-    </View>
+    <ConfirmSheetBody
+      icon="Trash"
+      title="Delete account?"
+      body={`This permanently removes your account, every book you’ve uploaded, your reading progress, your highlights, and any AI conversations. It can’t be undone.`}
+      confirmLabel="Delete my account"
+      loading={loading}
+      onConfirm={onConfirm}
+      onCancel={onCancel}
+    />
   );
 }
 
@@ -1679,24 +1638,6 @@ const styles = StyleSheet.create({
   },
 
   // Sign-out sheet
-  sheetIconWrap: {
-    width: 48,
-    height: 48,
-    borderRadius: tokens.radii['2xl'],
-    backgroundColor: tokens.bgColors.errorMuted,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: tokens.space.md,
-  },
-  sheetTitle: {
-    marginBottom: tokens.space.xs,
-  },
-  sheetBody: {
-    marginBottom: tokens.space.xl,
-  },
-  sheetActions: {
-    gap: tokens.space.sm,
-  },
 
   // Edit profile sub-screen — uses its own content container so we
   // can apply horizontal padding once at the wrapper level. The
