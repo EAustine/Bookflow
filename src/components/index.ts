@@ -41,6 +41,8 @@ export type { ChapterSheetProps } from './ChapterSheet';
 export { Skeleton } from './Skeleton';
 export type { SkeletonProps } from './Skeleton';
 
+export { SoftWarningBanner } from './SoftWarningBanner';
+export type { SoftWarningBannerProps } from './SoftWarningBanner';
 export { ModeTogglePill } from './ModeTogglePill';
 export type { ModeTogglePillProps, ReaderMode } from './ModeTogglePill';
 

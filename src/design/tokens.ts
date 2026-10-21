@@ -533,6 +533,11 @@ export const overlay = {
       85: 'rgba(255,255,255,0.85)',
     },
   },
+  /** On a light (cream) surface. */
+  onLight: {
+    /** The faint circular scrim behind a small dismiss glyph. */
+    scrim: 'rgba(0,0,0,0.06)',
+  },
   /** forest-800 at low alpha — the input focus ring (3px, outset). */
   focusRing: 'rgba(27,67,50,0.25)',
   /** Amber at low alpha — the "Active" subscription badge. */

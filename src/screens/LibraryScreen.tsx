@@ -26,6 +26,7 @@ import {
   type BottomSheetRef,
   Button,
   Icon,
+  SoftWarningBanner,
   TabBar,
   type TabKey,
   Text,
@@ -37,7 +38,6 @@ import { formatNetworkError } from '~/lib/networkErrors';
 import { supabase } from '~/lib/supabase';
 import type { Book } from '~/types/book';
 import { ReaderScreen } from '~/screens/ReaderScreen';
-import { SoftWarningBanner } from '~/screens/PaywallScreen';
 import {
   AddBookSheet,
   ProcessingScreen,
