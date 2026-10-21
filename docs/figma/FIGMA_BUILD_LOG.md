@@ -1145,6 +1145,7 @@ Answered items are **not** kept here; they live in §"Open questions F-1 … F-1
 
 | ID | Question | Blocks |
 |---|---|---|
+| **F-38** | The EPUB WebView renders fallback fonts, not the brand faces — both Fraunces and Literata resolve to Georgia. Measured, not assumed. | architecture discussion |
 | **F-17** | `Button.tsx` and `ListRow.tsx` pair `fontWeight: '500'` with `fonts.ui` (Geist **Regular**), so their labels render Regular while Figma shows Medium. | Phase B |
 | **F-18** | `ModeTogglePill`'s `variant="dark"` is passed by no caller, and its code comment describing the PDF header as black-translucent is stale. | Phase B |
 | **F-19** | Figma `Stat card` exposes Value/Label only; code's `StatCard` also has `unit` and `delta`. Extend the component? | Phase 4 |
@@ -1276,3 +1277,52 @@ Text styles 19 → **23**. Every placeholder marking cleared: 4 callout texts re
 #### Weight change — where to look on device
 
 Every Fraunces surface in the app gets one step heavier (500 → 600). The largest type carries it most visibly, so check these first: the **Welcome headline**, the **Library / Discover / Listen / You tab titles** (all 28px), the **book detail title** (22px), **sheet titles** (17–20px), and the **reader chapter title** (20px). The small cover captions (6–9px) are where a heavier face is most likely to look muddy rather than crisper.
+
+---
+
+### F-38 — the EPUB WebView renders fallback fonts, not the brand faces
+
+Measured on the iPhone 17 Pro simulator with a temporary probe injected into
+`EpubFullReaderScreen`'s existing scroll bridge (installed, read, reverted —
+`git status` clean afterwards). Canvas text-width of `"Handgloves MWmw"` at 40px:
+
+| Stack measured | Width | Reading |
+|---|---|---|
+| `serif` (generic) | 334.39 | baseline |
+| `Georgia` | **359.71** | resolves — a real, distinct face |
+| `'Literata', serif` | 334.39 | **identical to generic** → did not resolve |
+| `'Fraunces', serif` | 334.39 | **identical to generic** → did not resolve |
+| `'NoSuchFontXYZ', serif` | 334.39 | control — same as both brand faces |
+
+The control is what makes this conclusive: a deliberately nonexistent family
+measures exactly what Literata and Fraunces measure.
+
+`document.fonts.check('17px Literata')` returned **true** for both, which is a
+false positive — the API answers "available or loadable", not "will render".
+The width measurement with a control is the reliable signal.
+
+**What the reader actually shows.** The injected CSS stacks are
+`'Literata', 'Georgia', 'Times New Roman', serif` for body and
+`'Fraunces', 'Georgia', serif` for headings. Neither brand face resolves, so
+both fall through to **Georgia** — the same face for both. Full-mode EPUB
+therefore has no typographic distinction between its display serif and its
+reading serif; the two collapse into one, separated only by size and weight.
+
+**Cause.** There is no `@font-face` anywhere in the document, and the app's
+fonts are registered at runtime by `expo-font` into the RN process. WKWebView
+runs its content in a separate process and does not inherit them. The code
+comment at `buildDocument` already half-knew this — *"font-family falls back
+through serifs the device is likely to have"*.
+
+**Android is likely worse and is not yet measured.** Georgia is not a standard
+Android system font, so the stack probably falls to Noto Serif or Droid Serif
+there. The same probe will run on the emulator.
+
+**Deferred to the architecture discussion**, per decision. The fix is to serve
+the two faces to the WebView as base64 `@font-face` rules or from a local
+asset server — which is a loading-strategy decision, not a UI cleanup.
+
+**Figma:** `Reader / Full / EPUB` (`157:382`) stays as the *intended* design and
+is marked as **not matching the app pending F-38**, rather than being redrawn in
+Georgia to copy the shortfall. Per the verification rule — do not change Figma
+to match a bug.
