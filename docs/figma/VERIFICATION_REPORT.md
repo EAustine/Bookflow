@@ -27,7 +27,7 @@ left for the user) · Could not reach.
 
 | # | Frame | Node | Platform | Status | Note |
 |---|---|---|---|---|---|
-| 1 | `Auth / Splash / Default` | `146:2` | Android | **Code bug** | Native splash ships the **retired** logomark — see F-41. Figma also draws a Lockup (outlined wordmark vectors) where the app draws a logomark SVG plus a live 36px `<Text>` |
+| 1 | `Auth / Splash / Default` | `146:2` | Android | **Fixed (code)** | Native splash shipped the **retired** logomark — F-41, asset regenerated in `d675836`. Figma also draws a Lockup (outlined wordmark vectors) where the app draws a logomark SVG plus a live 36px `<Text>` |
 | 2 | `Auth / Welcome / Default` | `146:32` | Android | **Match** | Lockup, illustration, headline with italic emphasis, sub-copy, CTA, sign-in link and legal line all present and correctly ordered. Wrap differs (411 vs 393) |
 | 3 | `Auth / Sign up / Form` | `146:121` | Android | **Fixed** | Three Figma defects — see below |
 | 4 | `Auth / Sign in / Form` | `146:187` | Android | **Fixed** | Four Figma defects — see below |

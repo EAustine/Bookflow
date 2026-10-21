@@ -1145,7 +1145,7 @@ Answered items are **not** kept here; they live in §"Open questions F-1 … F-1
 
 | ID | Question | Blocks |
 |---|---|---|
-| **F-41** | `assets/splash-icon.png` — the native splash on both platforms — is still the **retired** logomark. F-8 fixed the three code copies and missed the asset. | Phase D |
+| ~~**F-41**~~ | ~~Native splash ships the retired logomark~~ — **FIXED.** Asset regenerated from the canonical path data; ink ratio 0.895 → **0.659** against a canonical 0.661, and sized/placed so the handoff to the JS splash no longer jumps. | ✅ done |
 | **F-40** | `List row` models Trailing as one choice, so a row can show a hint OR a chevron. The app shows both on every Settings drill-in. | Phase D |
 | **F-39** | Discover home shows "Couldn't reach the catalog" while other sources returned 748 books. Observed on device. | Phase D |
 | **F-38** | The EPUB WebView renders fallback fonts, not the brand faces — both Fraunces and Literata resolve to Georgia. Measured, not assumed. | architecture discussion |
@@ -1541,10 +1541,34 @@ forest-800 at 0.45 opacity, and there is no wordmark.
 splash). The logo visibly changes shape during the handoff, which is the exact
 failure the native splash is supposed to prevent.
 
-Left for the user: regenerating the asset means exporting the canonical mark at
-1024×1024 from `src/components/Logomark.tsx`, which is an art-asset change
-rather than a code fix, and the same asset feeds the Android adaptive icon
-pipeline.
+**Fixed** (`d675836`). Rasterised from the canonical path data in
+`src/components/Logomark.tsx`. With no SVG renderer on the machine the stroke is
+drawn as a **distance field** — per-pixel distance to the curve's centre line,
+thresholded at the stroke half-width — which gives exact round caps and joins,
+because that is what `stroke-linecap="round"` means, plus analytic antialiasing
+from the distance itself (226 distinct alpha values, transparent background
+preserved).
+
+| | ink ratio |
+|---|---|
+| Before | 0.895 |
+| **After** | **0.659** |
+| Canonical | 0.661 |
+
+Two choices beyond the geometry, to make the handoff seamless rather than merely
+correctly-shaped:
+
+- **Size.** 245px in the 1024 canvas, so `resizeMode: contain` renders it at
+  ~96dp — what the JS splash draws. The old asset was 438px → ~176dp, then
+  jumped to 96.
+- **Position.** 92px above canvas centre. The JS splash centres a
+  logomark+wordmark stack, putting the logomark 36dp above screen centre; this
+  lands in the same place. The old asset sat 58px *below* centre.
+
+`/ios` and `/android` are gitignored and regenerate from this file, so the
+committed fix is the asset alone. `npx expo prebuild` confirmed the pipeline
+picks it up: the generated Android drawables went from ratio 0.895 to
+**0.660–0.667** across the density buckets.
 
 **Figma note:** `Auth / Splash / Default` (`146:2`) draws the wordmark as a
 **Lockup instance** — outlined vector paths at 196×52. The app draws a 96pt
