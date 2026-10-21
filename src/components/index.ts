@@ -47,6 +47,8 @@ export { ModeTogglePill } from './ModeTogglePill';
 export type { ModeTogglePillProps, ReaderMode } from './ModeTogglePill';
 
 export { EqBars } from './EqBars';
+export { RecentListenRow } from './RecentListenRow';
+export type { RecentListenRowProps, RecentListenRowSize } from './RecentListenRow';
 
 export { ReminderTimePicker } from './ReminderTimePicker';
 export type { ReminderTimePickerProps } from './ReminderTimePicker';

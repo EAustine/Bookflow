@@ -32,7 +32,7 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { EqBars, Icon, Text } from '~/components';
+import { EqBars, Icon, RecentListenRow, Text } from '~/components';
 import { tokens } from '~/design/tokens';
 import { peekCachedCoverUrl, resolveCoverUrl } from '~/lib/bookCovers';
 import type { Speed } from '~/screens/PlaybackSpeedSheet';
@@ -330,76 +330,24 @@ export function ListenNowPlayingScreen({
             const isActive = track.id === activeRecentId;
             const isLast = i === recentlyListened.length - 1;
             return (
-              <Pressable
+              <RecentListenRow
                 key={track.id}
+                size="compact"
+                title={track.bookTitle}
+                meta={track.meta}
+                initials={track.initials}
+                coverStoragePath={track.coverStoragePath ?? null}
+                coverColor={
+                  isActive
+                    ? tokens.colors.forest[800]
+                    : (track.coverColor ?? tokens.colors.amber[500])
+                }
+                isActive={isActive}
+                isPlaying={isActive && !paused}
+                showDivider={!isLast}
+                dimCover={paused && isActive}
                 onPress={() => onOpenRecent(track.id)}
-                style={[
-                  styles.recentRow,
-                  isActive && { backgroundColor: tokens.colors.forest[50] },
-                  !isLast && styles.recentRowDivider,
-                ]}
-                accessibilityRole="button"
-              >
-                <RecentCover
-                  storagePath={track.coverStoragePath ?? null}
-                  fallbackColor={
-                    isActive
-                      ? tokens.colors.forest[800]
-                      : (track.coverColor ?? tokens.colors.amber[500])
-                  }
-                  initials={track.initials}
-                  dimmed={paused && isActive}
-                />
-                <View style={styles.recentInfo}>
-                  <Text
-                    style={[
-                      styles.recentTitle,
-                      isActive && { color: tokens.colors.forest[800] },
-                    ]}
-                    numberOfLines={1}
-                  >
-                    {track.bookTitle}
-                  </Text>
-                  <Text
-                    style={[
-                      styles.recentMeta,
-                      isActive && { color: tokens.colors.forest[700] },
-                    ]}
-                    numberOfLines={1}
-                  >
-                    {track.meta}
-                  </Text>
-                </View>
-
-                {/* Right-side affordance — always inside the same
-                    circular tile so the three icon states (play /
-                    paused / playing) line up vertically with each
-                    other across rows. Before, paused + playing used
-                    a free-floating pair of bars or an equaliser
-                    which sat at a different baseline than the
-                    play-button circles in the inactive rows. */}
-                <View style={styles.recentAction}>
-                  {isActive ? (
-                    paused ? (
-                      <Icon
-                        name="Pause"
-                        size={12}
-                        color={tokens.colors.forest[800]}
-                        strokeWidth={0}
-                      />
-                    ) : (
-                      <EqBars />
-                    )
-                  ) : (
-                    <Icon
-                      name="Play"
-                      size={12}
-                      color={tokens.textColors.secondary}
-                      strokeWidth={0}
-                    />
-                  )}
-                </View>
-              </Pressable>
+              />
             );
           })}
         </View>
@@ -452,64 +400,6 @@ export function ListenNowPlayingScreen({
  * peek first so warm caches paint immediately without an Image
  * flash, async fetch second.
  */
-function RecentCover({
-  storagePath,
-  fallbackColor,
-  initials,
-  dimmed,
-}: {
-  storagePath: string | null;
-  fallbackColor: string;
-  initials: string;
-  dimmed?: boolean;
-}) {
-  const initial = storagePath ? peekCachedCoverUrl(storagePath) : null;
-  const [url, setUrl] = useState<string | null>(initial);
-  const [failed, setFailed] = useState(false);
-
-  useEffect(() => {
-    if (!storagePath) {
-      setUrl(null);
-      return;
-    }
-    if (url) return; // already resolved synchronously or by a prior pass
-    let cancelled = false;
-    void resolveCoverUrl(storagePath)
-      .then((resolved) => {
-        if (!cancelled) setUrl(resolved);
-      })
-      .catch((err) => {
-        // Silent on offline — colored placeholder is a graceful
-        // fallback. Metro-only log for debugging.
-        if (!cancelled) console.warn('[ListenRecent] cover resolve failed:', err);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [storagePath, url]);
-
-  const showImage = !!url && !failed;
-  return (
-    <View
-      style={[
-        styles.recentCover,
-        { backgroundColor: fallbackColor },
-        dimmed && { opacity: 0.6 },
-      ]}
-    >
-      {showImage ? (
-        <Image
-          source={{ uri: url! }}
-          style={StyleSheet.absoluteFill}
-          resizeMode="cover"
-          onError={() => setFailed(true)}
-        />
-      ) : (
-        <Text style={styles.recentCoverText}>{initials}</Text>
-      )}
-    </View>
-  );
-}
 
 /**
  * Draggable scrub bar. Two display modes:
@@ -992,49 +882,6 @@ const styles = StyleSheet.create({
     borderWidth: 0.5,
     borderColor: tokens.borderColors.subtle,
     backgroundColor: tokens.bgColors.canvas,
-  },
-  recentRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 11,
-  },
-  recentRowDivider: {
-    borderBottomWidth: 0.5,
-    borderBottomColor: tokens.borderColors.subtle,
-  },
-  recentCover: {
-    width: 38,
-    height: 38,
-    borderRadius: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  recentCoverText: {
-    fontFamily: tokens.fonts.uiMedium,
-    fontSize: 12,
-    fontWeight: '500',
-    color: tokens.colors.cream[50],
-  },
-  recentInfo: { flex: 1, minWidth: 0 },
-  recentTitle: {
-    fontFamily: tokens.fonts.display,
-    fontSize: 13,
-    color: tokens.textColors.primary,
-  },
-  recentMeta: {
-    fontFamily: tokens.fonts.ui,
-    fontSize: 10,
-    color: tokens.textColors.muted,
-  },
-  recentAction: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: tokens.bgColors.surface,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
 
   // EQ-bar styles moved into the shared `~/components/EqBars` component.

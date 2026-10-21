@@ -14,21 +14,18 @@
  * proxy for "recently listened" until we wire a dedicated query.
  */
 
-import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
-  Image,
   Pressable,
   StyleSheet,
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { EqBars, Icon, Text } from '~/components';
+import { Icon, RecentListenRow, Text } from '~/components';
 import { tokens } from '~/design/tokens';
 import { useBooks } from '~/hooks/useBooks';
 import { useAudioSession } from '~/lib/audioSession';
-import { peekCachedCoverUrl, resolveCoverUrl } from '~/lib/bookCovers';
 import { useBackHandler } from '~/lib/useBackHandler';
 import type { Book } from '~/types/book';
 
@@ -114,8 +111,13 @@ export function ListenHistoryScreen({
           renderItem={({ item }) => {
             const isActive = item.id === activeBookId;
             return (
-              <Row
-                book={item}
+              <RecentListenRow
+                size="regular"
+                title={item.title}
+                meta={formatMeta(item)}
+                initials={(item.title || '??').slice(0, 2).toUpperCase()}
+                coverStoragePath={item.coverStoragePath ?? null}
+                coverColor={item.coverColor ?? tokens.colors.amber[500]}
                 isActive={isActive}
                 // Only the active row tracks playback state. For
                 // every other row the play button is just a play
@@ -131,123 +133,6 @@ export function ListenHistoryScreen({
   );
 }
 
-function Row({
-  book,
-  isActive,
-  isPlaying,
-  onPress,
-}: {
-  book: Book;
-  isActive: boolean;
-  /** True only when this is the active row AND audio is currently
-   *  playing. Drives the choice of trailing indicator (animated EQ
-   *  bars vs. pause icon vs. play icon). */
-  isPlaying: boolean;
-  onPress: () => void;
-}) {
-  const meta = formatMeta(book);
-  const initials = (book.title || '??').slice(0, 2).toUpperCase();
-
-  // Cover image. Loads via the shared bookCovers cache so a cover
-  // already seen on Library / Now Playing paints instantly here.
-  // Falls back to the colored initials chip when there's no cover
-  // path or the signed URL fetch returns null.
-  const coverPath = book.coverStoragePath ?? null;
-  const [coverUrl, setCoverUrl] = useState<string | null>(() =>
-    coverPath ? peekCachedCoverUrl(coverPath) : null,
-  );
-  useEffect(() => {
-    if (!coverPath) {
-      setCoverUrl(null);
-      return;
-    }
-    let cancelled = false;
-    void resolveCoverUrl(coverPath).then((url) => {
-      if (!cancelled) setCoverUrl(url);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [coverPath]);
-
-  return (
-    <Pressable
-      onPress={onPress}
-      style={({ pressed }) => [
-        styles.row,
-        isActive && styles.rowActive,
-        pressed && { backgroundColor: tokens.bgColors.raised },
-      ]}
-      accessibilityRole="button"
-    >
-      <View
-        style={[
-          styles.cover,
-          {
-            // The colored fill shows through any margin around the
-            // image, and is the full cover when no image is loaded.
-            backgroundColor: book.coverColor ?? tokens.colors.amber[500],
-          },
-        ]}
-      >
-        {coverUrl ? (
-          <Image
-            source={{ uri: coverUrl }}
-            style={styles.coverImage}
-            resizeMode="cover"
-          />
-        ) : (
-          <Text style={styles.coverText}>{initials}</Text>
-        )}
-      </View>
-      <View style={styles.info}>
-        <Text
-          numberOfLines={1}
-          style={[styles.title, isActive && { color: tokens.colors.forest[800] }]}
-        >
-          {book.title}
-        </Text>
-        <Text
-          numberOfLines={1}
-          style={[styles.meta, isActive && { color: tokens.colors.forest[700] }]}
-        >
-          {meta}
-        </Text>
-      </View>
-      {/* Trailing indicator. Three states, all in the same 32×32
-       *  circle so they line up vertically with the play buttons on
-       *  inactive rows — no horizontal drift between active/inactive.
-       *    1. active + playing  → animated EQ bars (audio is audible)
-       *    2. active + paused   → Pause icon (this is the session,
-       *                            tap to resume via the now-playing
-       *                            card)
-       *    3. inactive          → Play icon (start a new session) */}
-      <View style={[styles.trailing, isActive && styles.trailingActive]}>
-        {isActive && isPlaying ? (
-          <EqBars
-            playing
-            height={14}
-            color={tokens.colors.forest[800]}
-          />
-        ) : isActive ? (
-          <Icon
-            name="Pause"
-            size={12}
-            color={tokens.colors.forest[800]}
-            strokeWidth={0}
-          />
-        ) : (
-          <Icon
-            name="Play"
-            size={12}
-            color={tokens.textColors.secondary}
-            strokeWidth={0}
-          />
-        )}
-      </View>
-    </Pressable>
-  );
-}
 
 function formatMeta(book: Book): string {
   if (book.progressPercent === 100) return 'Finished';
@@ -320,64 +205,9 @@ const styles = StyleSheet.create({
     backgroundColor: tokens.borderColors.subtle,
     marginLeft: 18 + 44 + 12,
   },
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    paddingHorizontal: 18,
-    paddingVertical: 10,
-  },
-  rowActive: {
-    backgroundColor: tokens.colors.forest[50],
-  },
-  cover: {
-    width: 44,
-    height: 44,
-    borderRadius: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-    overflow: 'hidden',
-  },
-  coverImage: {
-    width: 44,
-    height: 44,
-  },
-  coverText: {
-    fontFamily: tokens.fonts.uiMedium,
-    fontSize: 12,
-    fontWeight: '500',
-    color: tokens.colors.cream[50],
-    letterSpacing: 0.04,
-  },
-  info: {
-    flex: 1,
-    minWidth: 0,
-  },
-  title: {
-    fontFamily: tokens.fonts.display,
-    fontSize: 14,
-    color: tokens.textColors.primary,
-  },
-  meta: {
-    fontFamily: tokens.fonts.ui,
-    fontSize: 11,
-    color: tokens.textColors.muted,
-    marginTop: 2,
-  },
 
   // One trailing chip used for all three states (playing / paused /
   // not-started). 32×32 circle matches the size and positioning of
   // the play button on inactive rows so the column doesn't jog
   // when you scroll past the active book.
-  trailing: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: tokens.bgColors.surface,
-  },
-  trailingActive: {
-    backgroundColor: tokens.colors.forest[50],
-  },
 });
