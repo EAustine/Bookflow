@@ -1145,6 +1145,7 @@ Answered items are **not** kept here; they live in §"Open questions F-1 … F-1
 
 | ID | Question | Blocks |
 |---|---|---|
+| **F-42** | Every shipped brand asset — app icon, Android launcher icon, favicon, notification icon — is still the **retired** logomark (0.893–0.906 against a canonical 0.661). F-8 never reached them. | needs your call |
 | ~~**F-41**~~ | ~~Native splash ships the retired logomark~~ — **FIXED.** Asset regenerated from the canonical path data; ink ratio 0.895 → **0.659** against a canonical 0.661, and sized/placed so the handoff to the JS splash no longer jumps. | ✅ done |
 | **F-40** | `List row` models Trailing as one choice, so a row can show a hint OR a chevron. The app shows both on every Settings drill-in. | Phase D |
 | **F-39** | Discover home shows "Couldn't reach the catalog" while other sources returned 748 books. Observed on device. | Phase D |
@@ -1565,7 +1566,42 @@ correctly-shaped:
   logomark+wordmark stack, putting the logomark 36dp above screen centre; this
   lands in the same place. The old asset sat 58px *below* centre.
 
-`/ios` and `/android` are gitignored and regenerate from this file, so the
+**⚠ Fixing the splash asset does not change what Android users see.** Verified
+on the emulator after a clean uninstall, reinstall and Metro cache clear: the
+splash still renders the retired mark at ratio 0.895.
+
+The reason is in `android/app/src/main/res/values/styles.xml` —
+`Theme.App.SplashScreen` sets only `windowBackground` and no
+`windowSplashScreenAnimatedIcon`, so **Android 12+ falls back to the launcher
+icon**. The canonical `splashscreen_logo.png` drawables are in the APK and
+unused. Confirmed by elimination: the installed APK contains **zero** images
+with the retired ratio, yet the screen shows one — and the launcher icon's
+ratio (0.894) matches the on-screen mark (0.895) exactly.
+
+### F-42 — every brand asset still carries the retired logomark
+
+Measured from each asset's own ink bounding box:
+
+| Asset | Used for | ink ratio |
+|---|---|---|
+| `assets/icon.png` | iOS app icon, App Store | **0.893** |
+| `assets/adaptive-icon.png` | Android launcher **and the Android 12+ splash** | **0.894** |
+| `assets/favicon.png` | web | **0.906** |
+| `assets/notification-icon.png` | notification small icon | **0.906** |
+| `assets/splash-icon.png` | native splash (iOS; unused on Android 12+) | 0.659 ✅ fixed |
+| Canonical `Logomark` | — | **0.661** |
+
+F-8 corrected the mark in code. It never reached a single shipped brand asset.
+The icon on both stores, the launcher icon, the favicon and the notification
+icon are all the retired shape.
+
+**Not fixed, and deliberately so.** These are not a geometry swap like the splash
+was. `icon.png` and `favicon.png` are full-bleed on a forest-800 field with the
+mark knocked out in a lighter tone; `adaptive-icon.png` has Android's safe-zone
+rules, where the outer ~33% can be masked away by the launcher. Regenerating
+them is a brand decision about composition and padding, not a trace of a path.
+
+`/ios` and `/android` are gitignored and regenerate from these files, so the
 committed fix is the asset alone. `npx expo prebuild` confirmed the pipeline
 picks it up: the generated Android drawables went from ratio 0.895 to
 **0.660–0.667** across the density buckets.
