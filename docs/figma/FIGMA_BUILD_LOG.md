@@ -1498,7 +1498,12 @@ A regression caught on device and fixed in the same phase: `ListRow` clamps sub-
 
 ### Still outstanding in Phase C
 
-1. **No `Sheet / Sign out` organism.** The brief asked Figma to keep one; there is none — the sign-out sheet is drawn directly on the You & Settings page, and so is delete-account. Code now has one `ConfirmSheetBody` behind both, so the organism is worth building, but it is new construction rather than reconciliation and was not done.
+1. ~~**No `Sheet / Sign out` organism.**~~ **Built** as `Sheet / Confirm`
+   (`273:2`), named for what the code component actually is —
+   `ConfirmSheetBody` backs sign-out *and* delete-account, so naming it
+   "Sign out" would have described one of its two uses. Both screen sheets are
+   instances of it now. See the section at the end of this log.
+
 2. **F-28 has no prototype link**, deliberately. Scroll-to-top is not a navigation; it is recorded on the Category chip's description instead.
 3. **Pages were not re-screenshotted wholesale.** `You / Settings` and the new Book detail remove frame were checked; the rest of You & Settings was verified structurally (0 orphans, 0 detached) but not visually.
 
@@ -1659,3 +1664,35 @@ picks it up: the generated Android drawables went from ratio 0.895 to
 logomark SVG and a live 36px `<Text>` wordmark, 32pt apart. Different
 construction and different proportions; not reconciled, because which one is
 *intended* is a design decision.
+
+---
+
+### `Sheet / Confirm` — the confirmation organism (`273:2`)
+
+The brief asked Figma to keep one `Sheet / Sign out` organism. There was none:
+both the sign-out and delete-account sheets were drawn by hand on the You &
+Settings page. Built now from `src/components/ConfirmSheetBody.tsx`, and named
+`Sheet / Confirm` rather than `Sheet / Sign out` because that component backs
+both confirmations — naming it for one would have described half its job.
+
+Properties: `Title`, `Body`, `Icon` (swap). The CTA labels are nested properties
+on the Button instances inside it.
+
+**What the hand-built sheets had wrong.** Rebuilding from code surfaced five
+divergences that had been sitting in the file since Flow 8:
+
+| | Figma had | Code says |
+|---|---|---|
+| Icon tile | *absent entirely* | 48×48, radius 14, bg `error-muted`, glyph 22 in `text/error` |
+| Title | Fraunces 20 | `Display/SM` — Fraunces 22 / 30 |
+| Body | Geist 14 | `Body/SM` — Geist 12 / 18, muted |
+| Body copy | "Your books and progress stay saved…" | "You'll need to sign back in to access your library and reading progress. Your data stays safe." |
+| Buttons | both 48 high, radius 10, label 15 — matching no canonical size | Button **Destructive/Large** (52/10/16) over **Tertiary/Standard** (44/8/14) |
+
+All five are corrected by the organism, and both screens inherit them.
+Spacing follows the code exactly: icon → 12, title → 4, body → 24, CTA gap 8.
+
+**Audit after:** 0 orphan instances, 0 components without a description, 0
+descriptions naming deleted code. Counts unchanged except Organisms +1 —
+**52 component sets, 39 non-icon standalone components**, 108 screen frames,
+263 variables, 23 text styles.
