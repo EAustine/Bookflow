@@ -215,7 +215,7 @@ and it is not yet addressed in the doc.
 | # | Risk | Why it is ranked here | Mitigation |
 |---|---|---|---|
 | 1 | **Credit balance migration** | Stored counters → ledger view, on live paying users. Wrong by one row and someone is over-charged or gets free AI | Dual-write, reconcile against real rows, cut over only when a full recompute matches the counter for every user |
-| 2 | **pdf.js on low-end Android** | If it will not hold a 300-page PDF in 2–3 GB RAM, §7 loses a third of its scope and `react-native-pdf` stays — which means the engine is not "one engine" | M0 spike #1. Already the right first question |
+| 2 | **pdf.js on low-end Android** | If it will not hold a 300-page PDF in 2–3 GB RAM, §7 loses a third of its scope and `react-native-pdf` stays — which means the engine is not "one engine". **Compounded**: no physical device, so M0 measures this on hardware that flatters it | M0 spike #1 on a purpose-built 2 GB / 2-core AVD, judged on headroom rather than a marginal pass. Binding confirmation deferred to a cloud device farm before M6 |
 | 3 | **Word-sync parity** | The engine's hardest feature ships today in the one surface the doc does not map, and depends on character-offset stability | Add `ListenScreen` to §7.5. Make offset stability an explicit constraint |
 | 4 | **Entitlement migration** | `profiles.plan` gates every paid feature | Dual-read behind a flag; drop the old columns a release later |
 | 5 | **Expo Router cutover** | `App.tsx` is 1,468 lines of stage machine, tab switching, audio session and global overlays, all at once. No visual change to verify against — the evidence is behaviour | Maestro before the cutover, not after. The prompt already asks for this |
@@ -231,7 +231,7 @@ and it is not yet addressed in the doc.
 - Sentry and PostHog keys (M1).
 - Real top-up prices (F-33).
 - RevenueCat Web Billing status and fees (M0 #3).
-- Whether a physical budget Android phone is available for M0 #1.
+- ~~Whether a physical budget Android phone is available for M0 #1~~ — **no**; emulator only, which makes the pdf.js verdict provisional. See §13.1 of the architecture doc.
 
 ---
 

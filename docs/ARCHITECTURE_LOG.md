@@ -26,6 +26,7 @@ Target: `docs/ARCHITECTURE.md` · Distance to it: `docs/ARCHITECTURE_GAPS.md`
 | 2026-10-22 | **The canonical document preserves `pages.id`** | Austine | Seven tables of live user data reference it — `highlights`, `translations`, `practice_questions`, `summaries`, `reading_sessions`, `audio_cache`, `chunk_embeddings`. One is pgvector. New ids would mean a seven-table remap plus re-embedding every book. Now a constraint in §7.2 |
 | 2026-10-22 | `ARCHITECTURE.md` adopted into the repo as `docs/ARCHITECTURE.md` | — | With two amendments; see commit `bd36983` |
 | 2026-10-22 | **All seven Phase 0 amendments applied** to `ARCHITECTURE.md` | Austine | §7.2 `pages.id`, §7.4 character offsets, §7.5 fourth text surface, §8 clipboard adapter, §9.1 schema size, §9.2 metering already ships, §12/M1 agent-instruction consistency |
+| 2026-10-22 | M0's reader spike runs on an **emulator**, no physical device | Austine | None available. Recorded with its consequence in §13.1: the emulator runs arm64 natively on Apple Silicon, so it over-states CPU performance and cannot throttle. A failure there is conclusive; a pass is not. `react-native-pdf` stays until a real device confirms |
 | 2026-10-22 | **npm workspaces**, not pnpm | Austine | Expo supports both and recommends neither. pnpm's isolated installs are exactly what React Native makes you disable (`nodeLinker: hoisted`), leaving pnpm configured to act like npm with an extra config file, a lockfile migration and a new EAS surface to debug. The repo is already npm |
 | 2026-10-22 | **RevenueCat Billing** is the web engine, not Stripe Billing or Paddle | — | Stripe Billing adds 0.7% of volume on top of the same transaction fee, and Paddle's merchant-of-record service is not worth paying for unsurveyed. Revisit if VAT handling becomes the binding constraint |
 | 2026-10-22 | Marketing site located at `~/bookflow-site`; `contact-notify` moves into `supabase/functions/` with it at M1 | Austine | It is unversioned and shares the app's Supabase project, so consolidating it ends a split-brain link and puts a live edge function under version control for the first time |
@@ -70,7 +71,7 @@ migrations, not ten.
 | 3 | ~~Is pnpm deliberate?~~ — **decided 2026-10-22: npm workspaces**, §4 of the architecture doc | ✅ |
 | 4 | Sentry and PostHog keys | M1 |
 | 5 | App domain for universal links and App Links | M2 |
-| 6 | Is a physical budget Android phone available for the M0 reader spike? | M0 |
+| 6 | ~~Is a physical budget Android phone available?~~ — **no, decided 2026-10-22**: emulator only. See §13.1 — this makes M0's pdf.js verdict provisional, not binding | ✅ |
 | 7 | Should M3's file moves come *before* M2's routing, to avoid two passes over 33,203 lines? | M2 |
 | 8 | ~~RevenueCat Web Billing: GA or beta, and current fees~~ — **confirmed 2026-10-22**, §10.1 of the architecture doc. Neither label is used; fees are 1% RevenueCat + Stripe 2.9%+30¢ | ✅ |
 | 9 | Real top-up prices (F-33, carried over from the Figma round) | M5 |
@@ -83,6 +84,7 @@ migrations, not ten.
 | 11 | ~~Does the canonical document preserve character offsets?~~ — **settled**: §7.4 now requires it. Still needs *proving* in the M0 canonical-document spike | M0 |
 | 12 | `listen_sessions.chapter_id` is a leftover from `0010_chapters_to_pages.sql`. Reconcile or drop while the schema is open | M5 |
 | 13 | **Can Ghanaian customers actually pay?** Web Billing is Stripe-only, card-only, and its purchase links cannot be localised. The persona the web app most helps is the one least served by that checkout. Needs a direct answer from RevenueCat or Stripe | before M8 |
+| 14 | **Real-device confirmation for pdf.js.** M0 runs on an emulator on Apple Silicon, which is faster than a budget phone and cannot throttle. A cloud device farm (Firebase Test Lab has a free tier) would make the verdict binding without buying hardware | before M6 removes `react-native-pdf` |
 
 ---
 

@@ -358,7 +358,7 @@ Each milestone ends with: type check clean, tests green, Android device QA, and 
 
 | # | Milestone | Done when |
 |---|---|---|
-| **M0** | Spikes | Reader engine prototype hits smooth scroll and stable memory on a low-end Android device with a 300-page PDF and an EPUB; app boots on web; RevenueCat Web Billing sandbox purchase grants an entitlement visible on Android; queue choice made |
+| **M0** | Spikes | Reader engine prototype hits stable memory on a RAM-constrained Android emulator with a 300-page PDF and an EPUB (see §13.1 on what that evidence can and cannot settle); app boots on web; RevenueCat Web Billing sandbox purchase grants an entitlement visible on Android; queue choice made |
 | **M1** | Foundation | Monorepo, `packages/tokens` generating the current theme with zero visual change, CI, Sentry, PostHog, test harness, and `CLAUDE.md`/`AGENTS.md` reconciled with this document |
 | **M2** | Routing | Expo Router replaces the stage machine; every current screen reachable by URL; magic-link deep links work on both platforms; no visual change |
 | **M3** | Features and data | Screens moved into `features/*`; TanStack Query for all server state; offline queue for progress and highlights |
@@ -367,6 +367,41 @@ Each milestone ends with: type check clean, tests green, Android device QA, and 
 | **M6** | Reader engine | Engine replaces text, EPUB and PDF modes behind a flag on native, then on web; RN text reader and `react-native-pdf` removed after parity |
 | **M7** | Responsive shells | Medium and Expanded shells, Presenter, master-detail layouts. **Requires tablet and desktop frames in Figma first** |
 | **M8** | Web launch | Web paywall and top-ups, app domain, SEO-safe auth pages, Playwright suite green |
+
+### 13.1 On M0's reader evidence — emulator only
+
+No physical budget Android phone is available (decided 2026-10-22), so the M0
+reader spike runs on an emulator. That is workable, but it changes what the
+spike can conclude, and pretending otherwise would put a `react-native-pdf`
+removal on evidence that does not support it.
+
+The host is Apple Silicon: 14 cores, 36 GB. The emulator runs `arm64-v8a`
+natively on it, so there is no translation penalty — and that is precisely the
+problem. Emulated ARM here is *faster* than a budget phone, not slower.
+
+| Measurable honestly | Not measurable |
+|---|---|
+| Memory ceiling and OOM behaviour, with `hw.ramSize=2048` | **CPU throughput** — the host's cores are far quicker than a budget SoC's efficiency cluster, and pdf.js rasterisation is CPU-bound |
+| Whether the WebView holds a 300-page document at all | **Scroll and compositing smoothness** — host GPU |
+| Correctness, layout, API behaviour | **Thermal throttling** — not simulated at all, and a budget phone throttles within minutes of sustained rendering |
+| Relative comparison between two implementations | **Storage I/O** — host NVMe, not eMMC |
+
+**So M0's pdf.js verdict is necessary, not sufficient.** A failure on the
+emulator is conclusive: it will fail worse on a real phone. A pass proves only
+that it is not hopeless. The spike should therefore:
+
+1. Run against a **purpose-built low-end AVD** — 2 GB RAM, 2 cores — not the
+   existing `bookflow_pixel9` profile (4 GB, 4 cores), which is a flagship.
+2. Require **headroom, not a marginal pass**. A result that only just clears
+   the bar on hardware this favourable is a no-go.
+3. Treat the decision as **provisional**. `react-native-pdf` stays until pdf.js
+   is confirmed on real low-end hardware.
+
+**Before M6 removes `react-native-pdf`**, the real check has to happen on a
+real device. Owning one is not the only route — a cloud device farm (Firebase
+Test Lab, BrowserStack, AWS Device Farm) rents real budget handsets by the
+minute, and Firebase Test Lab has a free tier. That is the cheapest way to turn
+M0's provisional verdict into a binding one.
 
 ## 14. Open items
 
