@@ -255,6 +255,45 @@ below already exist in substance — see the gap analysis.
 - **Linking from the mobile apps to web checkout** is governed by App Store and Play policy and differs by region. The apps do not link out to web checkout until that is reviewed. The web app sells directly.
 - Prices remain store/RevenueCat-managed. The app never hard-codes a price.
 
+### 10.1 Web Billing — confirmed 2026-10-22
+
+**Status.** RevenueCat does not label Web Billing as beta *or* GA. The docs use
+neither word; it ships with a published limitations list. So the M0 question
+"GA or beta" has no answer in those terms — treat it as live with known gaps.
+
+**Fees.** RevenueCat charges **no additional fee** for web; web purchases fall
+under the normal Pro rate — free to $2,500 monthly tracked revenue, then 1%.
+The processor's fees stack on top and depend on the billing engine:
+
+| Engine | Processor fees (US) | Merchant of record |
+|---|---|---|
+| RevenueCat Billing | Stripe 2.9% + 30¢, plus optional Stripe Tax 50¢/txn | you |
+| Stripe Billing | the same, **plus** Stripe Billing 0.7% of volume (or $620/mo) | you, or Stripe via Managed Payments |
+| Paddle Billing | not published on the overview page | Paddle |
+
+**RevenueCat Billing is the choice for us** on these numbers: it avoids Stripe
+Billing's extra 0.7% and we do not need Paddle's merchant-of-record service
+badly enough to pay for it unsurveyed.
+
+**Limitations, and the one that matters.**
+
+- **No translated content in web purchase links.** Bookflow is built for ESL
+  readers — Ama is the first persona in `CLAUDE.md`, and inline translation is
+  a marketed feature. A checkout that cannot be localised is a poor fit for the
+  exact user the web app helps most.
+- **Stripe is the only gateway.** RevenueCat says other local payment methods
+  "may" come later. Card-only checkout is a weak offer to a Ghanaian
+  undergraduate on a $3–5/month budget, where mobile money is normal.
+- **Customers based in India are not supported.** Explicit exclusion.
+- No B2B sales.
+
+**Unconfirmed:** whether Ghanaian *customers* can pay without friction. The
+documented rule is that the developer's bank account and entity determine where
+you may collect, and customers can pay globally — but that is about legality,
+not about whether the payment method is one Ama actually has. Needs a direct
+answer from RevenueCat or Stripe before M8 commits to web as the route to
+emerging-market users.
+
 ## 11. Design tokens
 
 - `packages/tokens` is the single source (TypeScript). It generates:
@@ -305,7 +344,7 @@ Each milestone ends with: type check clean, tests green, Android device QA, and 
 ## 14. Open items
 
 - Tablet and desktop screens do not exist in Figma yet; only the earlier HTML prototypes do. M7 is blocked on that design work.
-- RevenueCat Web Billing status (GA or beta) and current fees to be confirmed in M0.
+- ~~RevenueCat Web Billing status and fees~~ — **confirmed 2026-10-22**, see §10.1. Open successor: whether Ghanaian customers can pay without friction, given Stripe-only, card-only, non-localisable checkout.
 - Store-policy review for app-to-web purchase links, per region, before any link-out ships.
 - Real top-up prices (F-33).
 - What is actually hiding the credit gauge, given that metering is already server-side (§9.2).
