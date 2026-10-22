@@ -7,7 +7,7 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { BottomSheet, Icon, Text, type BottomSheetRef } from '~/components';
+import { Badge, BottomSheet, Icon, Text, type BottomSheetRef } from '~/components';
 import { tokens } from '~/design/tokens';
 import { formatNetworkError } from '~/lib/networkErrors';
 import { useBackHandler } from '~/lib/useBackHandler';
@@ -1177,12 +1177,8 @@ function SegGroup({
 }
 
 function SourceChip({ source }: { source: string }) {
-  return (
-    <View style={styles.sourceChip}>
-      <Icon name="Book" size={9} color={tokens.colors.forest[700]} />
-      <Text style={styles.sourceChipLabel}>Source — {source}</Text>
-    </View>
-  );
+  // The "Source — " prefix is this screen's copy, not Badge's business.
+  return <Badge kind="source" label={`Source — ${source}`} />;
 }
 
 // ─── Styles ───────────────────────────────────────────────────────────────────
@@ -1528,22 +1524,6 @@ const styles = StyleSheet.create({
     color: tokens.textColors.secondary,
     lineHeight: 18,
     marginBottom: 8,
-  },
-  sourceChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    alignSelf: 'flex-start',
-    backgroundColor: tokens.colors.forest[50],
-    borderRadius: 4,
-    paddingHorizontal: 7,
-    paddingVertical: 2,
-  },
-  sourceChipLabel: {
-    fontFamily: tokens.fonts.uiMedium,
-    fontSize: 10,
-    fontWeight: '500',
-    color: tokens.colors.forest[800],
   },
 
   // Short answer

@@ -16,21 +16,30 @@
  *              live-subscription marker on the Pro card.
  *   unlimited  forest-50 fill, forest-200 border, leading infinity
  *              glyph. A meter with no cap.
+ *   source     forest-50 fill with a leading book glyph. The
+ *              traceability chip under an AI answer or a practice
+ *              question — "Source — Page 42". Source traceability is a
+ *              marketed promise, not decoration.
  *
  * `tag` has two sizes because the app uses two: the detail view's
  * roomier chips, and the denser ones on category rows, which are also a
  * step lighter in type size and ink so a row of five does not out-shout
  * the title above it.
  *
- * `active` and `unlimited` carry their own leading element. It is part
- * of the kind rather than a prop — an "Active" chip without its dot, or
- * an "Unlimited" chip without its ∞, is not the same chip.
+ * `active`, `unlimited` and `source` carry their own leading element. It
+ * is part of the kind rather than a prop — an "Active" chip without its
+ * dot, or a source chip without its book, is not the same chip.
+ *
+ * Only `source` sets `alignSelf`, because only it sits in a column and
+ * would otherwise stretch. Setting it on every kind would top-align the
+ * plan badge, whose header centres its children.
  */
 import { StyleSheet, View } from 'react-native';
+import { Icon } from './Icon';
 import { Text } from './Text';
 import { tokens } from '~/design/tokens';
 
-export type BadgeKind = 'free' | 'tag' | 'plan' | 'active' | 'unlimited';
+export type BadgeKind = 'free' | 'tag' | 'plan' | 'active' | 'unlimited' | 'source';
 export type BadgeSize = 'default' | 'compact';
 
 export type BadgeProps = {
@@ -51,6 +60,9 @@ export function Badge({ label, kind = 'tag', size = 'default' }: BadgeProps) {
     <View style={containerStyle}>
       {kind === 'active' && <View style={styles.activeDot} />}
       {kind === 'unlimited' && <Text style={styles.unlimitedGlyph}>∞</Text>}
+      {kind === 'source' && (
+        <Icon name="Book" size={9} color={tokens.colors.forest[700]} />
+      )}
       <Text style={labelStyle}>{label}</Text>
     </View>
   );
@@ -150,6 +162,24 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: tokens.colors.forest[800],
   },
+
+  source: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    // Only this kind hugs: it sits in a column and would otherwise
+    // stretch to the full width of the card.
+    alignSelf: 'flex-start',
+    backgroundColor: tokens.colors.forest[50],
+    borderRadius: 4,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+  },
+  sourceText: {
+    fontFamily: tokens.fonts.uiMedium,
+    fontSize: 10,
+    color: tokens.colors.forest[800],
+  },
 });
 
 const LABEL_STYLE: Record<BadgeKind, object> = {
@@ -158,4 +188,5 @@ const LABEL_STYLE: Record<BadgeKind, object> = {
   plan: styles.planText,
   active: styles.activeText,
   unlimited: styles.unlimitedText,
+  source: styles.sourceText,
 };
