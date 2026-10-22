@@ -3,6 +3,13 @@
 Status: approved direction, 2026-10-22. Owner: Austine.
 This document is the target. `docs/ARCHITECTURE_GAPS.md` tracks the distance between it and the current code.
 
+**Amended 2026-10-22** after Phase 0 measured the doc against the tree. Seven
+changes, all approved: the `pages.id` constraint (§7.2), the character-offset
+constraint (§7.4), the fourth text surface (§7.5), the clipboard adapter (§8),
+the corrected schema size (§9.1), the corrected metering claim (§9.2), and
+agent-instruction consistency (§12, M1). Nothing was changed without evidence
+from the code; the evidence is in `ARCHITECTURE_GAPS.md`.
+
 ---
 
 ## 1. Decisions
@@ -142,15 +149,38 @@ Typed, versioned messages defined in `@bookflow/shared/reader-protocol`.
 - **Audio always plays in the host, never inside the WebView**, so background playback, lock-screen controls and Bluetooth work on native. Native: `expo-audio`. Web: `HTMLAudioElement` + Media Session API.
 - Narration is generated with word-level timing data and stored alongside the audio.
 - The host sends `audioTime` to the engine; the engine resolves the current word id and paints the highlight chip (amber-500 background, forest-900 text). Tapping a word sends `wordTapped`, and the host seeks.
+- **Character offsets are preserved.** Alignment from ElevenLabs is
+  *character*-level, stored as a JSON sidecar referenced by
+  `audio_cache.alignment_path`; resolving a word means walking word start
+  offsets against the character index. The canonical document must therefore
+  address the **exact text the narration was generated from** — same
+  tokenisation, same whitespace. Re-tokenising or re-normalising page text
+  silently mis-highlights every narration already cached, with no error to
+  catch it. This is the §7.2 `pages.id` constraint one level down, and it binds
+  the canonical-document build in the same way.
 
 ### 7.5 What moves where
 
-| Today | Target |
-|---|---|
-| RN text-mode reader (`ReaderScreen`) | Engine text mode |
-| EPUB WebView with injected CSS | Engine EPUB mode |
-| `react-native-pdf` | Engine PDF mode (pdf.js) |
-| Reader chrome (header, action bar, sheets) | **Stays native React**, in the host. The engine renders only the page |
+There are **four** text-rendering surfaces today, not three, totalling 7,852
+lines. The fourth is the one that matters most, because it is the only place
+word-level sync currently works.
+
+| Today | Lines | Target |
+|---|---|---|
+| RN text-mode reader (`ReaderScreen`) | 3,689 | Engine text mode |
+| Listen screen's synced text pane (`ListenScreen`) | 1,935 | Engine text mode, with audio sync active. Per §7.4 the engine already owns word painting, so this is the same mode driven by `audioTime` rather than a separate one |
+| EPUB WebView with injected CSS | 1,151 | Engine EPUB mode |
+| `react-native-pdf` | 1,077 | Engine PDF mode (pdf.js) |
+| Reader chrome (header, action bar, sheets) | — | **Stays native React**, in the host. The engine renders only the page |
+| Listen chrome (transport, voice picker, speed) | — | **Stays native React**, same rule |
+
+**What this means for M6's parity bar.** Word sync and paragraph dimming ship
+today in `ListenScreen` and nowhere else — not in the text reader, not in EPUB,
+not in PDF. So "parity" for those two features is measured against
+`ListenScreen`, and bringing them to the other three modes is **new work**, not
+a port. Conversely, the text reader's virtualisation (~3–5 pages resident; it
+was rebuilt that way because Android would not commit the full-document tree)
+is a parity requirement the engine must meet, not a nice-to-have.
 
 ## 8. Platform adapters
 
@@ -167,6 +197,10 @@ Each adapter is one interface in `platform/<name>/index.ts` with `.native.ts` an
 | `shareIntent` | `expo-share-intent` | no-op at launch |
 | `notifications` | `expo-notifications` | no-op at launch |
 | `haptics` | `expo-haptics` | no-op |
+| `clipboard` | `expo-clipboard` | `navigator.clipboard` |
+
+`clipboard` is the most-used native-only package in the app — four call sites,
+more than any other — which is why it gets a row despite looking incidental.
 
 ## 9. Backend
 
@@ -189,8 +223,9 @@ below already exist in substance — see the gap analysis.
 
 ### 9.2 Functions and jobs
 
-- `revenuecat-webhook` → upserts `entitlements`; grants top-up credits into `credit_ledger`.
-- Every AI and narration function checks and debits credits **in the same transaction** as recording the request. No client-side metering. This unblocks the hidden credit gauge.
+- `revenuecat-webhook` → upserts `entitlements`; grants top-up credits into `credit_ledger`. The function already exists and is live; today it writes `profiles.plan` and `profiles.ai_credits_limit` instead, so this is a retarget rather than new work.
+- Every AI and narration function checks and debits credits **in the same transaction** as recording the request. No client-side metering. **This already ships** — `supabase/functions/_shared/aiCredits.ts` calls the `record_ai_usage` RPC, a plpgsql function that rolls the billing period, writes the usage event and debits top-up balance before monthly allowance, atomically. What changes is only where the *balance* lives: today it is stored counters on `profiles`, and it becomes a view over the ledger.
+- The hidden credit gauge is **not** blocked by metering, which is already server-side. Whatever is actually hiding it has to be found before M5 commits to restoring it.
 - Long work (extraction, canonical document build, narration) runs as queued jobs, not request-bound calls. Queue choice (Supabase Queues/pgmq, or a `jobs` table drained by a scheduled function) is settled in Milestone 0.
 
 ## 10. Billing and entitlements
@@ -223,6 +258,15 @@ below already exist in substance — see the gap analysis.
 | Builds and releases | EAS Build, EAS Update channels per environment |
 | Web hosting | EAS Hosting for `apps/app` web; marketing site on its existing host |
 | Flags | `core/flags`, remote-configurable, used for every replacement in the migration |
+| Agent instructions | `CLAUDE.md` and `AGENTS.md` are kept **consistent with each other and with this document**, and reconciled in M1 |
+
+**On that last row.** The two files currently contradict each other and the
+target: `AGENTS.md` prescribes Expo Router and a file-based `app/` tree, while
+`CLAUDE.md` states that Expo Router "was planned and never adopted" and tells
+the reader not to reach for it. Both document `npx jest`, and no test runner is
+installed. Whichever file an agent reads, a correct migration step looks like a
+violation of the house rules — so reconciling them is a prerequisite for the
+rest of the work, not housekeeping after it.
 
 ## 13. Migration milestones
 
@@ -231,7 +275,7 @@ Each milestone ends with: type check clean, tests green, Android device QA, and 
 | # | Milestone | Done when |
 |---|---|---|
 | **M0** | Spikes | Reader engine prototype hits smooth scroll and stable memory on a low-end Android device with a 300-page PDF and an EPUB; app boots on web; RevenueCat Web Billing sandbox purchase grants an entitlement visible on Android; queue choice made |
-| **M1** | Foundation | Monorepo, `packages/tokens` generating the current theme with zero visual change, CI, Sentry, PostHog, test harness |
+| **M1** | Foundation | Monorepo, `packages/tokens` generating the current theme with zero visual change, CI, Sentry, PostHog, test harness, and `CLAUDE.md`/`AGENTS.md` reconciled with this document |
 | **M2** | Routing | Expo Router replaces the stage machine; every current screen reachable by URL; magic-link deep links work on both platforms; no visual change |
 | **M3** | Features and data | Screens moved into `features/*`; TanStack Query for all server state; offline queue for progress and highlights |
 | **M4** | Adapters and web boot | All native-only imports behind `platform/*`; the app runs end to end on web (reader may still be a placeholder) |
@@ -246,3 +290,8 @@ Each milestone ends with: type check clean, tests green, Android device QA, and 
 - RevenueCat Web Billing status (GA or beta) and current fees to be confirmed in M0.
 - Store-policy review for app-to-web purchase links, per region, before any link-out ships.
 - Real top-up prices (F-33).
+- What is actually hiding the credit gauge, given that metering is already server-side (§9.2).
+- Whether pnpm is the right choice over npm workspaces, given EAS Build's hoisting sensitivity. The repo is npm today.
+- Where `bookflow_landing_site` lives; it is not beside the repo, and M1 moves it in.
+- Whether M3's file moves should precede M2's routing, to avoid two passes over the same 33,203 lines of screens.
+- The app domain for universal links and App Links (M2), and the Sentry and PostHog keys (M1).

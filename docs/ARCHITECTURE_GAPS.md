@@ -27,7 +27,8 @@ milestones.
    the doc does not mention where it goes.
 3. **The repo's own agent instructions contradict each other and the target.**
    `CLAUDE.md` and `AGENTS.md` give opposite directions on routing and data,
-   and both document a test command that does not exist.
+   and both document a test command that does not exist. Now an M1 deliverable
+   (§12 of the architecture doc).
 
 ---
 
@@ -235,35 +236,33 @@ and it is not yet addressed in the doc.
 
 ---
 
-## 6. Proposed changes to `ARCHITECTURE.md`
+## 6. Changes to `ARCHITECTURE.md` — all applied
 
-Two are already applied on this branch, with your approval:
+All seven are in the doc as of 2026-10-22, approved by Austine.
 
-1. ✅ **§7.2** — canonical document preserves `pages.id`. Approved 2026-10-22.
-2. ✅ **§9.1** — "ten-table schema" corrected; it is 13 over 27 migrations.
+| # | § | Change | Commit |
+|---|---|---|---|
+| 1 | 7.2 | Canonical document **preserves `pages.id`**. Seven tables of live user data reference it, one of them pgvector | `bd36983` |
+| 2 | 9.1 | "Ten-table schema" corrected — 13 tables over 27 migrations, three of the five "new" tables already exist in substance | `bd36983` |
+| 3 | 7.5 | **Fourth text surface added.** `ListenScreen` (1,935 lines) becomes engine text mode with audio sync active, per §7.4's existing rule that the engine owns word painting. Its chrome stays native, same as the reader's | this branch |
+| 4 | 7.4 | **Character offsets are preserved.** Alignment is character-level; the canonical document must address the exact text the narration was generated from, or every cached narration mis-highlights silently | this branch |
+| 5 | 9.2 | Credit-gauge claim corrected. Transactional check-and-debit **already ships** via `record_ai_usage`; only the stored-counter → ledger-view change is real. What hides the gauge is now an open item | this branch |
+| 6 | 8 | **`clipboard` adapter added** — `expo-clipboard` → `navigator.clipboard`. Four call sites, more than any other native-only package | this branch |
+| 7 | 12, M1 | **Agent-instruction consistency** is now a quality concern and an M1 deliverable. `CLAUDE.md` and `AGENTS.md` contradict each other and the target | this branch |
 
-Five more are proposed and **not** applied, pending your call:
+### What #3 settles
 
-3. **§7.5 gains a fourth row.** `ListenScreen` (1,935 lines, word-synced text)
-   is a text-rendering surface and the only place word sync works. Either it
-   becomes an engine mode, or the doc says explicitly that it stays native and
-   the engine's word sync is new work rather than a port.
+The proposal offered two readings — `ListenScreen` becomes an engine mode, or
+the doc says it stays native and engine word sync is new work. §7.4 already
+specifies that the engine resolves the word id and paints the highlight, so the
+first reading is the one consistent with the rest of the document, and that is
+what was written.
 
-4. **§7.4 gains a constraint:** the canonical document must preserve the
-   character offsets that cached alignment sidecars address, or every existing
-   narration needs regenerating. Same shape as the `pages.id` constraint.
-
-5. **§9.2 drops the credit-gauge claim.** Metering is already server-side and
-   transactional; it is not what is blocking the gauge.
-
-6. **§8 gains a `clipboard` adapter.** It is the most-used native-only package
-   in the app (4 sites) and has no row.
-
-7. **§12 or M1 covers the agent instruction files.** `CLAUDE.md` and
-   `AGENTS.md` contradict each other on routing and data, and both document
-   `npx jest` when no test runner is installed. Whatever the migration does,
-   these have to agree with it or every future session starts by being told
-   not to do it.
+The consequence is recorded in §7.5: **word sync and paragraph dimming ship
+today only in `ListenScreen`**, so M6's parity bar for them is that screen, and
+bringing them to the text, EPUB and PDF modes is new work rather than a port.
+The text reader's virtualisation runs the other way — it is a parity
+requirement the engine must meet.
 
 ### A sequencing question, not a change
 
