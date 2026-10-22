@@ -133,6 +133,10 @@ row was replaced.
 | G3 🔴 | Compare a toggle on You with one in Settings | **Identical size.** Both small, dark green when on | Three different switches used to ship |
 | G4 🟡 | Any button label | Slightly heavier than body text — Medium, not Regular | Button labels silently rendered Regular before F-17 |
 | G5 🟡 | A standard list row label vs a compact one | Standard is heavier; compact is lighter | The per-size weight is carried by the font family now |
+| G6 🟡 | You tab, free plan card header | "Free" chip, forest fill, light label | Moved to the shared Badge component |
+| G7 🔴 | **Pro account only** — Pro plan card | The amber "Active" chip has its **dot**, and any unlimited meter shows a **∞** in a bordered green chip | Both moved to Badge and are **unverified** — neither is reachable on a free account |
+| G8 🔴 | Source chips in all three places: under an AI summary, under a chat answer, under a practice question | **Identical.** A 26-high pill on the surface colour, hairline border, small book glyph, 11px Medium grey label. Only the wording differs — the practice one reads "Source — …" | Three different chips used to ship (F-44) |
+| G9 🟡 | The chat sources row specifically | You will see **three** book glyphs — the row label's and one per chip. Expected; see F-45 | The row label predates the shared chip |
 
 ---
 
@@ -146,9 +150,6 @@ row was replaced.
 | H4 🔴 | Actually sign out, then back in | Works end to end | — |
 
 ---
-
-| G6 🟡 | You tab, free plan card header | "Free" chip, forest fill, light label | Moved to the shared Badge component |
-| G7 🔴 | **Pro account only** — Pro plan card | The amber "Active" chip has its **dot**, and any unlimited meter shows a **∞** in a bordered green chip | Both moved to Badge and are **unverified** — neither is reachable on a free account |
 
 ## I. Things that should look *unchanged*
 
@@ -169,7 +170,7 @@ If any of these differ, it is a regression, not an expected change.
 |---|---|
 | **F-39** | Discover can show "Couldn't reach the catalog" even when several sources returned books |
 | **F-38** | The EPUB full-mode reader does **not** render Fraunces or Literata — it falls back to Noto Serif on Android, Georgia on iOS, and headings and body share one face |
-| **F-44** | The source chip under a practice question, under an AI summary, and under a chat answer are three different designs |
+| **F-45** | The chat sources row shows a book glyph on its label *and* on every chip — `📖 Sources: 📖 Page 11 📖 Page 78` |
 | **F-33** | Credit top-up prices in Figma are placeholders |
 | **F-27** | Adding a book past the free cap jumps straight to the hosted paywall with no state on the button |
 

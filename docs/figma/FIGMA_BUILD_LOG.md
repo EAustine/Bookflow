@@ -1148,7 +1148,8 @@ Answered items are **not** kept here; they live in §"Open questions F-1 … F-1
 | ~~**F-42**~~ | ~~Every brand asset still carries the retired logomark~~ — **FIXED.** All four regenerated with composition preserved; verified on device, splash now renders at **0.662**. | ✅ done |
 | ~~**F-41**~~ | ~~Native splash ships the retired logomark~~ — **FIXED.** Asset regenerated from the canonical path data; ink ratio 0.895 → **0.659** against a canonical 0.661, and sized/placed so the handoff to the JS splash no longer jumps. | ✅ done |
 | ~~**F-40**~~ | ~~`List row` can show a hint OR a chevron, not both~~ — **FIXED.** `Hint` is independent of `Trailing` now; 49 instances moved, the Hint axis value retired, 30 → 24 variants. | ✅ done |
-| **F-44** | Three different source-traceability chips ship — practice, AI summary and AI chat — with different fills, radii, type and icons. Which is canonical? | needs your call |
+| ~~**F-44**~~ | ~~Three different source-traceability chips ship — practice, AI summary and AI chat~~ — **FIXED.** Your call: the summary treatment. `Badge kind="source"` now serves all three; 4 screen-local style pairs deleted, 5 hand-drawn Figma chips replaced with instances. | ✅ done |
+| **F-45** | The chat sources row renders three book glyphs now that its chips carry their own — `📖 Sources: 📖 Page 11 📖 Page 78`. Drop the row-level icon? | your call |
 | ~~**F-43**~~ | ~~`AccountListRow` is a fourth row pattern with chevrons on action rows~~ — **FIXED.** Migrated to `ListRow`; 5 wrong chevrons removed, 2 treatments corrected against the spec. | ✅ done |
 | **F-39** | Discover home shows "Couldn't reach the catalog" while other sources returned 748 books. Observed on device. | Phase D |
 | **F-38** | The EPUB WebView renders fallback fonts, not the brand faces — both Fraunces and Literata resolve to Georgia. Measured, not assumed. | architecture discussion |
@@ -1887,3 +1888,69 @@ than a cleanup. There is a defensible case that they are deliberately
 different — the summary chips sit in a prominent list under a "Source"
 heading, the chat chips are quiet tags under a message. Flagged rather than
 decided.
+
+### F-44 resolved — one source chip, the summary treatment
+
+Your call: the AI summary panel's treatment wins. It was the only one of the
+three that already looked like a considered component — a pill on the surface
+colour with a hairline border, rather than a flat tinted rectangle — and it is
+the one carrying the most weight, sitting under a whole generated summary.
+
+`Badge` gained a `source` kind and all three call sites now use it:
+
+| | was | now |
+|---|---|---|
+| height | 18 / 18 / 26 | **26** |
+| radius | 4 / 4 / 13 | **13** |
+| padding | 7/2 · 6/1 · 10/— | **10 / —** |
+| fill | forest-50 · cream-200 · surface | **`bgColors.surface`** |
+| border | none · none · 0.5 subtle | **hairline `borderColors.subtle`** |
+| icon | Book 9 forest-700 · none · Book 10 muted | **Book 10 `textColors.muted`** |
+| label | Medium 10 forest-800 · Medium 10 secondary · Medium 11 secondary | **Medium 11 `textColors.secondary`** |
+
+`source` is the only kind that sets `alignSelf: 'flex-start'`. Under a practice
+question it sits in a column and would otherwise stretch to the card width;
+setting it on every kind instead would top-align the plan badge, whose header
+centres its children.
+
+Four screen-local style pairs deleted — two in `AIToolsScreen` (`sumStyles`
+and `chatStyles`), two already gone with the practice migration. The
+`sourceChips` row-wrap container stays; it is layout, not chip.
+
+**Figma.** `Badge` `Kind=Source` rebuilt to match, and the five hand-drawn
+chips inside `Panel / AI summary` (1), `Panel / AI chat` (2) and
+`Panel / AI practice` (2) replaced with instances of it. They had been drawn
+from the old screen styles, so all five were on the retired practice
+treatment — radius 4, height 18, `color/bg/accent-muted` — including the
+summary panel's own chip, which did not match the summary screen it was
+supposed to depict. Figma's summary chip was also missing its Book glyph
+entirely.
+
+### F-45 — the chat sources row now shows three book glyphs
+
+Found while migrating F-44, in code that predates it. `ChatBubble` labels its
+sources row with a leading glyph and a word:
+
+```jsx
+<View style={chatStyles.sourcesRow}>
+  <Icon name="Book" size={10} color={tokens.textColors.disabled} />
+  <Text style={chatStyles.sourcesLabel}>Sources:</Text>
+  {message.sources.map((src) => <Badge key={src} kind="source" label={src} />)}
+</View>
+```
+
+The chat chips used to have no icon, so the row read `📖 Sources: Page 11
+Page 78` and the single glyph did its job. The canonical chip carries its own
+Book, so the row now reads `📖 Sources: 📖 Page 11 📖 Page 78` — three books
+in one line.
+
+The parallel surface answers it: the summary panel labels its chips with a
+plain `Source` text and no glyph. Dropping the row-level `<Icon name="Book">`
+from `chatStyles.sourcesRow` would make chat structurally identical to
+summary — a text label, then chips that each carry the book. That is a one
+-line change, but it is a visible copy/chrome edit on a screen I cannot reach
+without the test account, so per the brief it is logged rather than made.
+
+Figma's `Panel / AI chat` now draws the row exactly as the app does, glyph
+included, so the file matches the code as it stands. If you take the fix, the
+Figma row loses its leading Book too.
