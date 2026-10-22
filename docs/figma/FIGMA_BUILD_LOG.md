@@ -1622,6 +1622,33 @@ emulator: the Android splash now renders the mark at ratio **0.662** against the
 canonical 0.661. It was 0.895. Capture in
 `docs/figma/verification/android/01-splash.png`.
 
+### Android now uses the logomark, not the launcher icon
+
+With the icon set corrected the splash looked right, but only by accident — it
+was still rendering the *launcher icon*. `plugins/withAndroidSplashIcon.js`
+(`22f8336`) adds the three platform attributes Expo's legacy splash path leaves
+out, so the system splash uses `@drawable/splashscreen_logo` as intended. It is
+a config plugin because `android/` is regenerated; a hand-edit would not
+survive prebuild. The `android:`-prefixed platform attribute names are required
+here, since the generated theme inherits `AppTheme` rather than
+`Theme.SplashScreen`.
+
+**That exposed a second problem.** Android draws the splash icon inside a fixed
+container, not full-screen, so the shared `splash-icon.png` — whose mark is 24%
+of its canvas, correct for iOS's `contain` — rendered at **48dp** against the JS
+splash's 96. Android now has its own crop, `assets/splash-icon-android.png`, at
+48% of canvas and offset 184px up; iOS keeps the top-level `splash`.
+
+Final measurement, Pixel 9 emulator:
+
+| | before | after | JS splash draws |
+|---|---|---|---|
+| shape (ink ratio) | 0.895 | **0.663** | 0.661 |
+| width | 109 dp | **96 dp** | 96 dp |
+| centre vs screen centre | — | **−36 dp** | −36 dp |
+
+Shape, size and position all match, so the native → JS handoff no longer moves.
+
 `/ios` and `/android` are gitignored and regenerate from these files, so the
 committed fix is the asset alone. `npx expo prebuild` confirmed the pipeline
 picks it up: the generated Android drawables went from ratio 0.895 to
