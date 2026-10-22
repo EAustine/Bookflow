@@ -1149,7 +1149,7 @@ Answered items are **not** kept here; they live in §"Open questions F-1 … F-1
 | ~~**F-41**~~ | ~~Native splash ships the retired logomark~~ — **FIXED.** Asset regenerated from the canonical path data; ink ratio 0.895 → **0.659** against a canonical 0.661, and sized/placed so the handoff to the JS splash no longer jumps. | ✅ done |
 | ~~**F-40**~~ | ~~`List row` can show a hint OR a chevron, not both~~ — **FIXED.** `Hint` is independent of `Trailing` now; 49 instances moved, the Hint axis value retired, 30 → 24 variants. | ✅ done |
 | ~~**F-44**~~ | ~~Three different source-traceability chips ship — practice, AI summary and AI chat~~ — **FIXED.** Your call: the summary treatment. `Badge kind="source"` now serves all three; 4 screen-local style pairs deleted, 5 hand-drawn Figma chips replaced with instances. | ✅ done |
-| **F-45** | The chat sources row renders three book glyphs now that its chips carry their own — `📖 Sources: 📖 Page 11 📖 Page 78`. Drop the row-level icon? | your call |
+| ~~**F-45**~~ | ~~The chat sources row renders three book glyphs now that its chips carry their own~~ — **FIXED.** Row-level icon dropped, in code and in Figma; the row is a plain text label now, like the summary panel's. | ✅ done |
 | ~~**F-43**~~ | ~~`AccountListRow` is a fourth row pattern with chevrons on action rows~~ — **FIXED.** Migrated to `ListRow`; 5 wrong chevrons removed, 2 treatments corrected against the spec. | ✅ done |
 | **F-39** | Discover home shows "Couldn't reach the catalog" while other sources returned 748 books. Observed on device. | Phase D |
 | **F-38** | The EPUB WebView renders fallback fonts, not the brand faces — both Fraunces and Literata resolve to Georgia. Measured, not assumed. | architecture discussion |
@@ -1954,3 +1954,20 @@ without the test account, so per the brief it is logged rather than made.
 Figma's `Panel / AI chat` now draws the row exactly as the app does, glyph
 included, so the file matches the code as it stands. If you take the fix, the
 Figma row loses its leading Book too.
+
+### F-45 resolved — the chat sources row is a text label
+
+Your call: drop the row-level icon. `chatStyles.sourcesRow` no longer renders
+its own `<Icon name="Book">`, so the row reads `Sources: 📖 Page 11
+📖 Page 78` — one glyph per chip and none on the label.
+
+That makes the two AI surfaces structurally identical. The summary panel has
+always labelled its chips with a plain `Source` text and no glyph; chat now
+does the same thing with `Sources:`. The old row icon was correct only while
+the chat chips had none of their own, which stopped being true with F-44.
+
+`Icon` and `tokens` stay imported in `AIToolsScreen` — 22 and 246 other uses.
+
+Figma's `Panel / AI chat` row updated to match: glyph `285:63` removed, the
+row left at gap 4, centre-aligned, wrapping, as `chatStyles.sourcesRow`
+specifies.
