@@ -1348,7 +1348,11 @@ function ChatBubble({
       </View>
       {isAI && message.sources && (
         <View style={chatStyles.sourcesRow}>
-          <Icon name="Book" size={10} color={tokens.textColors.disabled} />
+          {/* Text label only. The row used to carry its own Book
+              glyph, from when the chips had none; the canonical
+              source chip brings one each, so the row drew three in
+              a line. This matches the summary panel, which labels
+              its chips with a plain "Source" and no glyph. (F-45.) */}
           <Text style={chatStyles.sourcesLabel}>Sources:</Text>
           {message.sources.map((src) => (
             // Source chips are read-only for now — jumping to the
