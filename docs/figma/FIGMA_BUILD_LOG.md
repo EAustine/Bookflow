@@ -1148,7 +1148,7 @@ Answered items are **not** kept here; they live in §"Open questions F-1 … F-1
 | ~~**F-42**~~ | ~~Every brand asset still carries the retired logomark~~ — **FIXED.** All four regenerated with composition preserved; verified on device, splash now renders at **0.662**. | ✅ done |
 | ~~**F-41**~~ | ~~Native splash ships the retired logomark~~ — **FIXED.** Asset regenerated from the canonical path data; ink ratio 0.895 → **0.659** against a canonical 0.661, and sized/placed so the handoff to the JS splash no longer jumps. | ✅ done |
 | ~~**F-40**~~ | ~~`List row` can show a hint OR a chevron, not both~~ — **FIXED.** `Hint` is independent of `Trailing` now; 49 instances moved, the Hint axis value retired, 30 → 24 variants. | ✅ done |
-| **F-43** | `AccountScreen.AccountListRow` is a **fourth** row pattern F-30 missed, and it draws a chevron on every non-destructive row — including "Verify student status", which opens a mailto. | needs your call |
+| ~~**F-43**~~ | ~~`AccountListRow` is a fourth row pattern with chevrons on action rows~~ — **FIXED.** Migrated to `ListRow`; 5 wrong chevrons removed, 2 treatments corrected against the spec. | ✅ done |
 | **F-39** | Discover home shows "Couldn't reach the catalog" while other sources returned 748 books. Observed on device. | Phase D |
 | **F-38** | The EPUB WebView renders fallback fonts, not the brand faces — both Fraunces and Literata resolve to Georgia. Measured, not assumed. | architecture discussion |
 | **F-17** | `Button.tsx` and `ListRow.tsx` pair `fontWeight: '500'` with `fonts.ui` (Geist **Regular**), so their labels render Regular while Figma shows Medium. | Phase B |
@@ -1755,3 +1755,41 @@ per the verification rule: do not change Figma to hide a bug.
 
 Migrating it is the same shape of work as F-30's row migration and was not in
 F-40's scope.
+
+---
+
+### F-43 fixed — the fourth row pattern is gone
+
+`AccountScreen.AccountListRow` had 7 call sites with its own icon tile, label,
+hint and chevron. All seven are `ListRow` now, and the component is deleted.
+`RadioRow` is the only other row pattern left, kept deliberately in F-30.
+
+**Five wrong chevrons removed.** It drew one on every non-destructive,
+non-muted row — so Verify student status (opens a `mailto:`), Restore
+purchases, Privacy policy, Terms of service and Export my data all had one.
+None of the seven rows drills into anything; two leave the app entirely. Hard
+rule 3, the same violation F-30 fixed on Clear cache.
+
+**Two treatments corrected against the spec rather than preserved.** The
+temptation was to add a `muted` prop to `ListRow` so the migration changed
+nothing visually. `bookflow_list_row_system.html` says otherwise:
+
+| | AccountListRow did | Spec says |
+|---|---|---|
+| Destructive rows | icon tile `error-muted`, glyph red, label red | `.bf-row-label--destructive { color: var(--error); }` — **label only** |
+| Delete account | `muted` grey | listed as `--destructive`, same as Sign out |
+
+So Sign out on Account now matches Sign out on the You tab, which it did not
+before, and **Delete account is red** — the most visible change, flagged in the
+QA checklist.
+
+**Figma followed, and the comparison found more.** Only one Account row still
+had a chevron in the file (Verify student status, moved there by F-40 on the
+since-corrected assumption that AccountListRow always drew one). But checking
+the destructive labels showed **every Sign out row in the file was
+`color/text/primary`** — black — against an app rendering them red. Seven
+instances across You home (Free and Pro), the Sign out sheet, Account, and the
+Delete account sheet. All rebound to `color/text/error`.
+
+**Audit:** 0 orphans, 0 detached, 0 components without a description, **0
+chevrons left on any action row** across the whole file.

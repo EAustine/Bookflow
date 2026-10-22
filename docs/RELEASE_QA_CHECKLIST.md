@@ -87,6 +87,9 @@ row was replaced.
 | D8 🔴 | Same for Usage warnings and Product updates (grant notification permission first) | Row tap flips the switch | — |
 | D9 🟡 | Settings → Clear cache sub-label | Reads to the end: "…Books and progress stay." Not truncated mid-word | Shared rows clamp sub-labels to one line; this one is explicitly allowed two |
 | D10 🟡 | Settings → Downloaded audio | Sits in a normal row with a music-note tile, honest sub-label | — |
+| D12 🟡 | You → Account & subscription, every row | **No chevrons anywhere.** Verify student status shows "$4.99/mo" and nothing else | Five rows had a chevron and none of them drills in — two open a browser, one opens an email draft |
+| D13 🔴 | Same screen, bottom two rows | **Sign out and Delete account are both red**, with plain icon tiles like every other row | Delete account used to be grey and the destructive rows used to have pink icon tiles. The spec says the label alone carries the colour |
+| D14 🟡 | Compare Sign out here with Sign out on the You tab | Identical | They genuinely differed before this round |
 | D11 🟡 | Deny notification permission, reopen Settings | The three notification rows are dimmed, their switches greyed and off, and the banner above explains why | Dimming is a prop on the shared row now |
 
 ---
@@ -163,7 +166,6 @@ If any of these differ, it is a regression, not an expected change.
 |---|---|
 | **F-39** | Discover can show "Couldn't reach the catalog" even when several sources returned books |
 | **F-38** | The EPUB full-mode reader does **not** render Fraunces or Literata — it falls back to Noto Serif on Android, Georgia on iOS, and headings and body share one face |
-| **F-43** | Account → "Verify student status" has a chevron but opens an email draft rather than drilling in |
 | **F-33** | Credit top-up prices in Figma are placeholders |
 | **F-27** | Adding a book past the free cap jumps straight to the hosted paywall with no state on the button |
 
