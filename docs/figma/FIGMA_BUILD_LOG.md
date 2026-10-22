@@ -1148,6 +1148,7 @@ Answered items are **not** kept here; they live in §"Open questions F-1 … F-1
 | ~~**F-42**~~ | ~~Every brand asset still carries the retired logomark~~ — **FIXED.** All four regenerated with composition preserved; verified on device, splash now renders at **0.662**. | ✅ done |
 | ~~**F-41**~~ | ~~Native splash ships the retired logomark~~ — **FIXED.** Asset regenerated from the canonical path data; ink ratio 0.895 → **0.659** against a canonical 0.661, and sized/placed so the handoff to the JS splash no longer jumps. | ✅ done |
 | ~~**F-40**~~ | ~~`List row` can show a hint OR a chevron, not both~~ — **FIXED.** `Hint` is independent of `Trailing` now; 49 instances moved, the Hint axis value retired, 30 → 24 variants. | ✅ done |
+| **F-44** | Three different source-traceability chips ship — practice, AI summary and AI chat — with different fills, radii, type and icons. Which is canonical? | needs your call |
 | ~~**F-43**~~ | ~~`AccountListRow` is a fourth row pattern with chevrons on action rows~~ — **FIXED.** Migrated to `ListRow`; 5 wrong chevrons removed, 2 treatments corrected against the spec. | ✅ done |
 | **F-39** | Discover home shows "Couldn't reach the catalog" while other sources returned 748 books. Observed on device. | Phase D |
 | **F-38** | The EPUB WebView renders fallback fonts, not the brand faces — both Fraunces and Literata resolve to Georgia. Measured, not assumed. | architecture discussion |
@@ -1837,3 +1838,52 @@ So the file was documenting a branch the app no longer has. Rebuilt from
 > **Not visually verified:** `active` and `unlimited` only render on the Pro
 > plan card, which needs a Pro account. Type-checked and moved verbatim, but
 > unseen — they belong on the Phase D list.
+
+---
+
+### Source chip → `Badge kind="source"`, and three fills Figma had wrong
+
+`PracticeQuestionsScreen.SourceChip` is now `Badge kind="source"` — forest-50
+with a leading Book glyph. `SourceChip` stays as a three-line wrapper so the
+"Source — " prefix, which is the screen's copy, does not move into Badge.
+Only this kind sets `alignSelf: 'flex-start'`: it is the one that sits in a
+column and would otherwise stretch, and setting it on every kind would
+top-align the plan badge, whose header centres its children.
+
+**A correction.** When the Pro-card chips went in, this log said Figma's Plan
+and Active kinds "matched exactly". They did not — that comparison checked
+radius, padding, gap, stroke and type size, and never looked at the fills.
+Reading the bound paints found three wrong:
+
+| Kind | Figma had | Code |
+|---|---|---|
+| Active | solid `amber/500`, label `color/text/inverse` | `overlay.amber.fill` (15%) with a 40% border, label `amber/500` |
+| Plan | `color/bg/accent-pressed` = forest/900 | `forest/700` |
+| Source | `color/bg/accent-muted` = forest/100 | `forest/50` |
+
+All three rebound. Fixing Active also needed two variables that F-31 added to
+`tokens.ts` but which were never created in the file — **`overlay/amber/fill`**
+and **`overlay/amber/border`**, alpha baked in because a bound paint does not
+carry paint-level opacity. Variables: 263 → **265**.
+
+### F-44 — three different source chips
+
+Searching for the chip to migrate turned up two more. Same concept — source
+traceability, which CLAUDE.md calls non-negotiable and a marketed feature —
+rendered three different ways:
+
+| | Practice (migrated) | AI summary | AI chat |
+|---|---|---|---|
+| fill | forest-50 | `bgColors.surface` | cream-200 |
+| border | none | 0.5 subtle | none |
+| radius | 4 | 13 (pill, h26) | 4 |
+| padding | 7 / 2 | 10 / — | 6 / 1 |
+| icon | Book 9, forest-700 | Book 10, **muted** | **none** |
+| label | Medium 10, forest-800 | Medium 11, **secondary** | Medium 10, **secondary** |
+
+Only the practice one is migrated, because unifying the other two means
+**choosing** which treatment is canonical, and that is a design decision rather
+than a cleanup. There is a defensible case that they are deliberately
+different — the summary chips sit in a prominent list under a "Source"
+heading, the chat chips are quiet tags under a message. Flagged rather than
+decided.

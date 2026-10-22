@@ -169,6 +169,7 @@ If any of these differ, it is a regression, not an expected change.
 |---|---|
 | **F-39** | Discover can show "Couldn't reach the catalog" even when several sources returned books |
 | **F-38** | The EPUB full-mode reader does **not** render Fraunces or Literata — it falls back to Noto Serif on Android, Georgia on iOS, and headings and body share one face |
+| **F-44** | The source chip under a practice question, under an AI summary, and under a chat answer are three different designs |
 | **F-33** | Credit top-up prices in Figma are placeholders |
 | **F-27** | Adding a book past the free cap jumps straight to the hosted paywall with no state on the button |
 
