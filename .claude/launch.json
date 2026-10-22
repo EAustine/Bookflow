@@ -1,0 +1,16 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "m0-reader-spike",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": [
+        "-I",
+        "spikes/reader-engine/serve.py",
+        "8100"
+      ],
+      "port": 8100,
+      "url": "http://localhost:8100"
+    }
+  ]
+}

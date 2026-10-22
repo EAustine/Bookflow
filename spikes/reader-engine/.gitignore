@@ -1,0 +1,11 @@
+# Sample corpus — real books, fetched by build-assets.py / curl. 31 MB.
+assets/sample.pdf
+assets/sample-large.pdf
+assets/sample.epub
+assets/epub/
+assets/canonical-document.json
+assets/epub-manifest.json
+# Vendored pdf.js, re-fetchable
+engine/vendor/
+# Run artefacts
+results/

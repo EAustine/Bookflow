@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Bookflow reader engine — M0 spike</title>
+<link rel="stylesheet" href="engine.css">
+</head>
+<body>
+  <div id="chrome">
+    <div id="status">idle</div>
+    <div id="controls">
+      <button data-mode="text">text</button>
+      <button data-mode="pdf">pdf 244p</button>
+      <button data-mode="pdf-large">pdf large</button>
+      <button data-mode="epub">epub</button>
+      <button id="sync">sync 4Hz</button>
+      <button id="dump">metrics</button>
+    </div>
+  </div>
+  <div id="viewport"></div>
+  <pre id="metrics" hidden></pre>
+  <script type="module" src="engine.js"></script>
+</body>
+</html>

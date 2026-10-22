@@ -1,0 +1,118 @@
+:root {
+  --cream-50: #FAF7F2;
+  --cream-100: #F3EDE4;
+  --ink-900: #1A1714;
+  --ink-500: #6B635A;
+  --forest-700: #2C5F4F;
+  --amber-500: #D9A441;
+  --forest-900: #14302A;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  background: var(--cream-50);
+  color: var(--ink-900);
+  font-family: Georgia, 'Times New Roman', serif;
+  -webkit-text-size-adjust: 100%;
+}
+
+/* Spike chrome only. In the real engine the host owns all chrome; the
+   engine renders the page and nothing else. */
+#chrome {
+  position: fixed;
+  top: 0; left: 0; right: 0;
+  z-index: 10;
+  background: var(--cream-100);
+  border-bottom: 1px solid rgba(0,0,0,.08);
+  font-family: -apple-system, system-ui, sans-serif;
+  font-size: 11px;
+  padding: 6px 8px;
+}
+#status { color: var(--ink-500); margin-bottom: 4px; min-height: 13px; }
+#controls { display: flex; gap: 4px; flex-wrap: wrap; }
+#controls button {
+  font: inherit;
+  padding: 4px 7px;
+  border: 1px solid rgba(0,0,0,.15);
+  border-radius: 4px;
+  background: #fff;
+  color: var(--ink-900);
+}
+#controls button[aria-pressed="true"] { background: var(--forest-700); color: #fff; }
+
+#viewport {
+  padding: 72px 20px 48px;
+  max-width: 680px;        /* §3: reading measure capped at ~680px */
+  margin: 0 auto;
+}
+
+/* ── text mode ─────────────────────────────────────────────────────── */
+.page {
+  margin: 0 0 28px;
+  /* content-visibility is the whole point of the DOM-pagination test:
+     it lets the browser skip layout and paint for offscreen pages while
+     keeping them in the scroll flow. contain-intrinsic-size keeps the
+     scrollbar stable. */
+  content-visibility: auto;
+  contain-intrinsic-size: auto 900px;
+}
+.page-no {
+  font-family: -apple-system, system-ui, sans-serif;
+  font-size: 10px;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--ink-500);
+  margin-bottom: 8px;
+}
+.block { margin: 0 0 1em; font-size: 18px; line-height: 1.6; }
+
+/* Word highlight — the §7.4 chip. Only the class changes per tick, so
+   this measures the cost of a class swap plus the resulting paint. */
+.w.active {
+  background: var(--amber-500);
+  color: var(--forest-900);
+  border-radius: 3px;
+}
+
+/* ── pdf mode ──────────────────────────────────────────────────────── */
+.pdf-page {
+  margin: 0 auto 16px;
+  display: block;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(0,0,0,.12);
+  content-visibility: auto;
+}
+.pdf-placeholder {
+  margin: 0 auto 16px;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(0,0,0,.12);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ink-500);
+  font-family: -apple-system, system-ui, sans-serif;
+  font-size: 11px;
+}
+
+/* ── epub mode ─────────────────────────────────────────────────────── */
+.epub-doc { font-size: 18px; line-height: 1.6; }
+.epub-doc img { max-width: 100%; height: auto; }
+
+#metrics {
+  position: fixed;
+  inset: 72px 8px 8px;
+  z-index: 20;
+  background: rgba(255,255,255,.97);
+  border: 1px solid rgba(0,0,0,.15);
+  border-radius: 6px;
+  padding: 10px;
+  overflow: auto;
+  font-family: ui-monospace, Menlo, monospace;
+  font-size: 10px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
