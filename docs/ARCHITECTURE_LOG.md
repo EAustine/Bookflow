@@ -12,8 +12,8 @@ Target: `docs/ARCHITECTURE.md` · Distance to it: `docs/ARCHITECTURE_GAPS.md`
 | | |
 |---|---|
 | **Current step** | Phase 0 complete and approved; all seven doc amendments applied. Ready for M0 once the open questions below are answered |
-| **Branch** | `arch/phase0-gaps` (docs only, no code changes) |
-| **`main`** | `cfa7f3e`, 85 commits ahead of `origin/main` — **not pushed** |
+| **Branch** | Phase 0 merged to `main` via [#2](https://github.com/EAustine/Bookflow/pull/2), rebased. Nothing in flight |
+| **`main`** | `28250be`, pushed. Carries `v11-batch`, the UI cleanup round, and Phase 0 |
 | **Next** | M0 spikes, on `arch/m0-spikes`. Throwaway code; nothing merges to `main` |
 
 ---
