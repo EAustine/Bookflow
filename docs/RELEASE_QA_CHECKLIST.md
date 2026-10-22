@@ -147,6 +147,9 @@ row was replaced.
 
 ---
 
+| G6 🟡 | You tab, free plan card header | "Free" chip, forest fill, light label | Moved to the shared Badge component |
+| G7 🔴 | **Pro account only** — Pro plan card | The amber "Active" chip has its **dot**, and any unlimited meter shows a **∞** in a bordered green chip | Both moved to Badge and are **unverified** — neither is reachable on a free account |
+
 ## I. Things that should look *unchanged*
 
 If any of these differ, it is a regression, not an expected change.

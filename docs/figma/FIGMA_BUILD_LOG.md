@@ -1793,3 +1793,47 @@ Delete account sheet. All rebound to `color/text/error`.
 
 **Audit:** 0 orphans, 0 detached, 0 components without a description, **0
 chevrons left on any action row** across the whole file.
+
+---
+
+### Pro plan card chips → canonical `Badge`
+
+Three more screen-local chips folded in, closing most of what F-24 left open —
+Figma's Badge had four kinds the code component did not.
+
+| Was | Now |
+|---|---|
+| `YouScreen.planBadge` | `Badge kind="plan"` |
+| `YouScreen.activeBadge` + dot + label | `Badge kind="active"` |
+| `YouScreen.unlimitedChipLight` + ∞ + label | `Badge kind="unlimited"` |
+
+All metrics moved verbatim; eight styles deleted. `active` and `unlimited` carry
+their leading element as part of the kind rather than as a prop — an "Active"
+chip without its dot is not the same chip, and an optional one would invite the
+drift this is undoing.
+
+**Left bespoke on purpose:** `manageRow` (an in-card affordance with no icon
+tile and a 13px label — ListRow would add a tile that does not belong and make
+the card taller) and `ProUsageRow` (a meter row with a progress bar). Neither is
+a list row or a chip. `Kind=Source` stays screen-local too; it carries an icon,
+so it is not a pure label chip.
+
+**The Figma comparison caught a stale variant.** Checking the three kinds
+against the code, Plan and Active matched exactly — but `Kind=Unlimited` did
+not, because it had been built from the **dark** `unlimitedChip` that F-32
+deleted as dead code:
+
+| | Figma had | Code (canonical light chip) |
+|---|---|---|
+| radius | 11 | **99** |
+| padding V | 4 | **2** |
+| border | none | **hairline forest-200** |
+| ∞ glyph | 12 Regular | **13 Medium** |
+| label | 10 Medium | **11 Medium** |
+
+So the file was documenting a branch the app no longer has. Rebuilt from
+`Badge.tsx`.
+
+> **Not visually verified:** `active` and `unlimited` only render on the Pro
+> plan card, which needs a Pro account. Type-checked and moved verbatim, but
+> unseen — they belong on the Phase D list.
