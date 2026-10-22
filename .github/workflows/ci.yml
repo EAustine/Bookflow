@@ -1,0 +1,64 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      # tokens and shared emit .d.ts that apps/app type-checks against,
+      # so they have to build before anything else runs.
+      - name: Build packages
+        run: |
+          npm run build -w @bookflow/shared
+          npm run build -w @bookflow/tokens
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Test
+        run: npm test
+
+      # Skips loudly when FIGMA_TOKEN is unset, so this is green before
+      # the secret exists rather than blocking the first CI run.
+      - name: Token drift vs Figma
+        env:
+          FIGMA_TOKEN: ${{ secrets.FIGMA_TOKEN }}
+        run: npm run tokens:check-figma
+
+      # NOT here yet: a web build check. The web bundle does not resolve
+      # until M4 moves native-only imports behind platform/*, so adding it
+      # now would mean a permanently red CI. M0 spike 2 proved it is only
+      # ten stubs and one Babel transform away.
+      #
+      # When M4 adds it, it must LOAD the page, not just bundle it:
+      # `expo export --platform web` exits 0 and still ships a blank page
+      # if `import.meta` is anywhere in the graph, because the bundle is
+      # served as a classic <script>. A Playwright assertion that the
+      # Welcome screen renders is the cheapest guard that would have
+      # caught it.
+
+      - name: Native bundle still builds
+        run: cd apps/app && npx expo export --platform android --output-dir /tmp/android-ci --clear

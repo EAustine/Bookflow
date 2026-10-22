@@ -16,7 +16,7 @@ import {
 } from '@gorhom/bottom-sheet';
 import { Icon, Text } from '~/components';
 import { tokens } from '~/design/tokens';
-import { PLAYBACK_SPEEDS } from '~/stores/readerStore';
+import { PLAYBACK_SPEEDS, SPEED_CATALOG } from '@bookflow/shared/src';
 
 // ─── Speed catalog ────────────────────────────────────────────────────────────
 
@@ -28,29 +28,11 @@ import { PLAYBACK_SPEEDS } from '~/stores/readerStore';
  */
 export type Speed = (typeof PLAYBACK_SPEEDS)[number];
 
-type SpeedDef = {
-  value: Speed;
-  display: string;
-  label: string;
-  description: string;
-};
-
-const SPEEDS: SpeedDef[] = [
-  { value: 0.5,  display: '0.5×',  label: 'Slow',       description: 'Half speed — useful for unfamiliar accents or dense passages.' },
-  { value: 0.75, display: '0.75×', label: 'Leisurely',  description: 'A relaxed pace, slower than natural speech.' },
-  { value: 1,    display: '1×',    label: 'Normal',     description: 'Natural narration speed — exactly how the audio was recorded.' },
-  { value: 1.25, display: '1.25×', label: 'Brisk',      description: '1.25× — slightly faster than natural speech. Most people find this easy to follow while listening.' },
-  { value: 1.5,  display: '1.5×',  label: 'Fast',       description: '1.5× — noticeably faster. Comprehension stays high once your ear adjusts.' },
-  { value: 1.75, display: '1.75×', label: 'Quick',      description: 'Fast pace — best for re-listening or when content is familiar.' },
-  { value: 2,    display: '2×',    label: 'Rapid',      description: 'Twice natural speed. Great for review; harder for first listens.' },
-];
-
-// Fail the build if the catalog and the store ever drift apart again.
-const _speedCatalogCoversStore: Record<Speed, true> = SPEEDS.reduce(
-  (acc, s) => ({ ...acc, [s.value]: true }),
-  {} as Record<Speed, true>,
-);
-void _speedCatalogCoversStore;
+// The catalog and the compile-time coverage check moved to
+// @bookflow/shared in M1, where they sit beside PLAYBACK_SPEEDS and are
+// covered by a test. They had drifted once before — a 3x entry shipped
+// here that the store could not persist.
+const SPEEDS = SPEED_CATALOG;
 
 // ─── Props ────────────────────────────────────────────────────────────────────
 

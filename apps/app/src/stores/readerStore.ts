@@ -109,7 +109,11 @@ const PRESET_CONFIGS: Record<ReaderPreset, Pick<ReaderSettings, 'fontSize' | 'fo
  * cycle uses the same set, so the user always has the same options
  * across surfaces.
  */
-export const PLAYBACK_SPEEDS = [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2] as const;
+// Moved to @bookflow/shared in M1 so the speed catalog and the persisted
+// set live in one place and can be tested. Re-exported here because
+// ListenScreen, YouDrillScreens and PlaybackSpeedSheet all import it
+// from the store.
+export { PLAYBACK_SPEEDS } from '@bookflow/shared/src';
 
 const DEFAULT: ReaderSettings = {
   preset: 'standard',

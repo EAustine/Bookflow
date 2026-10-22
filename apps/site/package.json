@@ -1,0 +1,9 @@
+{
+  "name": "@bookflow/site",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Marketing site \u2014 static HTML/CSS/JS, deployed to Vercel.",
+  "scripts": {
+    "dev": "python3 -m http.server 8200 --directory ."
+  }
+}

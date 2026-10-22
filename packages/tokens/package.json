@@ -1,0 +1,25 @@
+{
+  "name": "@bookflow/tokens",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./css": "./dist/tokens.css",
+    "./src": "./src/index.ts"
+  },
+  "scripts": {
+    "build": "tsc -b && node scripts/build-css.mjs",
+    "check-figma": "node scripts/check-figma.mjs",
+    "typecheck": "tsc -b --force"
+  },
+  "devDependencies": {
+    "react-native": "0.83.6",
+    "typescript": "~5.9.2"
+  }
+}

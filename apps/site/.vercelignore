@@ -1,0 +1,3 @@
+# Server-side / docs — not part of the deployed static site
+supabase/
+*.md

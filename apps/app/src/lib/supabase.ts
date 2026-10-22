@@ -2,7 +2,7 @@ import 'react-native-url-polyfill/auto';
 import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createClient } from '@supabase/supabase-js';
-import type { Database } from '~/types/database';
+import type { Database } from '@bookflow/shared/src';
 
 // We deliberately don't throw on missing env at module-eval time —
 // throws here happen *before* React mounts, so the root error boundary
