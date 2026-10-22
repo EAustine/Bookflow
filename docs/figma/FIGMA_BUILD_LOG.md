@@ -1147,7 +1147,8 @@ Answered items are **not** kept here; they live in §"Open questions F-1 … F-1
 |---|---|---|
 | ~~**F-42**~~ | ~~Every brand asset still carries the retired logomark~~ — **FIXED.** All four regenerated with composition preserved; verified on device, splash now renders at **0.662**. | ✅ done |
 | ~~**F-41**~~ | ~~Native splash ships the retired logomark~~ — **FIXED.** Asset regenerated from the canonical path data; ink ratio 0.895 → **0.659** against a canonical 0.661, and sized/placed so the handoff to the JS splash no longer jumps. | ✅ done |
-| **F-40** | `List row` models Trailing as one choice, so a row can show a hint OR a chevron. The app shows both on every Settings drill-in. | Phase D |
+| ~~**F-40**~~ | ~~`List row` can show a hint OR a chevron, not both~~ — **FIXED.** `Hint` is independent of `Trailing` now; 49 instances moved, the Hint axis value retired, 30 → 24 variants. | ✅ done |
+| **F-43** | `AccountScreen.AccountListRow` is a **fourth** row pattern F-30 missed, and it draws a chevron on every non-destructive row — including "Verify student status", which opens a mailto. | needs your call |
 | **F-39** | Discover home shows "Couldn't reach the catalog" while other sources returned 748 books. Observed on device. | Phase D |
 | **F-38** | The EPUB WebView renders fallback fonts, not the brand faces — both Fraunces and Literata resolve to Georgia. Measured, not assumed. | architecture discussion |
 | **F-17** | `Button.tsx` and `ListRow.tsx` pair `fontWeight: '500'` with `fonts.ui` (Geist **Regular**), so their labels render Regular while Figma shows Medium. | Phase B |
@@ -1696,3 +1697,61 @@ Spacing follows the code exactly: icon → 12, title → 4, body → 24, CTA gap
 descriptions naming deleted code. Counts unchanged except Organisms +1 —
 **52 component sets, 39 non-icon standalone components**, 108 screen frames,
 263 variables, 23 text styles.
+
+---
+
+### F-40 fixed — `List row` carries a hint and a chevron
+
+`Trailing` was a single choice — `None | Chevron | Toggle | Check | Hint` — so a
+row could show a value or a chevron, never both. Every Settings drill-in in the
+app shows both: *"Reading display · Literata · 20px · ›"*.
+
+`Hint` is now independent of `Trailing`, paired with a `Show hint` boolean and a
+hint node in all 24 remaining variants. `Trailing=Hint` is retired.
+
+| | before | after |
+|---|---|---|
+| Variants | 30 (Size×2 · Trailing×5 · State×3) | **24** (Trailing×4) |
+| Trailing options | None, Chevron, Toggle, Check, **Hint** | None, Chevron, Toggle, Check |
+| Can show hint + chevron | no | **yes** |
+
+**49 instances moved, 0 failures.** Which trailing each one got was decided from
+the code rather than by pattern: 46 went to `Chevron` because their rows pass
+`drillsInto` (or are `AccountListRow`, which always draws one), and 3 went to
+`None` — all of them **App language**, the one hint row with no `onPress`.
+`Show hint` defaults to **false**, so none of the other 76 List row instances
+changed.
+
+Also corrected a hint that was never a shape the app produces: `"Literata · M"`
+→ `"Literata · 20px"` on 3 instances and the component default. `readingHint`
+is built as `` `${family} · ${fontSize}px` ``.
+
+**Audit:** 0 orphans, 0 detached, 0 components without a description. 24
+variants, 125 List row instances, 49 showing a hint.
+
+> One cosmetic consequence at 393 wide: on `You / Settings`, the Translation
+> target sub-label now truncates, because hint + chevron takes more of the row
+> than hint alone. The app has 411dp and does not truncate. Left as-is — it is
+> the frame width, not a defect.
+
+### F-43 — a fourth row pattern, found while fixing F-40
+
+F-30 said `ListRow` is canonical and migrated `SettingsScreen.SettingsRow` to
+it. It missed **`AccountScreen.AccountListRow`** — 7 call sites, its own icon
+tile, label, hint and chevron.
+
+Worse than being a duplicate, it draws a chevron on **every** non-destructive,
+non-muted row:
+
+```
+{!destructive && !muted && (
+  <Icon name="ChevronRight" size={13} color={tokens.colors.ink[300]} />
+)}
+```
+
+So "Verify student status", which opens a `mailto:`, gets a chevron — the same
+hard-rule-3 violation F-30 fixed on Clear cache. Figma matches the app here,
+per the verification rule: do not change Figma to hide a bug.
+
+Migrating it is the same shape of work as F-30's row migration and was not in
+F-40's scope.

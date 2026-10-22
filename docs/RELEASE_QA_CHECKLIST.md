@@ -163,7 +163,7 @@ If any of these differ, it is a regression, not an expected change.
 |---|---|
 | **F-39** | Discover can show "Couldn't reach the catalog" even when several sources returned books |
 | **F-38** | The EPUB full-mode reader does **not** render Fraunces or Literata — it falls back to Noto Serif on Android, Georgia on iOS, and headings and body share one face |
-| **F-40** | The Figma file shows settings rows with a hint *or* a chevron; the app correctly shows both |
+| **F-43** | Account → "Verify student status" has a chevron but opens an email draft rather than drilling in |
 | **F-33** | Credit top-up prices in Figma are placeholders |
 | **F-27** | Adding a book past the free cap jumps straight to the hosted paywall with no state on the button |
 
