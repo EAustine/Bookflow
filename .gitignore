@@ -48,3 +48,8 @@ android/
 # Workspace build output
 packages/*/dist/
 apps/*/dist/
+
+# M0 spike working tree — throwaway by design (the brief: "nothing merges
+# to main"). The write-ups in docs/spikes/ are the deliverable; the
+# corpus, vendored pdf.js, run artefacts and build logs are not.
+spikes/
