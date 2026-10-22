@@ -155,7 +155,14 @@ Reading works fully offline for downloaded books on native. On web, offline is b
 
 ## 7. Unified reader engine
 
-The highest-consequence part of the system. One engine renders text mode, EPUB full mode, and PDF full mode everywhere.
+The highest-consequence part of the system. One engine renders text mode, the
+Listen view and EPUB full mode everywhere. **PDF full mode stays native** —
+see §7.6.
+
+> **Amended 2026-10-22 by M0 spike 1.** This section originally claimed all
+> three modes. pdf.js measured 42 dropped frames in 60 during ordinary reading
+> scroll on a low-end emulator, with a 3.1 s worst stall and ~1 GB peak on a
+> 2.4 GB device. Write-up: `docs/spikes/m0-1-reader-engine.md`.
 
 ### 7.1 Shape
 
@@ -179,7 +186,7 @@ At upload, a processing job converts each book into a **canonical document**: pa
   and, because `chunk_embeddings` is pgvector, re-embedding every existing book
   if chunk boundaries move. Approved 2026-10-22.
 
-- EPUB full mode renders the original EPUB inside the engine. PDF full mode renders with **pdf.js inside the engine** (retires `react-native-pdf`), subject to the Milestone 0 performance spike on a low-end Android device.
+- EPUB full mode renders the original EPUB inside the engine. **PDF full mode does not** — the M0 spike ruled pdf.js out and `react-native-pdf` stays (§7.6). The canonical document is still built for PDFs, because text mode, search, AI page context and audio sync all address it; only the *full-fidelity page rendering* remains native.
 
 ### 7.3 Bridge protocol
 
@@ -215,7 +222,7 @@ word-level sync currently works.
 | RN text-mode reader (`ReaderScreen`) | 3,689 | Engine text mode |
 | Listen screen's synced text pane (`ListenScreen`) | 1,935 | Engine text mode, with audio sync active. Per §7.4 the engine already owns word painting, so this is the same mode driven by `audioTime` rather than a separate one |
 | EPUB WebView with injected CSS | 1,151 | Engine EPUB mode |
-| `react-native-pdf` | 1,077 | Engine PDF mode (pdf.js) |
+| `react-native-pdf` | 1,077 | **Stays as-is.** Ruled out of the engine by M0 spike 1 |
 | Reader chrome (header, action bar, sheets) | — | **Stays native React**, in the host. The engine renders only the page |
 | Listen chrome (transport, voice picker, speed) | — | **Stays native React**, same rule |
 
@@ -227,13 +234,50 @@ a port. Conversely, the text reader's virtualisation (~3–5 pages resident; it
 was rebuilt that way because Android would not commit the full-document tree)
 is a parity requirement the engine must meet, not a nice-to-have.
 
+### 7.6 Why PDF stays native
+
+M0 spike 1 measured pdf.js in the real WebView build (Chrome 124.0.6367.219,
+identical to the device's system WebView) on a 2-core / 2,473 MB AVD, against
+two real books — 244 and 714 pages, embedded fonts and figures.
+
+| | text mode | pdf.js, 714 pp |
+|---|---|---|
+| First paint | 1,806 ms | 3,942 ms |
+| Long frames, **reading** scroll | **5 / 60** | **42 / 60** |
+| Worst stall | 367 ms | **3,117 ms** |
+| Peak browser memory | — | **1,022 MB of 2,473 MB** |
+
+Three independent failures, any one sufficient. And §13.1 is what makes this
+binding rather than provisional: the emulator runs ARM natively on Apple
+Silicon with no thermal throttling, so it *flatters* pdf.js. A pass would have
+proved little; a failure proves the real device is worse.
+
+**Consequences.**
+
+- `react-native-pdf` is not removed at M6. It is a permanent part of the
+  architecture, and `reader-host` keeps a PDF path (§8).
+- Web has no PDF full mode at launch. Text mode still works for PDFs, because
+  the canonical document is built regardless — so a PDF is readable and
+  listenable on web, just not page-faithful. That is a product decision to
+  take before M8, not an engineering gap.
+- The engine's scope shrinks, which makes M6 smaller and safer. Text mode was
+  the strongest result in the spike: `content-visibility` alone held 351 pages
+  at 5 dropped frames in 60 on two cores, so the engine does **not** need to
+  reimplement the RN reader's JS virtualisation.
+
+**Not settled:** the prototype's canvas eviction leaked — memory settled at
+958 MB after scrolling away rather than returning to baseline. Fixing it might
+move the memory number but cannot move the 3.1 s frame stalls, which are CPU.
+Worth an hour before treating the memory figure as the final word; the verdict
+does not depend on it.
+
 ## 8. Platform adapters
 
 Each adapter is one interface in `platform/<name>/index.ts` with `.native.ts` and `.web.ts` implementations.
 
 | Adapter | Native | Web |
 |---|---|---|
-| `reader-host` | `react-native-webview` | same-origin iframe |
+| `reader-host` | `react-native-webview` for text/EPUB, **`react-native-pdf` for PDF full mode** (§7.6) | same-origin iframe; **no PDF full mode at launch** |
 | `audio` | `expo-audio` (background, lock screen) | `HTMLAudioElement` + Media Session |
 | `files` | `expo-document-picker` | file input + drag and drop |
 | `fileCache` | `expo-file-system` | Cache API / IndexedDB |
@@ -268,7 +312,7 @@ below already exist in substance — see the gap analysis.
 
 ### 9.2 Functions and jobs
 
-- `revenuecat-webhook` → upserts `entitlements`; grants top-up credits into `credit_ledger`. The function already exists and is live; today it writes `profiles.plan` and `profiles.ai_credits_limit` instead, so this is a retarget rather than new work.
+- `revenuecat-webhook` → upserts `entitlements`; grants top-up credits into `credit_ledger`. The function already exists and is live, and does **both halves** already: subscription events write `profiles.plan` and `profiles.ai_credits_limit`, and `NON_RENEWING_PURCHASE` calls the `grant_credits` RPC for top-ups. So this is a retarget onto new tables, not new behaviour. Confirmed by M0 spike 3.
 - Every AI and narration function checks and debits credits **in the same transaction** as recording the request. No client-side metering. **This already ships** — `supabase/functions/_shared/aiCredits.ts` calls the `record_ai_usage` RPC, a plpgsql function that rolls the billing period, writes the usage event and debits top-up balance before monthly allowance, atomically. What changes is only where the *balance* lives: today it is stored counters on `profiles`, and it becomes a view over the ledger.
 - The hidden credit gauge is **not** blocked by metering, which is already server-side. Whatever is actually hiding it has to be found before M5 commits to restoring it.
 - Long work (extraction, canonical document build, narration) runs as queued jobs, not request-bound calls. Queue choice (Supabase Queues/pgmq, or a `jobs` table drained by a scheduled function) is settled in Milestone 0.
@@ -276,6 +320,7 @@ below already exist in substance — see the gap analysis.
 ## 10. Billing and entitlements
 
 - **RevenueCat app user id = Supabase user id** on every platform. This is what makes one subscriber record across stores and web. Set it at sign-in, before any purchase call.
+  **Already true on native** (M0 spike 3): `src/lib/auth.ts:367` calls `Purchases.logIn(session.user.id)` on sign-in and on session restore, and the webhook maps `event.app_user_id` straight to `profiles.id`. Two gaps remain — web has no equivalent auth sync yet (M4's `billing` adapter), and the `configure()` → `logIn()` ordering is conventional rather than enforced, so the "before any purchase call" rule deserves an assertion at the purchase call site.
 - **Native:** RevenueCat SDK and the hosted paywall, as today.
 - **Web:** RevenueCat Web (Web Billing engine on Stripe) through the Web SDK. Same entitlements and offerings; top-ups sold as one-time purchases.
 - **Source of truth for gating:** the `entitlements` table and credit balance view in Supabase. The RevenueCat SDK result is used only as a fast local hint.
@@ -358,13 +403,13 @@ Each milestone ends with: type check clean, tests green, Android device QA, and 
 
 | # | Milestone | Done when |
 |---|---|---|
-| **M0** | Spikes | Reader engine prototype hits stable memory on a RAM-constrained Android emulator with a 300-page PDF and an EPUB (see §13.1 on what that evidence can and cannot settle); app boots on web; RevenueCat Web Billing sandbox purchase grants an entitlement visible on Android; queue choice made |
+| **M0** | Spikes | ~~Reader engine prototype~~ **done 2026-10-22 — text/EPUB go, pdf.js no-go** (§7.6); app boots on web; RevenueCat Web Billing sandbox purchase grants an entitlement visible on Android; queue choice made |
 | **M1** | Foundation | Monorepo, `packages/tokens` generating the current theme with zero visual change, CI, Sentry, PostHog, test harness, and `CLAUDE.md`/`AGENTS.md` reconciled with this document |
 | **M2** | Routing | Expo Router replaces the stage machine; every current screen reachable by URL; magic-link deep links work on both platforms; no visual change |
 | **M3** | Features and data | Screens moved into `features/*`; TanStack Query for all server state; offline queue for progress and highlights |
 | **M4** | Adapters and web boot | All native-only imports behind `platform/*`; the app runs end to end on web (reader may still be a placeholder) |
 | **M5** | Backend | `entitlements`, `credit_ledger`, `jobs`, `documents`, `narration_segments`; webhook live; server-side metering; Library reads job progress |
-| **M6** | Reader engine | Engine replaces text, EPUB and PDF modes behind a flag on native, then on web; RN text reader and `react-native-pdf` removed after parity |
+| **M6** | Reader engine | Engine replaces text, the Listen view and EPUB behind a flag on native, then on web; RN text reader removed after parity. **`react-native-pdf` stays** (§7.6), so PDF full mode is untouched |
 | **M7** | Responsive shells | Medium and Expanded shells, Presenter, master-detail layouts. **Requires tablet and desktop frames in Figma first** |
 | **M8** | Web launch | Web paywall and top-ups, app domain, SEO-safe auth pages, Playwright suite green |
 
@@ -397,11 +442,17 @@ that it is not hopeless. The spike should therefore:
 3. Treat the decision as **provisional**. `react-native-pdf` stays until pdf.js
    is confirmed on real low-end hardware.
 
-**Before M6 removes `react-native-pdf`**, the real check has to happen on a
-real device. Owning one is not the only route — a cloud device farm (Firebase
-Test Lab, BrowserStack, AWS Device Farm) rents real budget handsets by the
-minute, and Firebase Test Lab has a free tier. That is the cheapest way to turn
-M0's provisional verdict into a binding one.
+> **Resolved 2026-10-22.** The spike returned a *failure*, and by the rule
+> above that is the conclusive direction — a real budget phone is slower still.
+> So the pdf.js decision is binding, not provisional, and no real-device
+> confirmation is needed to act on it. Open question 14 is closed by the
+> result rather than by the hardware. §7.6 has the numbers.
+
+M6 no longer removes `react-native-pdf`, so that particular real-device check
+is moot. A cloud device farm (Firebase Test Lab has a free tier) is still the
+cheapest way to validate the **text and EPUB** engine on real budget hardware
+before M6 ships it — a *pass* on the emulator is the case that needs
+confirming, and text mode passed.
 
 ## 14. Open items
 

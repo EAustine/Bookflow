@@ -11,7 +11,7 @@ Target: `docs/ARCHITECTURE.md` · Distance to it: `docs/ARCHITECTURE_GAPS.md`
 
 | | |
 |---|---|
-| **Current step** | Phase 0 complete and approved; all seven doc amendments applied. Ready for M0 once the open questions below are answered |
+| **Current step** | **M1 merged to `main`.** Monorepo, tokens, shared, CI, tests, lint boundaries. Sentry and PostHog deferred — see below. M2 (routing) is next |
 | **Branch** | Phase 0 merged to `main` via [#2](https://github.com/EAustine/Bookflow/pull/2), rebased. Nothing in flight |
 | **`main`** | `28250be`, pushed. Carries `v11-batch`, the UI cleanup round, and Phase 0 |
 | **Next** | M0 spikes, on `arch/m0-spikes`. Throwaway code; nothing merges to `main` |
@@ -26,6 +26,8 @@ Target: `docs/ARCHITECTURE.md` · Distance to it: `docs/ARCHITECTURE_GAPS.md`
 | 2026-10-22 | **The canonical document preserves `pages.id`** | Austine | Seven tables of live user data reference it — `highlights`, `translations`, `practice_questions`, `summaries`, `reading_sessions`, `audio_cache`, `chunk_embeddings`. One is pgvector. New ids would mean a seven-table remap plus re-embedding every book. Now a constraint in §7.2 |
 | 2026-10-22 | `ARCHITECTURE.md` adopted into the repo as `docs/ARCHITECTURE.md` | — | With two amendments; see commit `bd36983` |
 | 2026-10-22 | **All seven Phase 0 amendments applied** to `ARCHITECTURE.md` | Austine | §7.2 `pages.id`, §7.4 character offsets, §7.5 fourth text surface, §8 clipboard adapter, §9.1 schema size, §9.2 metering already ships, §12/M1 agent-instruction consistency |
+| 2026-10-22 | **`jobs` table, not Supabase Queues (pgmq)** | M0 spike 4 | pgmq has no worker, so it saves none of the scheduling work; §9.1 needs `jobs` for progress regardless, and queue messages are opaque. Choosing pgmq means running both |
+| 2026-10-22 | **pdf.js is out of the engine; `react-native-pdf` stays permanently** | M0 spike 1 | 42/60 long frames on reading scroll, 3.1 s worst stall, 1,022 MB peak on a 2,473 MB device — measured in the same Chromium build as the device's WebView. The emulator flatters pdf.js, so a failure is binding. §7.6 |
 | 2026-10-22 | M0's reader spike runs on an **emulator**, no physical device | Austine | None available. Recorded with its consequence in §13.1: the emulator runs arm64 natively on Apple Silicon, so it over-states CPU performance and cannot throttle. A failure there is conclusive; a pass is not. `react-native-pdf` stays until a real device confirms |
 | 2026-10-22 | **npm workspaces**, not pnpm | Austine | Expo supports both and recommends neither. pnpm's isolated installs are exactly what React Native makes you disable (`nodeLinker: hoisted`), leaving pnpm configured to act like npm with an extra config file, a lockfile migration and a new EAS surface to debug. The repo is already npm |
 | 2026-10-22 | **RevenueCat Billing** is the web engine, not Stripe Billing or Paddle | — | Stripe Billing adds 0.7% of volume on top of the same transaction fee, and Paddle's merchant-of-record service is not worth paying for unsurveyed. Revisit if VAT handling becomes the binding constraint |
@@ -35,6 +37,116 @@ Target: `docs/ARCHITECTURE.md` · Distance to it: `docs/ARCHITECTURE_GAPS.md`
 ---
 
 ## Progress
+
+### M1 — foundation · ✅ 2026-10-22 (merged)
+
+npm workspaces: `apps/app`, `apps/site`, `packages/tokens`, `packages/shared`.
+124 files moved as detected renames. Supabase and docs stay at the root.
+
+`packages/tokens` holds `tokens.ts` byte for byte, adds the breakpoints §3 and
+§11 called for, and generates `tokens.css` — 163 custom properties.
+`apps/app/src/design/tokens.ts` re-exports it, so the 59 modules importing
+`~/design/tokens` never changed.
+
+`packages/shared` holds the generated DB types plus three functions that were
+private to screens and therefore untestable. 14 Vitest tests. One pins existing
+behaviour rather than fixing it: `formatCredits(1500)` is `"2K"`, overstating a
+balance by 500 credits — a product decision, left alone.
+
+ESLint turns §4's boundaries from prose into enforcement. Rule 4 is a warning,
+not an error: 19 call sites violate it and M4 is where they move. CI runs
+typecheck, lint, tests, token drift and a native bundle; it deliberately does
+not build web until M4's adapters exist.
+
+The marketing site moved in from `~/bookflow-site`, and its `contact-notify`
+edge function joined the other twenty.
+
+**Evidence: all five reachable screens pixel-identical.** 5.5M pixels, 0
+differing, release builds both sides. `docs/evidence/m1/README.md` records the
+method — in particular that the noise floor was measured before the result was
+believed, which is what exposed a 165-pixel "regression" as a blinking caret.
+
+Two things bit on the way and are worth remembering. Packages emit **CommonJS**,
+not ESM: tsc emits relative specifiers verbatim, so ESM needed `'./format.js'`
+in source and Metro then looked for a literal `format.js` that does not exist.
+And the package tsconfigs do **not** extend `expo/tsconfig.base` — it sets
+`customConditions`, which is incompatible with CommonJS resolution.
+
+**Deferred: Sentry and PostHog.** Austine's call, 2026-10-22 — the keys were
+not to hand and nothing else in M1 depended on them. Still M1 scope, not
+dropped scope. They belong before M2 ships: replacing the navigation layer
+without crash reporting is the worst moment to be blind. Open question 4.
+
+### M0 — spikes · ✅ complete
+
+**Spike 1, reader engine · ✅ 2026-10-22 · `docs/spikes/m0-1-reader-engine.md`**
+
+Built `bookflow_lowend` (2 cores, 2,473 MB, 720×1600) and measured a DOM engine
+against real books in Chrome 124.0.6367.219 — the same build as the device's
+system WebView, which is what makes the numbers transferable.
+
+Text mode: 1,806 ms first paint, **5 long frames in 60** on reading scroll.
+`content-visibility` alone carries 351 pages, so the engine does not need its
+own virtualisation. EPUB similar.
+
+pdf.js: **42 long frames in 60**, 3.1 s worst stall, 1,022 MB peak. No-go.
+`react-native-pdf` stays and §7 loses a mode.
+
+Word sync p50 37.8 ms but p95 313 ms under memory pressure, missing the 250 ms
+budget — caused by building all 130,161 word spans up front. Lazy per-page
+spans for M6.
+
+Five method bugs are recorded in §5 of the write-up with the wrong numbers they
+each produced first, including a 3,232 MB reading on a 2,473 MB device.
+
+**Spike 2, web boot · ✅ 2026-10-22 · `docs/spikes/m0-2-web-boot.md`**
+
+The app boots on web. Welcome screen renders, zero console errors, **no app
+code changed** — both blockers were configuration or dependency.
+
+Ten native-only packages need stubs (the §8 adapter list, plus `expo-clipboard`
+which §8 lacked until Phase 0). The second blocker is the `import.meta` one the
+brief predicted, and it is nastier than expected: **bundling succeeds** and the
+failure is at runtime, because Expo serves the web bundle as a classic script.
+Green CI, blank app. Traced to one occurrence in 8.5 MB — Zustand's `devtools`
+middleware, which we never use but which rides in on the `zustand/middleware`
+barrel. Fixed with a web-only Babel rewrite of `import.meta` rather than by
+chasing the import, so the next dependency cannot re-break it the same way.
+
+Two things for later: M4's CI must **load** the page, not just build it, or
+this class of failure ships silently. And 8.5 MB is too big for Ama — mostly
+fonts bundled at every weight including unused italics.
+
+**Spike 4, job queue · ✅ 2026-10-22 · `docs/spikes/m0-4-job-queue.md`**
+
+**`jobs` table, not Supabase Queues.** pgmq has no worker and no scheduler, so
+adopting it still needs `pg_cron` + `pg_net` + a consumer function — it saves
+none of the work that does not exist today. Meanwhile §9.1 already requires
+`jobs` for the progress the Library reads, and a queue message is opaque, so
+choosing pgmq means running both and keeping them consistent. Retry policy
+becomes three columns rather than a gap pgmq leaves open. Research only, no
+prototype.
+
+**Spike 3, RevenueCat Web · ◑ PARTIAL 2026-10-22 · `docs/spikes/m0-3-revenuecat-web.md`**
+
+Status and fees answered (§10.1). The sandbox purchase is blocked on RevenueCat
+dashboard access and Stripe test keys — **do not hand those over to be used
+here**; it is a purchase flow against a real account, so run the plan in §3 of
+the write-up yourself.
+
+What was possible without credentials mattered more than expected: **the
+identity precondition §10 rests on is already implemented**, and verifiable
+from code. `auth.ts:367` calls `Purchases.logIn(session.user.id)` on sign-in and
+session restore; the webhook maps `event.app_user_id` straight to `profiles.id`.
+The webhook also already handles top-ups via the `grant_credits` RPC, which §9.2
+does not credit it with. So the sandbox test would confirm the model rather than
+discover it, and it is not on M0's critical path — nothing in M1–M4 depends on
+it and web purchases ship at M8.
+
+Three risks found while reading: the `configure()` → `logIn()` window is
+unenforced ordering rather than guaranteed; web has no equivalent auth sync yet
+(M4's `billing` adapter); and `profiles.plan` is the de facto source of truth
+only because there is currently one writer.
 
 ### Phase 0 — gap analysis · ✅ 2026-10-22
 
@@ -69,7 +181,7 @@ migrations, not ten.
 | 1 | ~~Approve the gap analysis and the proposed `ARCHITECTURE.md` changes~~ — **done 2026-10-22**, all seven applied | ✅ |
 | 2 | ~~Where does the marketing site live?~~ — **answered 2026-10-22**: `~/bookflow-site`. Not a git repo, pure static, own Vercel project, and it shares the app's Supabase project plus a 21st edge function. See `ARCHITECTURE_GAPS.md` risk 9 | ✅ |
 | 3 | ~~Is pnpm deliberate?~~ — **decided 2026-10-22: npm workspaces**, §4 of the architecture doc | ✅ |
-| 4 | Sentry and PostHog keys | M1 |
+| 4 | **Sentry and PostHog keys.** Deferred from M1 by Austine on 2026-10-22, not dropped. Worth closing before M2 lands: replacing the navigation layer without crash reporting is the worst moment to be blind | before M2 ships |
 | 5 | App domain for universal links and App Links | M2 |
 | 6 | ~~Is a physical budget Android phone available?~~ — **no, decided 2026-10-22**: emulator only. See §13.1 — this makes M0's pdf.js verdict provisional, not binding | ✅ |
 | 7 | Should M3's file moves come *before* M2's routing, to avoid two passes over 33,203 lines? | M2 |
@@ -84,7 +196,7 @@ migrations, not ten.
 | 11 | ~~Does the canonical document preserve character offsets?~~ — **settled**: §7.4 now requires it. Still needs *proving* in the M0 canonical-document spike | M0 |
 | 12 | `listen_sessions.chapter_id` is a leftover from `0010_chapters_to_pages.sql`. Reconcile or drop while the schema is open | M5 |
 | 13 | **Can Ghanaian customers actually pay?** Web Billing is Stripe-only, card-only, and its purchase links cannot be localised. The persona the web app most helps is the one least served by that checkout. Needs a direct answer from RevenueCat or Stripe | before M8 |
-| 14 | **Real-device confirmation for pdf.js.** M0 runs on an emulator on Apple Silicon, which is faster than a budget phone and cannot throttle. A cloud device farm (Firebase Test Lab has a free tier) would make the verdict binding without buying hardware | before M6 removes `react-native-pdf` |
+| ~~14~~ | ~~Real-device confirmation for pdf.js~~ — **closed by the result, 2026-10-22.** The spike failed, and a failure on flattering hardware is conclusive. Successor: confirm **text/EPUB** on a real device before M6 ships, since a *pass* is the case needing confirmation | before M6 |
 
 ---
 
