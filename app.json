@@ -18,7 +18,9 @@
       "bundleIdentifier": "com.eaustine.bookflow",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
-        "UIBackgroundModes": ["audio"]
+        "UIBackgroundModes": [
+          "audio"
+        ]
       }
     },
     "android": {
@@ -27,7 +29,12 @@
         "backgroundColor": "#FAF7F2"
       },
       "predictiveBackGestureEnabled": false,
-      "package": "com.eaustine.bookflow"
+      "package": "com.eaustine.bookflow",
+      "splash": {
+        "image": "./assets/splash-icon-android.png",
+        "resizeMode": "contain",
+        "backgroundColor": "#FAF7F2"
+      }
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -60,7 +67,8 @@
           "icon": "./assets/notification-icon.png",
           "color": "#2D6A4F"
         }
-      ]
+      ],
+      "./plugins/withAndroidSplashIcon"
     ],
     "experiments": {
       "tsconfigPaths": true
