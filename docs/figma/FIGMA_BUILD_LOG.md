@@ -1141,51 +1141,64 @@ Verified: `grep` for the old control points returns **nothing** across `src/` an
 
 ## Open questions — still genuinely open
 
-Answered items are **not** kept here; they live in §"Open questions F-1 … F-16", §"Post-Phase-4 code fixes" and the Phase A/B sections. This table is only what is still undecided.
+Only undecided items live here. Everything answered is recorded where it was
+done — §"Open questions F-1 … F-16", §"Post-Phase-4 code fixes", and the
+Phase A–E sections below. The table was pruned at the end of the cleanup
+round; before that it still carried twenty finished rows.
 
-| ID | Question | Blocks |
-|---|---|---|
-| ~~**F-42**~~ | ~~Every brand asset still carries the retired logomark~~ — **FIXED.** All four regenerated with composition preserved; verified on device, splash now renders at **0.662**. | ✅ done |
-| ~~**F-41**~~ | ~~Native splash ships the retired logomark~~ — **FIXED.** Asset regenerated from the canonical path data; ink ratio 0.895 → **0.659** against a canonical 0.661, and sized/placed so the handoff to the JS splash no longer jumps. | ✅ done |
-| ~~**F-40**~~ | ~~`List row` can show a hint OR a chevron, not both~~ — **FIXED.** `Hint` is independent of `Trailing` now; 49 instances moved, the Hint axis value retired, 30 → 24 variants. | ✅ done |
-| ~~**F-44**~~ | ~~Three different source-traceability chips ship — practice, AI summary and AI chat~~ — **FIXED.** Your call: the summary treatment. `Badge kind="source"` now serves all three; 4 screen-local style pairs deleted, 5 hand-drawn Figma chips replaced with instances. | ✅ done |
-| ~~**F-45**~~ | ~~The chat sources row renders three book glyphs now that its chips carry their own~~ — **FIXED.** Row-level icon dropped, in code and in Figma; the row is a plain text label now, like the summary panel's. | ✅ done |
-| ~~**F-43**~~ | ~~`AccountListRow` is a fourth row pattern with chevrons on action rows~~ — **FIXED.** Migrated to `ListRow`; 5 wrong chevrons removed, 2 treatments corrected against the spec. | ✅ done |
-| **F-39** | Discover home shows "Couldn't reach the catalog" while other sources returned 748 books. Observed on device. | Phase D |
-| **F-38** | The EPUB WebView renders fallback fonts, not the brand faces — both Fraunces and Literata resolve to Georgia. Measured, not assumed. | architecture discussion |
-| **F-17** | `Button.tsx` and `ListRow.tsx` pair `fontWeight: '500'` with `fonts.ui` (Geist **Regular**), so their labels render Regular while Figma shows Medium. | Phase B |
-| **F-18** | `ModeTogglePill`'s `variant="dark"` is passed by no caller, and its code comment describing the PDF header as black-translucent is stale. | Phase B |
-| **F-19** | Figma `Stat card` exposes Value/Label only; code's `StatCard` also has `unit` and `delta`. Extend the component? | Phase 4 |
-| **F-20** | Now-playing hero card uses `#fff` / `rgba(255,255,255,…)` / `#2C3B31` inline instead of tokens. Adopt into `tokens.ts`? | Phase 4 |
-| **F-21** | Two near-duplicate recently-listened rows with different metrics (`ListenHistoryScreen.Row` vs `ListenNowPlayingScreen.recentRow`). Converge? | Phase 4 |
-| **F-22** | Transport icon opacity resolves opaque inside instances (Figma binding quirk). Cosmetic. | Phase 4 |
-| **F-23** | `readTime` / `chapters` / `related` are rendered but never populated — dead UI on book detail. Populate or delete? | Phase 4 |
-| **F-24** | Book-detail `Free badge` and `Topic tag` duplicate the canonical `Badge` atom. Fold in? | Phase 4 |
-| **F-25** | Book-detail CTA is 48/10/14 — matches no canonical Button size. Resize or add a size? | Phase 4 |
-| **F-26** | Destructive confirmation differs by entry point: Library uses the bottom sheet, Discover uses a native alert. Breaks CLAUDE.md hard rule 5. | Phase 4 |
-| **F-27** | Free-book cap diverts to the hosted paywall with no visual state on the Add button. | Phase 4 |
-| **F-28** | The Discover "For you" chip renders in the active style but its onPress is a no-op. Make it filter, or restyle it? | Phase 4 |
-| **F-30** | Three row patterns (ListRow / SettingsRow / RadioRow) and two header patterns (centred DrillHeader vs left-aligned SubHeader) coexist in one flow. | Phase 4 |
-| **F-32** | `YouScreen.Meter`'s `unlimited` branch is never reached from the free card; the Pro card uses a second, different unlimited chip. | Phase 4 |
-| **F-33** | Top-up prices live in the store, not the repo — Figma prices are placeholders. Confirm the real price points? | Phase 4 |
-| **F-34** | ~1,600 lines of unreachable monetisation UI (PaywallSheet, PaywallScreen, RestorePurchasesScreen, StudentVerificationScreen). Delete or wire up? | Phase 4 |
-| **F-35** | No in-repo upgrade UI at all — every path goes to the hosted paywall. Design a Bookflow paywall, or stay hosted? | Phase 4 |
-| **F-36** | Three more unreachable screens (NotificationPermissionSheet, ComingSoonScreen, AppRatingSheet). With F-34 that is ~2,270 lines of dead UI — the concrete answer to F-13. | Phase 4 |
+| ID | Question | Blocks | Why it is still open |
+|---|---|---|---|
+| **F-27** | Adding a book past the free cap jumps straight to the hosted paywall with no visual state on the Add button. | your call | Needs a product decision about where upgrade lives — see F-35 |
+| **F-33** | Top-up prices live in the store, not the repo, so the Figma prices are placeholders. What are the real price points? | your call | Only you know them |
+| **F-35** | There is no in-repo upgrade UI at all; every path leaves for the hosted paywall. Design a Bookflow paywall, or stay hosted? | architecture discussion | F-34 deleted the unreachable attempt, which makes this the live question |
+| **F-38** | The EPUB WebView renders fallback fonts, not the brand faces — Fraunces and Literata both resolve away, to Noto Serif on Android and Georgia on iOS. Measured against a deliberately nonexistent control family, not assumed. | architecture discussion | Fixing font loading in a WebView is an architecture question, not cleanup |
+| **F-39** | Discover home showed "Couldn't reach the catalog" while 748 books had in fact loaded. Observed on device. | needs a repro | A real bug, but the failing source was not identified |
+| **F-22** | Transport icon opacity resolves opaque inside Figma instances although the component binds `white/85`. Figma-side only; the code paints `rgba(255,255,255,0.85)` correctly. | — | Cosmetic Figma quirk, flagged rather than hacked around |
+
+Three of the six are decisions only you can make (F-27, F-33, F-35), two are
+deferred to the architecture discussion (F-35, F-38), one needs a repro
+(F-39), and one is cosmetic (F-22).
 
 ---
 
 ## Resume protocol
 
-> "Continuing the Bookflow Figma build. File `Rt3gjNC24kBTrncxlnkuPW`. Load the `figma-use` and `figma-generate-library` skills, read `docs/figma/FIGMA_BUILD_LOG.md` and `docs/figma/BOOKFLOW_FIGMA_INVENTORY.md`, then pick up from the open-questions table — Phases 0–4 are complete."
+> "Continuing Bookflow. The Figma build and the UI cleanup round are both
+> **done**. Read `docs/figma/FIGMA_BUILD_LOG.md` (start at §"UI cleanup round
+> — Phase E close-out") and `docs/RELEASE_QA_CHECKLIST.md`. **Start with the
+> architecture discussion** — do not start new UI or Figma work. Load the
+> `figma-use` and `figma-generate-library` skills only if the discussion turns
+> to the design system."
 
-**Phases 0–4 are COMPLETE.** 108 screen frames across 10 flows, 98 component sets, 248 variables. 0 detached instances, 0 orphan instances, 0 unbound fills, 0 components without a description. The 12 route-map surfaces missing after Phase 3 were built in Phase 4 rather than reported as gaps.
+**The next session is a conversation, not a build.** Four things are waiting
+on it, and all four are decisions rather than tasks:
 
-**Still outstanding:** the open questions below, and ground rule 10 — now **partially** satisfied: the app has been run on an iPhone 17 Pro simulator and the splash is the first surface ever compared against a real render (see the addendum at the end of this log). The other 107 frames remain uncompared.
+| | What has to be decided | Prepared by |
+|---|---|---|
+| 1 | **Monetisation.** Design an in-repo paywall or stay hosted (F-35), and what the Add button does at the free cap (F-27). ~1,600 lines of an unreachable first attempt were deleted, so there is nothing to retrofit — this is a clean decision. | F-34, F-35, F-27 |
+| 2 | **EPUB typography.** The reader WebView renders neither brand face (F-38). Fixing it means deciding how fonts get into a WebView — bundled and base64-injected, served, or accept the fallback and pick good ones. | F-38 |
+| 3 | **State and data.** The hand-rolled `stage` machine in `App.tsx`, bespoke hooks over Supabase, and TanStack Query installed but mostly unused. CLAUDE.md records the decision; whether it still holds at this size is the question. | — |
+| 4 | **Whether the Figma file stays in sync by hand.** Six rounds of drift were fixed by hand this round. Code Connect exists and is unused. | Phase C |
 
-**Phase 4 is done.** What remains is not build work: answer the open questions, add Fraunces Medium and run the one switch-over pass, and decide what to do about the ~2,270 lines of unreachable UI (F-34, F-36).
+**Before anything ships**, `docs/RELEASE_QA_CHECKLIST.md` has to be run on a
+physical Android device. 67 checks, 9 sections. Roughly a third of them are
+unverifiable without a signed-in test account, which is still outstanding.
 
-**Lesson that cost the most rework:** read the actual screen file before building a screen. Flow 6 had three screens built from a plausible-looking assumption; `ListenHomeScreen.tsx` and `ListenHistoryScreen.tsx` are separate files from `ListenScreen.tsx`, and all three screens had to be rebuilt. Check `src/screens/` for sibling files before starting any flow.
+**Do not re-open** the pruned findings. F-13 and F-17 … F-21, F-23 … F-26,
+F-28 … F-32, F-34, F-36, F-40 … F-45 are all closed, each with a commit.
+Six remain open and they are in the table above.
 
+**Lesson that cost the most rework:** read the actual screen file before
+building a screen. Flow 6 had three screens built from a plausible-looking
+assumption; `ListenHomeScreen.tsx` and `ListenHistoryScreen.tsx` are separate
+files from `ListenScreen.tsx`, and all three had to be rebuilt. Check
+`src/screens/` for sibling files before starting any flow.
+
+**Second lesson, from this round:** verify the premise before fixing the
+finding. F-18, F-13 and F-24 were all written up as defects that turned out
+not to exist as described — a variant that *was* passed, a button that *did*
+work, a duplicate of a component that did not exist in code at all. Three of
+roughly thirty findings. Read the code the finding names before you act on it.
 
 ---
 
@@ -1971,3 +1984,82 @@ the chat chips had none of their own, which stopped being true with F-44.
 Figma's `Panel / AI chat` row updated to match: glyph `285:63` removed, the
 row left at gap 4, centre-aligned, wrapping, as `chatStyles.sourcesRow`
 specifies.
+
+---
+
+## UI cleanup round — Phase E close-out (2026-10-22)
+
+The round is finished. 45 commits on `ui-cleanup` off `v11-batch`, one per
+finding as the brief asked, `npx tsc --noEmit` at **0 errors** in `src/` and
+`App.tsx` after every one of them.
+
+### What the round actually did
+
+| Phase | Work | Outcome |
+|---|---|---|
+| **A** | Reconcile the log with itself; settle the Fraunces weight | `fonts.display` → SemiBold 600, `displayBold` → Bold 700, `fontWeight` dropped from 107 style objects. Verified **pixel-identical** on both platforms — 0 of 1,591,920 pixels differed on iOS, 0 of 378,000 on Android |
+| **B** | 16 code findings, one commit each | **2,635 lines of unreachable UI deleted.** Eight screens gone. Four components extracted: `SubHeader`, `ConfirmSheetBody`, `RecentListenRow`, `RemoveBookSheetBody` |
+| **C** | Figma reconciliation | 44 Settings rows + 19 badges + 7 headers + 3 listen rows re-pointed; 5 components and a whole page deleted. Audit: 0 detached, 0 orphans, 0 missing descriptions, 0 dead Index links |
+| **D** | Compare Figma against a real render | **Blocked.** See the totals below |
+| **E** | Close out | This section, the pruned table above, the rewritten resume protocol, and `docs/RELEASE_QA_CHECKLIST.md` |
+
+Findings closed this round: **F-13, F-17 – F-21, F-23 – F-26, F-28 – F-32,
+F-34, F-36, F-40 – F-45.** Findings opened: **F-38, F-39, F-41 – F-45** —
+four of those six were closed in the same round.
+
+### Verification totals (ground rule 10)
+
+Honest numbers, not flattering ones.
+
+| | Frames | Share |
+|---|---|---|
+| Compared against a real render | **4** | 4% |
+| → Match | 1 | |
+| → Fixed (Figma was wrong) | 2 | |
+| → Fixed (code was wrong) | 1 | |
+| Could not reach — no test account | **104** | 96% |
+| **Total screen frames** | **108** | |
+
+Only Flow 1 (Auth) was reachable, and only 4 of its 10 frames: splash,
+welcome, sign up, sign in. Everything from "Check your email" onward needs a
+magic link in an inbox, and flows 2–10 need a signed-in account with books,
+progress, listen history and both plan states. The brief said to ask for a
+test account rather than create one, so that is where it stopped.
+
+The iOS simulator was signed in as the personal account from the first build,
+and the device checks in Phases A–C used that session. Nothing was modified —
+the one destructive flow opened was cancelled — but those captures are **not**
+in `docs/figma/verification/`.
+
+Also still unrun for the same reason: the **F-3 icon-stroke check** (1.5 → 1.0)
+on the tab bar, reader action bar, Listen transport and Settings list — every
+one of those surfaces is post-auth — and visual confirmation of
+`Badge kind="active"` and `kind="unlimited"`, which only render on a Pro
+account.
+
+### File state at close
+
+| | Count |
+|---|---|
+| Pages | 28 |
+| Screen frames | 108 |
+| Variables | **265** (9 collections; +2 this round for `overlay/amber`) |
+| Text styles | 23 |
+| Effect styles | 4 |
+| Variables at `ALL_SCOPES` | **0** |
+| Variables missing WEB code syntax | **0** |
+
+WEB code syntax is the React Native token path (`tokens.bgColors.surface`),
+not a CSS `var(--…)`. That is deviation 3 above and it is deliberate — this
+codebase has no CSS. A future session running a generic design-system audit
+will flag all 265 as malformed; they are not.
+
+### What the brief asked for and did not get
+
+1. **Phase D, flows 2–10.** Blocked on the test account. Not marked verified.
+2. **The icon-stroke check.** Same cause.
+3. **A Pro-state render.** Same cause.
+
+Nothing else from the brief was skipped. Checked for a leftover temporary
+flag as the brief asked — `grep` across `src/`, `App.tsx` and `app.json` finds
+none, and the working tree is clean.

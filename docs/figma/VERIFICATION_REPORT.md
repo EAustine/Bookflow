@@ -39,7 +39,10 @@ left for the user) · Could not reach.
 | 9 | `Auth / Onboarding / First book` | `147:363` | — | **Could not reach** | Post-auth |
 | 10 | `Auth / Returning user / Session restore` | `147:420` | — | **Could not reach** | Post-auth |
 
-**5 of 10 reachable without an account. 1 match, 2 fixed, 1 code bug (now fixed), 6 blocked.**
+**4 of 10 frames reachable without an account: 1 match, 2 Figma defects fixed,
+1 code bug fixed. 6 blocked.** (An earlier draft of this line said 5 of 10 —
+it counted the splash twice, once per platform. The table has ten unique
+frames and four of them were compared.)
 
 ### Splash — final state, both platforms
 
@@ -88,6 +91,8 @@ the splash icon inside a fixed container and iOS full-screen.
 **Blocked pending a test account.** The brief asks for an account with books,
 reading progress, listen history, and a Free and a Pro state, and says not to
 create one or use the personal account.
+
+That is **98 frames**, 91% of the file, never compared against a render.
 
 > **Disclosure:** the iOS simulator was already signed in as
 > `eluroaustine3@gmail.com` from the first build, and the device checks run

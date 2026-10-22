@@ -12,6 +12,30 @@ knowing so you can tell a real regression from a difference you were expecting.
 
 Severity: 🔴 would block a release · 🟡 visible but shippable · ⚪ cosmetic.
 
+**67 checks across 9 sections.** Roughly a third need a signed-in account with
+books, progress and listen history; §G7 additionally needs a Pro account.
+
+Where to find each change this list was written to cover:
+
+| Change | Section |
+|---|---|
+| Logomark, splash asset, icon set | A1, A3–A5 |
+| Splash timing — the breath that never ran | A2 |
+| Fraunces weight 500 → 600, `displayBold` → 700 | B |
+| Icon stroke 1.5 → 1.0 | C |
+| F-30 — row and header patterns | D |
+| Playback speeds — 3× removed | E6 |
+| Focus ring | G1 |
+| Toggle — three became one | G3 |
+| F-17 — button and row labels render Medium | G4, G5 |
+| F-24, F-32, F-44, F-45 — the Badge family | G6–G9, F8 |
+| F-19, F-20, F-21 — Listen | E1–E5, I2 |
+| F-23, F-25, F-26, F-28 — Discover and book detail | F1–F9 |
+| F-29, F-31 — toggle and Pro card tokens | G3, I1 |
+| `space` scale renumbering | I5 |
+| F-13, F-34, F-36 — eight deleted screens | I6, I7 |
+| F-27, F-33, F-38, F-39 — still open | J |
+
 ---
 
 ## A. First launch — the splash and the brand marks
@@ -87,10 +111,10 @@ row was replaced.
 | D8 🔴 | Same for Usage warnings and Product updates (grant notification permission first) | Row tap flips the switch | — |
 | D9 🟡 | Settings → Clear cache sub-label | Reads to the end: "…Books and progress stay." Not truncated mid-word | Shared rows clamp sub-labels to one line; this one is explicitly allowed two |
 | D10 🟡 | Settings → Downloaded audio | Sits in a normal row with a music-note tile, honest sub-label | — |
+| D11 🟡 | Deny notification permission, reopen Settings | The three notification rows are dimmed, their switches greyed and off, and the banner above explains why | Dimming is a prop on the shared row now |
 | D12 🟡 | You → Account & subscription, every row | **No chevrons anywhere.** Verify student status shows "$4.99/mo" and nothing else | Five rows had a chevron and none of them drills in — two open a browser, one opens an email draft |
 | D13 🔴 | Same screen, bottom two rows | **Sign out and Delete account are both red**, with plain icon tiles like every other row | Delete account used to be grey and the destructive rows used to have pink icon tiles. The spec says the label alone carries the colour |
 | D14 🟡 | Compare Sign out here with Sign out on the You tab | Identical | They genuinely differed before this round |
-| D11 🟡 | Deny notification permission, reopen Settings | The three notification rows are dimmed, their switches greyed and off, and the banner above explains why | Dimming is a prop on the shared row now |
 
 ---
 
@@ -161,6 +185,9 @@ If any of these differ, it is a regression, not an expected change.
 | I2 | Now-playing hero card | Same as before — 28 colour literals moved to tokens, values identical |
 | I3 | Every Fraunces screen, ignoring the weight change in §B | Same layout and line breaks |
 | I4 | Reader, all three themes | Light, Sepia and Dark unchanged. The Full/Text pill is dark-tinted on the Dark theme |
+| I5 | Spacing everywhere — gutters, card padding, gaps between sections | Unchanged. The `space` ladder was renumbered (`ml: 20` added, `3xl` 48 → 40, `4xl` 64 → 48, `5xl: 64` added), but `3xl`/`4xl` had **no consumers** before or after — checked by grep across `src/` and `App.tsx` at both revisions. Nothing reads the changed steps, so this is a rename with no render path. Lowest-risk row here |
+| I6 | Library as a free user with **≤18 audio minutes left** and usage warnings on | The soft warning banner still appears and dismisses. It moved out of the deleted `PaywallScreen.tsx` into `src/components/` unchanged — hard to reach, so **unverified** |
+| I7 | Anywhere you expect a screen that is simply gone | Nothing should be missing. Eight screens were deleted this round — paywall, paywall sheet, restore purchases, student verification, retry questions, app rating, coming soon, notification permission — all of them verified unreachable first. If you find a path that now dead-ends, that is a real finding |
 
 ---
 
@@ -183,3 +210,15 @@ large parts of the app were never reachable at all during verification because
 it needed a signed-in test account. Sections C (icon stroke in real light) and
 D (hardware back) are the ones a physical device is most likely to disagree
 about.
+
+To be exact about what "verified" means on this branch: **4 of the app's 108
+screen frames** were ever compared against a real render, all four in the auth
+flow. The other 104 were not reachable. So this checklist is a list of things
+to *look at*, not a list of things already confirmed — §C in full, §G7, and
+most of §D and §E have never been seen working by anyone but you.
+
+The rows most likely to surface a real problem, if you only have time for
+some: **A1, A2** (the splash handoff, changed last and least verified),
+**C1–C3** (stroke 1.0 at small sizes in real light), **D1–D3** (the hardware
+back handler moved into a shared component and nesting depends on it), and
+**D7–D8** (whole-row tap targets).
