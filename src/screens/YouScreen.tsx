@@ -51,6 +51,7 @@ import {
 } from '~/stores/readerStore';
 import { VOICE_OPTIONS } from '~/lib/aiAudio';
 import {
+  Badge,
   BottomSheet,
   type BottomSheetRef,
   Button,
@@ -545,9 +546,7 @@ function PlanCard({
     <View style={styles.planCard}>
       <View style={styles.planHeader}>
         <Text style={styles.planLabel}>YOUR PLAN</Text>
-        <View style={styles.planBadge}>
-          <Text style={styles.planBadgeText}>{plan.name}</Text>
-        </View>
+        <Badge kind="plan" label={plan.name} />
       </View>
 
       <View style={styles.meters}>
@@ -620,10 +619,7 @@ function ProPlanCard({
       <View style={styles.proTop}>
         <View style={styles.proLabelRow}>
           <Text style={styles.proEyebrow}>Your plan</Text>
-          <View style={styles.activeBadge}>
-            <View style={styles.activeDot} />
-            <Text style={styles.activeLabel}>Active</Text>
-          </View>
+          <Badge kind="active" label="Active" />
         </View>
         <Text style={styles.proNameHero}>{plan.name}</Text>
         <Text style={styles.proRenews}>{renewsLine}</Text>
@@ -709,10 +705,7 @@ function ProUsageRow({
           <Text style={styles.proUsageNameText}>{name}</Text>
         </View>
         {unlimited ? (
-          <View style={styles.unlimitedChipLight}>
-            <Text style={styles.unlimitedChipLightGlyph}>∞</Text>
-            <Text style={styles.unlimitedChipLightLabel}>Unlimited</Text>
-          </View>
+          <Badge kind="unlimited" label="Unlimited" />
         ) : (
           <Text style={styles.proUsageValue}>{value}</Text>
         )}
@@ -767,7 +760,7 @@ function Meter({
   // There is deliberately no `unlimited` branch here. The free plan card
   // is the only caller and all three of its meters have finite totals;
   // the unlimited treatment belongs to `ProUsageRow`'s
-  // `unlimitedChipLight`, which is canonical. (F-32.)
+  // Badge kind="unlimited", which is canonical. (F-32.)
   return (
     <View style={styles.meterRow}>
       <View style={styles.meterMeta}>
@@ -937,19 +930,6 @@ const styles = StyleSheet.create({
     letterSpacing: 0.9,
     color: tokens.colors.forest[200],
   },
-  planBadge: {
-    backgroundColor: tokens.colors.forest[700],
-    borderRadius: tokens.radii.sm,
-    paddingHorizontal: tokens.space.md,
-    paddingVertical: 3,
-  },
-  planBadgeText: {
-    fontFamily: tokens.fonts.uiMedium,
-    fontSize: 12,
-    lineHeight: 16,
-    fontWeight: '500',
-    color: tokens.colors.forest[100],
-  },
   meters: {
     gap: tokens.space.md,
     marginBottom: tokens.space.md,
@@ -1032,30 +1012,6 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     color: tokens.colors.forest[400],
   },
-  activeBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    backgroundColor: tokens.overlay.amber.fill,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: tokens.overlay.amber.border,
-    borderRadius: 99,
-    paddingHorizontal: 10,
-    paddingVertical: 3,
-  },
-  activeDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: tokens.colors.amber[500],
-  },
-  activeLabel: {
-    fontFamily: tokens.fonts.uiMedium,
-    fontSize: 10,
-    fontWeight: '500',
-    letterSpacing: 0.4,
-    color: tokens.colors.amber[500],
-  },
   proNameHero: {
     fontFamily: tokens.fonts.display,
     fontSize: 28,
@@ -1111,29 +1067,6 @@ const styles = StyleSheet.create({
   proUsageValue: {
     fontFamily: tokens.fonts.uiMedium,
     fontSize: 12,
-    fontWeight: '500',
-    color: tokens.colors.forest[800],
-  },
-  unlimitedChipLight: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: tokens.colors.forest[50],
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: tokens.colors.forest[200],
-    borderRadius: 99,
-    paddingHorizontal: 9,
-    paddingVertical: 2,
-  },
-  unlimitedChipLightGlyph: {
-    fontFamily: tokens.fonts.uiMedium,
-    fontSize: 13,
-    fontWeight: '600',
-    color: tokens.colors.forest[800],
-  },
-  unlimitedChipLightLabel: {
-    fontFamily: tokens.fonts.uiMedium,
-    fontSize: 11,
     fontWeight: '500',
     color: tokens.colors.forest[800],
   },

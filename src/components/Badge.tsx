@@ -1,35 +1,36 @@
 /**
  * Badge — a small, non-interactive label chip.
  *
- * Built from the book-detail chips that were screen-local StyleSheet
- * entries in `DiscoverScreen`: the "Free" badge and the topic tags.
- * They nearly but did not exactly match each other, and nothing stopped
- * the next screen inventing a third. (F-24.)
+ * Every chip in the app that is "a word in a tinted pill" lives here.
+ * They were all screen-local StyleSheet entries, which is how five
+ * near-identical pills ended up with four different corner radii and
+ * nothing stopping a sixth.
  *
  * Kinds:
- *   free → forest-50 fill, forest-800 Medium label. Says "this costs
- *          nothing", so it carries the brand colour rather than a
- *          neutral.
- *   tag  → cream-100 fill, neutral ink label. A topic, not a status.
+ *   free       forest-50 fill, forest-800 Medium. "This costs nothing",
+ *              so it carries the brand colour rather than a neutral.
+ *   tag        cream-100 fill, neutral ink. A topic, not a status.
+ *   plan       forest-700 fill, forest-100 label. The plan name on the
+ *              free plan card's header.
+ *   active     amber fill and hairline border with a leading dot. The
+ *              live-subscription marker on the Pro card.
+ *   unlimited  forest-50 fill, forest-200 border, leading infinity
+ *              glyph. A meter with no cap.
  *
- * `tag` has two sizes because the app genuinely uses two: the detail
- * view's roomier chips, and the denser ones on category rows, which are
- * also a step lighter in both type size and ink so a row of five does
- * not out-shout the title above it.
+ * `tag` has two sizes because the app uses two: the detail view's
+ * roomier chips, and the denser ones on category rows, which are also a
+ * step lighter in type size and ink so a row of five does not out-shout
+ * the title above it.
  *
- * ── Not yet folded in ────────────────────────────────────────────────
- * Figma's `Badge` atom (123:30) carries four more kinds, built from
- * `YouScreen.planBadge`, `YouScreen.activeBadge`,
- * `PracticeQuestionsScreen.sourceChip` and `.currentBadge`. Those are
- * still screen-local. F-24 scoped this to the two book-detail chips;
- * migrating the rest is a follow-up, and until it happens the Figma
- * component has more kinds than this one.
+ * `active` and `unlimited` carry their own leading element. It is part
+ * of the kind rather than a prop — an "Active" chip without its dot, or
+ * an "Unlimited" chip without its ∞, is not the same chip.
  */
 import { StyleSheet, View } from 'react-native';
 import { Text } from './Text';
 import { tokens } from '~/design/tokens';
 
-export type BadgeKind = 'free' | 'tag';
+export type BadgeKind = 'free' | 'tag' | 'plan' | 'active' | 'unlimited';
 export type BadgeSize = 'default' | 'compact';
 
 export type BadgeProps = {
@@ -41,23 +42,16 @@ export type BadgeProps = {
 
 export function Badge({ label, kind = 'tag', size = 'default' }: BadgeProps) {
   const compact = kind === 'tag' && size === 'compact';
+  const containerStyle = compact
+    ? styles.tagCompact
+    : styles[kind as Exclude<BadgeKind, never>];
+  const labelStyle = compact ? styles.tagCompactText : LABEL_STYLE[kind];
+
   return (
-    <View
-      style={[
-        kind === 'free' ? styles.free : compact ? styles.tagCompact : styles.tag,
-      ]}
-    >
-      <Text
-        style={
-          kind === 'free'
-            ? styles.freeText
-            : compact
-              ? styles.tagCompactText
-              : styles.tagText
-        }
-      >
-        {label}
-      </Text>
+    <View style={containerStyle}>
+      {kind === 'active' && <View style={styles.activeDot} />}
+      {kind === 'unlimited' && <Text style={styles.unlimitedGlyph}>∞</Text>}
+      <Text style={labelStyle}>{label}</Text>
     </View>
   );
 }
@@ -74,6 +68,7 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: tokens.colors.forest[800],
   },
+
   tag: {
     backgroundColor: tokens.colors.cream[100],
     borderRadius: 6,
@@ -96,4 +91,71 @@ const styles = StyleSheet.create({
     fontSize: 10,
     color: tokens.colors.ink[500],
   },
+
+  plan: {
+    backgroundColor: tokens.colors.forest[700],
+    borderRadius: tokens.radii.sm,
+    paddingHorizontal: tokens.space.md,
+    paddingVertical: 3,
+  },
+  planText: {
+    fontFamily: tokens.fonts.uiMedium,
+    fontSize: 12,
+    lineHeight: 16,
+    color: tokens.colors.forest[100],
+  },
+
+  active: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: tokens.overlay.amber.fill,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: tokens.overlay.amber.border,
+    borderRadius: 99,
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+  },
+  activeDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: tokens.colors.amber[500],
+  },
+  activeText: {
+    fontFamily: tokens.fonts.uiMedium,
+    fontSize: 10,
+    letterSpacing: 0.4,
+    color: tokens.colors.amber[500],
+  },
+
+  unlimited: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: tokens.colors.forest[50],
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: tokens.colors.forest[200],
+    borderRadius: 99,
+    paddingHorizontal: 9,
+    paddingVertical: 2,
+  },
+  unlimitedGlyph: {
+    fontFamily: tokens.fonts.uiMedium,
+    fontSize: 13,
+    color: tokens.colors.forest[800],
+  },
+  unlimitedText: {
+    fontFamily: tokens.fonts.uiMedium,
+    fontSize: 11,
+    color: tokens.colors.forest[800],
+  },
 });
+
+const LABEL_STYLE: Record<BadgeKind, object> = {
+  free: styles.freeText,
+  tag: styles.tagText,
+  plan: styles.planText,
+  active: styles.activeText,
+  unlimited: styles.unlimitedText,
+};
