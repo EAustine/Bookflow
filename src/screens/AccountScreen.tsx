@@ -20,6 +20,7 @@ import {
   Button,
   ConfirmSheetBody,
   Icon,
+  ListRow,
   SubHeader,
   Text,
 } from '~/components';
@@ -236,8 +237,8 @@ export function AccountScreen({
           <SectionGroup label="Account">
             {!isPro && (
               <>
-                <AccountListRow
-                  iconName="CreditCard"
+                <ListRow
+                  leadingIcon="CreditCard"
                   label="Verify student status"
                   hint="$4.99/mo"
                   onPress={() => void handleVerifyStudent()}
@@ -245,8 +246,8 @@ export function AccountScreen({
                 <RowDivider />
               </>
             )}
-            <AccountListRow
-              iconName="Refresh"
+            <ListRow
+              leadingIcon="Refresh"
               label={restoring ? 'Restoring…' : 'Restore purchases'}
               onPress={() => {
                 if (restoring) return;
@@ -256,37 +257,37 @@ export function AccountScreen({
           </SectionGroup>
 
           <SectionGroup label="Privacy & data">
-            <AccountListRow
-              iconName="Shield"
+            <ListRow
+              leadingIcon="Shield"
               label="Privacy policy"
               onPress={() => void openUrl(PRIVACY_POLICY_URL)}
             />
             <RowDivider />
-            <AccountListRow
-              iconName="FileText"
+            <ListRow
+              leadingIcon="FileText"
               label="Terms of service"
               onPress={() => void openUrl(TERMS_OF_SERVICE_URL)}
             />
             <RowDivider />
-            <AccountListRow
-              iconName="Download"
+            <ListRow
+              leadingIcon="Download"
               label={exporting ? 'Preparing export…' : 'Export my data'}
               onPress={() => void handleExportData()}
             />
           </SectionGroup>
 
           <SectionGroup>
-            <AccountListRow
-              iconName="Logout"
+            <ListRow
+              leadingIcon="Logout"
               label="Sign out"
               destructive
               onPress={() => signOutSheetRef.current?.present()}
             />
             <RowDivider />
-            <AccountListRow
-              iconName="Trash"
+            <ListRow
+              leadingIcon="Trash"
               label="Delete account"
-              muted
+              destructive
               onPress={() => deleteSheetRef.current?.present()}
             />
           </SectionGroup>
@@ -1157,61 +1158,6 @@ import type { IconName } from '~/components/Icon';
  * shadowing doesn't confuse static analysis when both names are
  * in scope of a future shared-component import.
  */
-function AccountListRow({
-  iconName,
-  label,
-  hint,
-  destructive,
-  muted,
-  onPress,
-}: {
-  iconName: IconName;
-  label: string;
-  hint?: string;
-  destructive?: boolean;
-  muted?: boolean;
-  onPress: () => void;
-}) {
-  const iconBg = destructive
-    ? tokens.bgColors.errorMuted
-    : muted
-    ? tokens.bgColors.surface
-    : tokens.bgColors.surface;
-
-  const iconColor = destructive
-    ? tokens.colors.error
-    : muted
-    ? tokens.colors.ink[300]
-    : tokens.textColors.secondary;
-
-  const labelColor = destructive
-    ? tokens.colors.error
-    : muted
-    ? tokens.colors.ink[400]
-    : tokens.textColors.primary;
-
-  return (
-    <Pressable
-      accessibilityRole="button"
-      onPress={onPress}
-      style={({ pressed }) => [
-        styles.listRow,
-        pressed && { backgroundColor: tokens.bgColors.raised },
-      ]}
-    >
-      <View style={[styles.rowIconBg, { backgroundColor: iconBg }]}>
-        <Icon name={iconName} size={15} color={iconColor} />
-      </View>
-      <Text style={[styles.rowLabel, { color: labelColor }, muted && styles.rowLabelMuted]}>
-        {label}
-      </Text>
-      {hint && <Text style={styles.rowHint}>{hint}</Text>}
-      {!destructive && !muted && (
-        <Icon name="ChevronRight" size={13} color={tokens.colors.ink[300]} />
-      )}
-    </Pressable>
-  );
-}
 
 // ─── Sign-out sheet body ──────────────────────────────────────────────────────
 
@@ -1599,39 +1545,6 @@ const styles = StyleSheet.create({
   },
 
   // List row
-  listRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    paddingVertical: 14,
-    paddingHorizontal: tokens.space.md,
-    backgroundColor: tokens.bgColors.canvas,
-  },
-  rowIconBg: {
-    width: 32,
-    height: 32,
-    borderRadius: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexShrink: 0,
-  },
-  rowLabel: {
-    flex: 1,
-    fontFamily: tokens.fonts.uiMedium,
-    fontSize: 14,
-    fontWeight: '500',
-    color: tokens.textColors.primary,
-  },
-  rowLabelMuted: {
-    fontFamily: tokens.fonts.ui,
-    fontWeight: '400',
-  },
-  rowHint: {
-    fontFamily: tokens.fonts.ui,
-    fontSize: 13,
-    color: tokens.colors.ink[400],
-    flexShrink: 0,
-  },
   rowDivider: {
     height: StyleSheet.hairlineWidth,
     backgroundColor: tokens.borderColors.subtle,
