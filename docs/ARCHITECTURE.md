@@ -48,11 +48,29 @@ from the code; the evidence is in `ARCHITECTURE_GAPS.md`.
 
 pnpm workspaces. Supabase stays at the root.
 
+**On the marketing site.** It lives at `~/bookflow-site`: 27 files, 1 MB, pure
+static HTML/CSS/JS with no build step, deployed as its own Vercel project. Two
+things about it shape M1 more than the move itself does:
+
+- **It is not a git repository.** The live marketing site has no version
+  history at all. Moving it in is therefore trivial — a copy, with no subtree
+  merge or history reconciliation — and it is also the fix for a real problem,
+  not just tidying.
+- **It shares the app's Supabase project** (`wqybsuhccyixpnrvmlxr`) and carries
+  a 21st edge function, `contact-notify`, that this repo has never seen. Two
+  checkouts linked to one project, one of them holding a function the other
+  cannot deploy. `contact-notify` moves into `supabase/functions/` with the
+  rest.
+
+`vercel.json` carries `cleanUrls`, three security headers and immutable
+caching for `/fonts` and `/images`. That config has to survive the move, and
+the existing Vercel project should be re-pointed rather than replaced.
+
 ```
 bookflow/
   apps/
     app/                    Expo app: iOS, Android, web
-    site/                   Marketing site (static), moved in from bookflow_landing_site
+    site/                   Marketing site (static), moved in from ~/bookflow-site
   packages/
     tokens/                 Design tokens source → RN theme, CSS variables, Figma sync check
     reader-engine/          Unified reader: TS + DOM, built to a self-contained bundle

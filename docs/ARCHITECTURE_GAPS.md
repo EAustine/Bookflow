@@ -40,7 +40,7 @@ month or more.
 | § | Area | Today | Change | Size |
 |---|---|---|---|---|
 | 3 | Breakpoints and shells | None. No `useLayoutClass`, no breakpoint tokens, phone layout only | All new. **Blocked** — no tablet or desktop frames in Figma | **L** |
-| 4 | Repo layout | Single npm package. `src/{screens,components,lib,hooks,stores,design,types,utils}` | pnpm workspaces, `apps/`, `packages/`, `features/`. 35 screens and 33,203 lines move | **M** |
+| 4 | Repo layout | Single npm package. `src/{screens,components,lib,hooks,stores,design,types,utils}`. The marketing site is a **separate, unversioned** directory at `~/bookflow-site` | pnpm workspaces, `apps/`, `packages/`, `features/`. 35 screens and 33,203 lines move, plus 27 static files and one orphaned edge function | **M** |
 | 5 | Navigation | Hand-rolled `stage` machine in `App.tsx` (1,468 lines) plus local `view` state inside each tab. `expo-router` not installed | Expo Router, typed routes, every screen a URL. The highest-risk structural change in the plan | **L** |
 | 6 | Data layer | `@tanstack/react-query@5.100.5` **is installed** but server state is bespoke hooks (`useBooks`, `useBooksImpl`, `useCurrentUser`, `useBookChapters`) over Supabase. Zustand (2 stores) for client state. No persisted cache, no offline queue | Query for all server state, persisted cache, offline queue. Zustand stays | **L** |
 | 7 | Reader | Four surfaces, 7,852 lines, three rendering strategies — see §4 below | One engine. The highest-consequence change | **L** |
@@ -222,12 +222,11 @@ and it is not yet addressed in the doc.
 | 6 | **Text-mode memory regression** | Today's reader was explicitly rebuilt to virtualise because Android "effectively never committed the new tree" with the old full-fetch model (`ReaderScreen.tsx:313–322`). A DOM engine can regress this | Make it an M0 acceptance number, not an M6 discovery |
 | 7 | **Two contradictory agent instruction files** | `CLAUDE.md` says never use Expo Router; `AGENTS.md:26` says use it. Whichever an agent reads, half the migration looks like a violation | Reconcile both in M1 |
 | 8 | **pnpm + EAS + Expo** | Hoisting and `node_modules` layout are a known source of EAS build failures. The repo is npm today | Confirm pnpm is deliberate, or use npm workspaces |
-| 9 | **Marketing site location unknown** | `bookflow_landing_site` is not beside the repo. M1 cannot move what it cannot find | Ask |
+| 9 | **The marketing site is unversioned and shares the app's Supabase project** | `~/bookflow-site` is not a git repository — the live site has no history. It is also linked to `wqybsuhccyixpnrvmlxr`, the app's own project, and holds a 21st edge function (`contact-notify`) that this repo has never seen. One laptop directory is the only copy of a live function's source | Move it in at M1: a plain copy, since there is no history to reconcile. `contact-notify` joins `supabase/functions/` |
 | 10 | **Figma drift** | Parity is maintained by hand; six rounds of it were corrected manually last round | `tokens:check-figma` in M1 is the right answer |
 
 ### Unknowns that need you, not code
 
-- Where `bookflow_landing_site` lives.
 - The app domain for universal links and App Links (M2).
 - Sentry and PostHog keys (M1).
 - Real top-up prices (F-33).
