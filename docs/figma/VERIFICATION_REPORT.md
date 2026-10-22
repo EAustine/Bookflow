@@ -27,6 +27,7 @@ left for the user) · Could not reach.
 
 | # | Frame | Node | Platform | Status | Note |
 |---|---|---|---|---|---|
+| 1 | `Auth / Splash / Default` | `146:2` | **iOS** | **Fixed (code)** | Same asset chain. Re-measured on the simulator after rebuild: ratio **0.659**, **96 pt** wide, centre **−36 pt** — matching the JS splash exactly |
 | 1 | `Auth / Splash / Default` | `146:2` | Android | **Fixed (code)** | Shipped the retired logomark. Splash asset regenerated (F-41) and the whole icon set with it (F-42) — Android 12+ renders the launcher icon, not the splash asset. Re-measured on device: **0.662** against a canonical 0.661, was 0.895. Figma also draws a Lockup (outlined wordmark vectors) where the app draws a logomark SVG plus a live 36px `<Text>` |
 | 2 | `Auth / Welcome / Default` | `146:32` | Android | **Match** | Lockup, illustration, headline with italic emphasis, sub-copy, CTA, sign-in link and legal line all present and correctly ordered. Wrap differs (411 vs 393) |
 | 3 | `Auth / Sign up / Form` | `146:121` | Android | **Fixed** | Three Figma defects — see below |
@@ -38,7 +39,20 @@ left for the user) · Could not reach.
 | 9 | `Auth / Onboarding / First book` | `147:363` | — | **Could not reach** | Post-auth |
 | 10 | `Auth / Returning user / Session restore` | `147:420` | — | **Could not reach** | Post-auth |
 
-**5 of 10 reachable without an account. 1 match, 2 fixed, 1 code bug, 6 blocked.**
+**5 of 10 reachable without an account. 1 match, 2 fixed, 1 code bug (now fixed), 6 blocked.**
+
+### Splash — final state, both platforms
+
+| | Android | iOS | JS splash draws |
+|---|---|---|---|
+| Shape (ink ratio) | **0.663** | **0.659** | 0.661 |
+| Width | **96 dp** | **96 pt** | 96 |
+| Centre vs screen centre | **−36 dp** | **−36 pt** | −36 |
+
+Shape, size and position match on both, so the native → JS handoff no longer
+moves. Android draws its icon from `assets/splash-icon-android.png` and iOS from
+`assets/splash-icon.png` — deliberately different crops, because Android renders
+the splash icon inside a fixed container and iOS full-screen.
 
 ### Sign up — what was wrong in Figma
 
