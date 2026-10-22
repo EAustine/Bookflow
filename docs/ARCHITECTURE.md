@@ -46,7 +46,34 @@ from the code; the evidence is in `ARCHITECTURE_GAPS.md`.
 
 ## 4. Repository layout
 
-pnpm workspaces. Supabase stays at the root.
+**npm workspaces.** Supabase stays at the root.
+
+Decided 2026-10-22, having checked Expo's own guidance. Expo supports Bun, npm,
+pnpm and Yarn equally and recommends none of them, so this is a judgement call
+rather than a constraint. npm wins on one argument that is not familiarity:
+
+**pnpm's main benefit is the thing React Native makes you turn off.** pnpm
+defaults to isolated installs; Expo's docs say "not all packages work with
+isolated dependencies, and some React Native libraries may cause build or
+resolution errors", and the fix is `nodeLinker: hoisted` in
+`pnpm-workspace.yaml`. Set that and you have pnpm configured to behave like
+npm — with an extra config file, a lockfile migration and a new EAS surface to
+debug, for no remaining advantage. At two apps and three packages the disk and
+install-time savings are not worth a solo founder's debugging time.
+
+npm's own caveat stands and is accepted: hoisting can hide dependency problems
+and break hardcoded native paths. That is already true of this repo as a single
+package, so the monorepo does not add the risk.
+
+SDK 55 turns on `expo.experiments.autolinkingModuleResolution` automatically in
+monorepos, which removes a historic source of monorepo pain for every package
+manager. Since SDK 52, `expo/metro-config` configures Metro for workspaces on
+its own — `watchFolders`, `resolver.nodeModulesPath`, `resolver.extraNodeModules`
+and `resolver.disableHierarchicalLookup` must **not** be hand-set.
+
+Two rules that bite regardless of manager: duplicate React Native versions are
+unsupported, and duplicate React versions cause runtime errors. `npm why` is
+the check.
 
 **On the marketing site.** It lives at `~/bookflow-site`: 27 files, 1 MB, pure
 static HTML/CSS/JS with no build step, deployed as its own Vercel project. Two
@@ -348,7 +375,7 @@ Each milestone ends with: type check clean, tests green, Android device QA, and 
 - Store-policy review for app-to-web purchase links, per region, before any link-out ships.
 - Real top-up prices (F-33).
 - What is actually hiding the credit gauge, given that metering is already server-side (§9.2).
-- Whether pnpm is the right choice over npm workspaces, given EAS Build's hoisting sensitivity. The repo is npm today.
+- ~~Whether pnpm is the right choice over npm workspaces~~ — **decided 2026-10-22: npm workspaces.** Reasoning in §4.
 - Where `bookflow_landing_site` lives; it is not beside the repo, and M1 moves it in.
 - Whether M3's file moves should precede M2's routing, to avoid two passes over the same 33,203 lines of screens.
 - The app domain for universal links and App Links (M2), and the Sentry and PostHog keys (M1).
