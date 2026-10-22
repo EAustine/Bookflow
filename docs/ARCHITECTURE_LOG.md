@@ -11,7 +11,7 @@ Target: `docs/ARCHITECTURE.md` · Distance to it: `docs/ARCHITECTURE_GAPS.md`
 
 | | |
 |---|---|
-| **Current step** | Phase 0 complete and approved; all seven doc amendments applied. Ready for M0 once the open questions below are answered |
+| **Current step** | **M0 in progress** on `arch/m0-spikes`. Spike 1 done (pdf.js no-go, §7.6). Spikes 2 and 4 next; spike 3 blocked on RevenueCat/Stripe access |
 | **Branch** | Phase 0 merged to `main` via [#2](https://github.com/EAustine/Bookflow/pull/2), rebased. Nothing in flight |
 | **`main`** | `28250be`, pushed. Carries `v11-batch`, the UI cleanup round, and Phase 0 |
 | **Next** | M0 spikes, on `arch/m0-spikes`. Throwaway code; nothing merges to `main` |
@@ -26,6 +26,7 @@ Target: `docs/ARCHITECTURE.md` · Distance to it: `docs/ARCHITECTURE_GAPS.md`
 | 2026-10-22 | **The canonical document preserves `pages.id`** | Austine | Seven tables of live user data reference it — `highlights`, `translations`, `practice_questions`, `summaries`, `reading_sessions`, `audio_cache`, `chunk_embeddings`. One is pgvector. New ids would mean a seven-table remap plus re-embedding every book. Now a constraint in §7.2 |
 | 2026-10-22 | `ARCHITECTURE.md` adopted into the repo as `docs/ARCHITECTURE.md` | — | With two amendments; see commit `bd36983` |
 | 2026-10-22 | **All seven Phase 0 amendments applied** to `ARCHITECTURE.md` | Austine | §7.2 `pages.id`, §7.4 character offsets, §7.5 fourth text surface, §8 clipboard adapter, §9.1 schema size, §9.2 metering already ships, §12/M1 agent-instruction consistency |
+| 2026-10-22 | **pdf.js is out of the engine; `react-native-pdf` stays permanently** | M0 spike 1 | 42/60 long frames on reading scroll, 3.1 s worst stall, 1,022 MB peak on a 2,473 MB device — measured in the same Chromium build as the device's WebView. The emulator flatters pdf.js, so a failure is binding. §7.6 |
 | 2026-10-22 | M0's reader spike runs on an **emulator**, no physical device | Austine | None available. Recorded with its consequence in §13.1: the emulator runs arm64 natively on Apple Silicon, so it over-states CPU performance and cannot throttle. A failure there is conclusive; a pass is not. `react-native-pdf` stays until a real device confirms |
 | 2026-10-22 | **npm workspaces**, not pnpm | Austine | Expo supports both and recommends neither. pnpm's isolated installs are exactly what React Native makes you disable (`nodeLinker: hoisted`), leaving pnpm configured to act like npm with an extra config file, a lockfile migration and a new EAS surface to debug. The repo is already npm |
 | 2026-10-22 | **RevenueCat Billing** is the web engine, not Stripe Billing or Paddle | — | Stripe Billing adds 0.7% of volume on top of the same transaction fee, and Paddle's merchant-of-record service is not worth paying for unsurveyed. Revisit if VAT handling becomes the binding constraint |
@@ -35,6 +36,31 @@ Target: `docs/ARCHITECTURE.md` · Distance to it: `docs/ARCHITECTURE_GAPS.md`
 ---
 
 ## Progress
+
+### M0 — spikes · in progress
+
+**Spike 1, reader engine · ✅ 2026-10-22 · `docs/spikes/m0-1-reader-engine.md`**
+
+Built `bookflow_lowend` (2 cores, 2,473 MB, 720×1600) and measured a DOM engine
+against real books in Chrome 124.0.6367.219 — the same build as the device's
+system WebView, which is what makes the numbers transferable.
+
+Text mode: 1,806 ms first paint, **5 long frames in 60** on reading scroll.
+`content-visibility` alone carries 351 pages, so the engine does not need its
+own virtualisation. EPUB similar.
+
+pdf.js: **42 long frames in 60**, 3.1 s worst stall, 1,022 MB peak. No-go.
+`react-native-pdf` stays and §7 loses a mode.
+
+Word sync p50 37.8 ms but p95 313 ms under memory pressure, missing the 250 ms
+budget — caused by building all 130,161 word spans up front. Lazy per-page
+spans for M6.
+
+Five method bugs are recorded in §5 of the write-up with the wrong numbers they
+each produced first, including a 3,232 MB reading on a 2,473 MB device.
+
+**Spikes 2 and 4** next. **Spike 3** needs RevenueCat dashboard access and
+Stripe test keys.
 
 ### Phase 0 — gap analysis · ✅ 2026-10-22
 
@@ -84,7 +110,7 @@ migrations, not ten.
 | 11 | ~~Does the canonical document preserve character offsets?~~ — **settled**: §7.4 now requires it. Still needs *proving* in the M0 canonical-document spike | M0 |
 | 12 | `listen_sessions.chapter_id` is a leftover from `0010_chapters_to_pages.sql`. Reconcile or drop while the schema is open | M5 |
 | 13 | **Can Ghanaian customers actually pay?** Web Billing is Stripe-only, card-only, and its purchase links cannot be localised. The persona the web app most helps is the one least served by that checkout. Needs a direct answer from RevenueCat or Stripe | before M8 |
-| 14 | **Real-device confirmation for pdf.js.** M0 runs on an emulator on Apple Silicon, which is faster than a budget phone and cannot throttle. A cloud device farm (Firebase Test Lab has a free tier) would make the verdict binding without buying hardware | before M6 removes `react-native-pdf` |
+| ~~14~~ | ~~Real-device confirmation for pdf.js~~ — **closed by the result, 2026-10-22.** The spike failed, and a failure on flattering hardware is conclusive. Successor: confirm **text/EPUB** on a real device before M6 ships, since a *pass* is the case needing confirmation | before M6 |
 
 ---
 
