@@ -312,7 +312,7 @@ below already exist in substance — see the gap analysis.
 
 ### 9.2 Functions and jobs
 
-- `revenuecat-webhook` → upserts `entitlements`; grants top-up credits into `credit_ledger`. The function already exists and is live; today it writes `profiles.plan` and `profiles.ai_credits_limit` instead, so this is a retarget rather than new work.
+- `revenuecat-webhook` → upserts `entitlements`; grants top-up credits into `credit_ledger`. The function already exists and is live, and does **both halves** already: subscription events write `profiles.plan` and `profiles.ai_credits_limit`, and `NON_RENEWING_PURCHASE` calls the `grant_credits` RPC for top-ups. So this is a retarget onto new tables, not new behaviour. Confirmed by M0 spike 3.
 - Every AI and narration function checks and debits credits **in the same transaction** as recording the request. No client-side metering. **This already ships** — `supabase/functions/_shared/aiCredits.ts` calls the `record_ai_usage` RPC, a plpgsql function that rolls the billing period, writes the usage event and debits top-up balance before monthly allowance, atomically. What changes is only where the *balance* lives: today it is stored counters on `profiles`, and it becomes a view over the ledger.
 - The hidden credit gauge is **not** blocked by metering, which is already server-side. Whatever is actually hiding it has to be found before M5 commits to restoring it.
 - Long work (extraction, canonical document build, narration) runs as queued jobs, not request-bound calls. Queue choice (Supabase Queues/pgmq, or a `jobs` table drained by a scheduled function) is settled in Milestone 0.
@@ -320,6 +320,7 @@ below already exist in substance — see the gap analysis.
 ## 10. Billing and entitlements
 
 - **RevenueCat app user id = Supabase user id** on every platform. This is what makes one subscriber record across stores and web. Set it at sign-in, before any purchase call.
+  **Already true on native** (M0 spike 3): `src/lib/auth.ts:367` calls `Purchases.logIn(session.user.id)` on sign-in and on session restore, and the webhook maps `event.app_user_id` straight to `profiles.id`. Two gaps remain — web has no equivalent auth sync yet (M4's `billing` adapter), and the `configure()` → `logIn()` ordering is conventional rather than enforced, so the "before any purchase call" rule deserves an assertion at the purchase call site.
 - **Native:** RevenueCat SDK and the hosted paywall, as today.
 - **Web:** RevenueCat Web (Web Billing engine on Stripe) through the Web SDK. Same entitlements and offerings; top-ups sold as one-time purchases.
 - **Source of truth for gating:** the `entitlements` table and credit balance view in Supabase. The RevenueCat SDK result is used only as a fast local hint.

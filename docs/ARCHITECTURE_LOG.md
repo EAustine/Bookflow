@@ -11,7 +11,7 @@ Target: `docs/ARCHITECTURE.md` · Distance to it: `docs/ARCHITECTURE_GAPS.md`
 
 | | |
 |---|---|
-| **Current step** | **M0: 3 of 4 spikes done** on `arch/m0-spikes`. 1 pdf.js no-go · 2 web boots · 4 `jobs` table. **Spike 3 blocked** on RevenueCat dashboard access and Stripe test keys |
+| **Current step** | **M0 complete** as far as it can go without credentials. 1 pdf.js no-go · 2 web boots · 3 partial · 4 `jobs` table. Awaiting approval of the four write-ups before M1 |
 | **Branch** | Phase 0 merged to `main` via [#2](https://github.com/EAustine/Bookflow/pull/2), rebased. Nothing in flight |
 | **`main`** | `28250be`, pushed. Carries `v11-batch`, the UI cleanup round, and Phase 0 |
 | **Next** | M0 spikes, on `arch/m0-spikes`. Throwaway code; nothing merges to `main` |
@@ -88,7 +88,26 @@ choosing pgmq means running both and keeping them consistent. Retry policy
 becomes three columns rather than a gap pgmq leaves open. Research only, no
 prototype.
 
-**Spike 3** needs RevenueCat dashboard access and Stripe test keys.
+**Spike 3, RevenueCat Web · ◑ PARTIAL 2026-10-22 · `docs/spikes/m0-3-revenuecat-web.md`**
+
+Status and fees answered (§10.1). The sandbox purchase is blocked on RevenueCat
+dashboard access and Stripe test keys — **do not hand those over to be used
+here**; it is a purchase flow against a real account, so run the plan in §3 of
+the write-up yourself.
+
+What was possible without credentials mattered more than expected: **the
+identity precondition §10 rests on is already implemented**, and verifiable
+from code. `auth.ts:367` calls `Purchases.logIn(session.user.id)` on sign-in and
+session restore; the webhook maps `event.app_user_id` straight to `profiles.id`.
+The webhook also already handles top-ups via the `grant_credits` RPC, which §9.2
+does not credit it with. So the sandbox test would confirm the model rather than
+discover it, and it is not on M0's critical path — nothing in M1–M4 depends on
+it and web purchases ship at M8.
+
+Three risks found while reading: the `configure()` → `logIn()` window is
+unenforced ordering rather than guaranteed; web has no equivalent auth sync yet
+(M4's `billing` adapter); and `profiles.plan` is the de facto source of truth
+only because there is currently one writer.
 
 ### Phase 0 — gap analysis · ✅ 2026-10-22
 
