@@ -19,7 +19,7 @@ import {
   BottomSheetModal,
   BottomSheetView,
 } from '@gorhom/bottom-sheet';
-import { Icon, Skeleton, Text } from '~/components';
+import { Badge, Icon, Skeleton, Text } from '~/components';
 import Animated, {
   interpolate,
   useAnimatedStyle,
@@ -527,12 +527,7 @@ export function SummaryScreen({
               (Step 5) will fan this out into multiple chips. */}
           <Text style={sumStyles.sourceLabel}>Source</Text>
           <View style={sumStyles.sourceChips}>
-            <View style={sumStyles.sourceChip}>
-              <Icon name="Book" size={10} color={tokens.textColors.muted} />
-              <Text style={sumStyles.sourceChipLabel}>
-                Page {resolvedPageIndex + 1}
-              </Text>
-            </View>
+            <Badge kind="source" label={`Page ${resolvedPageIndex + 1}`} />
           </View>
 
           {/* Quality rating — `onRegenerate` triggers a forced refetch
@@ -1361,9 +1356,7 @@ function ChatBubble({
             // page indices alongside source labels. Today's payload
             // only carries the human-readable label, so we render
             // it as a non-interactive tag.
-            <View key={src} style={chatStyles.sourceChip}>
-              <Text style={chatStyles.sourceChipLabel}>{src}</Text>
-            </View>
+            <Badge key={src} kind="source" label={src} />
           ))}
         </View>
       )}
@@ -1756,23 +1749,6 @@ const sumStyles = StyleSheet.create({
     flexWrap: 'wrap',
     gap: 6,
     marginBottom: 20,
-  },
-  sourceChip: {
-    height: 26,
-    paddingHorizontal: 10,
-    borderRadius: 13,
-    backgroundColor: tokens.bgColors.surface,
-    borderWidth: 0.5,
-    borderColor: tokens.borderColors.subtle,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  sourceChipLabel: {
-    fontFamily: tokens.fonts.uiMedium,
-    fontSize: 11,
-    fontWeight: '500',
-    color: tokens.textColors.secondary,
   },
   // Scope toggle
   scopeRow: {
@@ -2439,18 +2415,6 @@ const chatStyles = StyleSheet.create({
     fontFamily: tokens.fonts.ui,
     fontSize: 10,
     color: tokens.textColors.disabled,
-  },
-  sourceChip: {
-    backgroundColor: tokens.colors.cream[200],
-    borderRadius: 4,
-    paddingHorizontal: 6,
-    paddingVertical: 1,
-  },
-  sourceChipLabel: {
-    fontFamily: tokens.fonts.uiMedium,
-    fontSize: 10,
-    fontWeight: '500',
-    color: tokens.textColors.secondary,
   },
   feedbackRow: {
     flexDirection: 'row',

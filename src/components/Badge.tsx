@@ -16,10 +16,12 @@
  *              live-subscription marker on the Pro card.
  *   unlimited  forest-50 fill, forest-200 border, leading infinity
  *              glyph. A meter with no cap.
- *   source     forest-50 fill with a leading book glyph. The
- *              traceability chip under an AI answer or a practice
- *              question — "Source — Page 42". Source traceability is a
- *              marketed promise, not decoration.
+ *   source     a 26-high pill on cream-100 with a hairline border and
+ *              a leading book glyph. The traceability chip under an AI
+ *              summary, an AI chat answer, or a practice question.
+ *              Source traceability is a marketed promise, not
+ *              decoration, so all three use one chip. Three different
+ *              ones used to ship — see F-44.
  *
  * `tag` has two sizes because the app uses two: the detail view's
  * roomier chips, and the denser ones on category rows, which are also a
@@ -61,7 +63,7 @@ export function Badge({ label, kind = 'tag', size = 'default' }: BadgeProps) {
       {kind === 'active' && <View style={styles.activeDot} />}
       {kind === 'unlimited' && <Text style={styles.unlimitedGlyph}>∞</Text>}
       {kind === 'source' && (
-        <Icon name="Book" size={9} color={tokens.colors.forest[700]} />
+        <Icon name="Book" size={10} color={tokens.textColors.muted} />
       )}
       <Text style={labelStyle}>{label}</Text>
     </View>
@@ -167,18 +169,20 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    // Only this kind hugs: it sits in a column and would otherwise
-    // stretch to the full width of the card.
+    // Only this kind hugs: under a practice question it sits in a
+    // column and would otherwise stretch to the full card width.
     alignSelf: 'flex-start',
-    backgroundColor: tokens.colors.forest[50],
-    borderRadius: 4,
-    paddingHorizontal: 7,
-    paddingVertical: 2,
+    height: 26,
+    paddingHorizontal: 10,
+    borderRadius: 13,
+    backgroundColor: tokens.bgColors.surface,
+    borderWidth: tokens.borderWidth.hairline,
+    borderColor: tokens.borderColors.subtle,
   },
   sourceText: {
     fontFamily: tokens.fonts.uiMedium,
-    fontSize: 10,
-    color: tokens.colors.forest[800],
+    fontSize: 11,
+    color: tokens.textColors.secondary,
   },
 });
 
