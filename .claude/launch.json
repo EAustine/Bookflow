@@ -2,15 +2,17 @@
   "version": "0.0.1",
   "configurations": [
     {
-      "name": "m0-reader-spike",
+      "name": "m0-web-boot",
       "runtimeExecutable": "python3",
       "runtimeArgs": [
-        "-I",
-        "spikes/reader-engine/serve.py",
-        "8100"
+        "-m",
+        "http.server",
+        "8102",
+        "--directory",
+        "spikes/web-boot/dist"
       ],
-      "port": 8100,
-      "url": "http://localhost:8100"
+      "port": 8102,
+      "url": "http://localhost:8102"
     }
   ]
 }

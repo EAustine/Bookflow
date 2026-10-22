@@ -11,7 +11,7 @@ Target: `docs/ARCHITECTURE.md` · Distance to it: `docs/ARCHITECTURE_GAPS.md`
 
 | | |
 |---|---|
-| **Current step** | **M0 in progress** on `arch/m0-spikes`. Spike 1 done (pdf.js no-go, §7.6). Spikes 2 and 4 next; spike 3 blocked on RevenueCat/Stripe access |
+| **Current step** | **M0: 3 of 4 spikes done** on `arch/m0-spikes`. 1 pdf.js no-go · 2 web boots · 4 `jobs` table. **Spike 3 blocked** on RevenueCat dashboard access and Stripe test keys |
 | **Branch** | Phase 0 merged to `main` via [#2](https://github.com/EAustine/Bookflow/pull/2), rebased. Nothing in flight |
 | **`main`** | `28250be`, pushed. Carries `v11-batch`, the UI cleanup round, and Phase 0 |
 | **Next** | M0 spikes, on `arch/m0-spikes`. Throwaway code; nothing merges to `main` |
@@ -26,6 +26,7 @@ Target: `docs/ARCHITECTURE.md` · Distance to it: `docs/ARCHITECTURE_GAPS.md`
 | 2026-10-22 | **The canonical document preserves `pages.id`** | Austine | Seven tables of live user data reference it — `highlights`, `translations`, `practice_questions`, `summaries`, `reading_sessions`, `audio_cache`, `chunk_embeddings`. One is pgvector. New ids would mean a seven-table remap plus re-embedding every book. Now a constraint in §7.2 |
 | 2026-10-22 | `ARCHITECTURE.md` adopted into the repo as `docs/ARCHITECTURE.md` | — | With two amendments; see commit `bd36983` |
 | 2026-10-22 | **All seven Phase 0 amendments applied** to `ARCHITECTURE.md` | Austine | §7.2 `pages.id`, §7.4 character offsets, §7.5 fourth text surface, §8 clipboard adapter, §9.1 schema size, §9.2 metering already ships, §12/M1 agent-instruction consistency |
+| 2026-10-22 | **`jobs` table, not Supabase Queues (pgmq)** | M0 spike 4 | pgmq has no worker, so it saves none of the scheduling work; §9.1 needs `jobs` for progress regardless, and queue messages are opaque. Choosing pgmq means running both |
 | 2026-10-22 | **pdf.js is out of the engine; `react-native-pdf` stays permanently** | M0 spike 1 | 42/60 long frames on reading scroll, 3.1 s worst stall, 1,022 MB peak on a 2,473 MB device — measured in the same Chromium build as the device's WebView. The emulator flatters pdf.js, so a failure is binding. §7.6 |
 | 2026-10-22 | M0's reader spike runs on an **emulator**, no physical device | Austine | None available. Recorded with its consequence in §13.1: the emulator runs arm64 natively on Apple Silicon, so it over-states CPU performance and cannot throttle. A failure there is conclusive; a pass is not. `react-native-pdf` stays until a real device confirms |
 | 2026-10-22 | **npm workspaces**, not pnpm | Austine | Expo supports both and recommends neither. pnpm's isolated installs are exactly what React Native makes you disable (`nodeLinker: hoisted`), leaving pnpm configured to act like npm with an extra config file, a lockfile migration and a new EAS surface to debug. The repo is already npm |
@@ -59,8 +60,35 @@ spans for M6.
 Five method bugs are recorded in §5 of the write-up with the wrong numbers they
 each produced first, including a 3,232 MB reading on a 2,473 MB device.
 
-**Spikes 2 and 4** next. **Spike 3** needs RevenueCat dashboard access and
-Stripe test keys.
+**Spike 2, web boot · ✅ 2026-10-22 · `docs/spikes/m0-2-web-boot.md`**
+
+The app boots on web. Welcome screen renders, zero console errors, **no app
+code changed** — both blockers were configuration or dependency.
+
+Ten native-only packages need stubs (the §8 adapter list, plus `expo-clipboard`
+which §8 lacked until Phase 0). The second blocker is the `import.meta` one the
+brief predicted, and it is nastier than expected: **bundling succeeds** and the
+failure is at runtime, because Expo serves the web bundle as a classic script.
+Green CI, blank app. Traced to one occurrence in 8.5 MB — Zustand's `devtools`
+middleware, which we never use but which rides in on the `zustand/middleware`
+barrel. Fixed with a web-only Babel rewrite of `import.meta` rather than by
+chasing the import, so the next dependency cannot re-break it the same way.
+
+Two things for later: M4's CI must **load** the page, not just build it, or
+this class of failure ships silently. And 8.5 MB is too big for Ama — mostly
+fonts bundled at every weight including unused italics.
+
+**Spike 4, job queue · ✅ 2026-10-22 · `docs/spikes/m0-4-job-queue.md`**
+
+**`jobs` table, not Supabase Queues.** pgmq has no worker and no scheduler, so
+adopting it still needs `pg_cron` + `pg_net` + a consumer function — it saves
+none of the work that does not exist today. Meanwhile §9.1 already requires
+`jobs` for the progress the Library reads, and a queue message is opaque, so
+choosing pgmq means running both and keeping them consistent. Retry policy
+becomes three columns rather than a gap pgmq leaves open. Research only, no
+prototype.
+
+**Spike 3** needs RevenueCat dashboard access and Stripe test keys.
 
 ### Phase 0 — gap analysis · ✅ 2026-10-22
 

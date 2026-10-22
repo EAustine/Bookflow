@@ -1,0 +1,3 @@
+# Exported bundle (8.5 MB) and build logs — regenerate with expo export
+dist/
+*.log
