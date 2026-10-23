@@ -19,7 +19,8 @@ const progress = (bookId: string, pageIndex: number, at = 0): OpBody => ({
   kind: 'progress.set', bookId, pageIndex, at,
 });
 const hlCreate = (highlightId: string, at = 0): OpBody => ({
-  kind: 'highlight.create', highlightId, bookId: 'b1', pageId: 'p1', text: 'x', at,
+  kind: 'highlight.create', highlightId, bookId: 'b1', pageId: 'p1',
+  pageIndex: 0, highlightKind: 'sentence', text: 'x', at,
 });
 const hlDelete = (highlightId: string, at = 0): OpBody => ({
   kind: 'highlight.delete', highlightId, at,

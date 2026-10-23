@@ -38,8 +38,15 @@ export type ProgressOp = {
   at: number;
 };
 
+/** Mirrors the `kind` check constraint on the highlights table. */
+export type HighlightKind = 'word' | 'sentence';
+
 export type HighlightCreateOp = {
   kind: 'highlight.create';
+  /** The row's own kind — distinct from the op's `kind` discriminator.
+   *  `not null` with a check constraint, so the queue has to carry it. */
+  highlightKind: HighlightKind;
+  pageIndex: number;
   /** Client-generated. Becomes the row's primary key, which is what
    *  makes a retry idempotent rather than a duplicate highlight. */
   highlightId: string;

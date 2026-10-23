@@ -16,6 +16,7 @@ import type * as DocumentPicker from 'expo-document-picker';
 import { useShareIntent } from 'expo-share-intent';
 import { useRouter } from 'expo-router';
 import { supabase } from '~/lib/supabase';
+import { reset as resetOfflineQueue } from '~/core/offline-queue';
 import { clearBookCoverCache as clearLibrarySignedUrlCache } from '~/lib/bookCovers';
 import { clearLastListenedBookId } from '~/lib/audioSession';
 import { clearReaderImageSignedUrlCache } from '~/screens/ReaderScreen';
@@ -67,6 +68,11 @@ export function useShellSession(): ShellSession {
   // moved rather than being copied.
   const onSignOut = useCallback(async () => {
     await handleSignOut();
+    // Pending writes belong to the outgoing user. The executor already
+    // refuses to replay them without a session, but leaving them on
+    // disk means the next person to sign in on this device carries a
+    // stranger's queue.
+    await resetOfflineQueue();
     router.replace('/(auth)/welcome');
   }, [handleSignOut, router]);
 

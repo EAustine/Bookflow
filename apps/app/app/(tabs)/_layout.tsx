@@ -22,6 +22,7 @@ import { useCallback } from 'react';
 import { Slot, usePathname, useRouter } from 'expo-router';
 import type { TabKey } from '~/components';
 import { BooksProvider } from '~/hooks/useBooks';
+import { useDrainOnReconnect } from '~/core/offline-queue/useDrainOnReconnect';
 import { SignedInShell } from '~/shell/SignedInShell';
 import { useShellSession } from '~/shell/useShellSession';
 
@@ -31,6 +32,10 @@ export default function TabsLayout() {
   const router = useRouter();
   const pathname = usePathname();
   const session = useShellSession();
+  // Mounted at the signed-in boundary: the queue only ever holds writes
+  // for a signed-in user, and the executor refuses to replay them
+  // without a session anyway.
+  useDrainOnReconnect();
 
   const activeTab =
     TABS.find((t) => pathname.startsWith(`/${t}`)) ?? 'library';
