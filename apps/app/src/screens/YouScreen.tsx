@@ -102,7 +102,13 @@ export type YouScreenProps = {
   plan: YouPlan;
   onTabChange: (tab: TabKey) => void;
   onSignOut: () => Promise<void> | void;
-  // Drill-in handlers — currently no-ops; wired as M2+ screens land.
+  // Drill-in handlers. Wired to routes by `app/(tabs)/you.tsx` as of M2.
+  //
+  // Optional, each falling back to the internal `view` state, so the
+  // screen still works standalone — which is what made the migration
+  // additive rather than a rewrite. The fallbacks are dead in the app
+  // now; they are kept until the drill-ins are verified against a
+  // signed-in account, because they are the cheapest possible revert.
   onAccountAndSubscription?: () => void;
   onReadingDisplay?: () => void;
   onDefaultVoice?: () => void;
@@ -314,7 +320,7 @@ export function YouScreen({
           <PageHeader />
           <ProfileHeader
             profile={profile}
-            onPress={() => setView('account')}
+            onPress={onAccountAndSubscription ?? (() => setView('account'))}
           />
           <PlanCard
             plan={plan}
@@ -353,7 +359,7 @@ export function YouScreen({
               leadingIcon="User"
               label="Account & subscription"
               drillsInto
-              onPress={() => setView('account')}
+              onPress={onAccountAndSubscription ?? (() => setView('account'))}
             />
             <Divider />
             <ListRow
@@ -368,7 +374,7 @@ export function YouScreen({
               leadingIcon="Settings"
               label="Settings"
               drillsInto
-              onPress={() => setView('settings')}
+              onPress={onSettings ?? (() => setView('settings'))}
             />
             <Divider />
             <ListRow

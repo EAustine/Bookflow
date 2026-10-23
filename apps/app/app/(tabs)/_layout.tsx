@@ -51,6 +51,23 @@ export default function TabsLayout() {
         setListenState={session.setListenState}
         pendingUploadAssets={session.pendingUploadAssets}
         onPendingUploadAssetsConsumed={session.onPendingUploadAssetsConsumed}
+        youDrillHandlers={{
+          // Account stays on YouScreen's internal `view` for now. The
+          // route would need `profile` and `plan`, which the shell
+          // assembles from four hooks (useIsPro, useBooks, useCurrentUser
+          // and the month-stats refresh). Lifting that is M3's data-layer
+          // work; pushing to a route that cannot be given its data would
+          // be a 404 dressed up as progress.
+          onSettings: () => router.push('/you/settings'),
+          // These three live under /settings, not /you/settings, because
+          // Settings reaches them too. One canonical route each.
+          onReadingDisplay: () => router.push('/settings/reading-display'),
+          onDefaultVoice: () => router.push('/settings/default-voice'),
+          onTranslationLanguage: () => router.push('/settings/translation-language'),
+          onNotifications: () => router.push('/settings/notifications'),
+          onHelp: () => router.push('/you/help'),
+          onSendFeedback: () => router.push('/you/feedback'),
+        }}
       />
       {/* Keeps the tab route files live so Expo Router registers the
           URLs. They render nothing — the shell above draws the screen. */}

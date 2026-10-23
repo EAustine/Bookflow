@@ -217,6 +217,7 @@ export function SignedInShell({
   setListenState,
   pendingUploadAssets,
   onPendingUploadAssetsConsumed,
+  youDrillHandlers,
 }: {
   activeTab: TabKey;
   setActiveTab: (tab: TabKey) => void;
@@ -234,6 +235,26 @@ export function SignedInShell({
   pendingUploadAssets: DocumentPicker.DocumentPickerAsset[] | null;
   /** Clear the pending assets once LibraryScreen has handed them to upload. */
   onPendingUploadAssetsConsumed: () => void;
+  /**
+   * Route pushes for the You tab's drill-ins, supplied by
+   * `(tabs)/_layout.tsx`.
+   *
+   * Passed in rather than built here so this file stays router-free —
+   * it is a verbatim move of `App.tsx`'s `LibraryStage`, and keeping it
+   * that way is what makes the move reviewable against untestable code.
+   */
+  youDrillHandlers: {
+    /** Absent for now — see the note in (tabs)/_layout.tsx. YouScreen
+     *  falls back to its internal view, which is the shipped behaviour. */
+    onAccountAndSubscription?: () => void;
+    onSettings: () => void;
+    onReadingDisplay: () => void;
+    onDefaultVoice: () => void;
+    onTranslationLanguage: () => void;
+    onNotifications: () => void;
+    onHelp: () => void;
+    onSendFeedback: () => void;
+  };
 }) {
   // Subscribe to the stable slice only — book / pageIndex / voice
   // and the imperative setters. We do NOT re-render this whole
@@ -515,6 +536,7 @@ export function SignedInShell({
           onTabChange={setActiveTab}
           onSignOut={onSignOut}
           onSubViewOpenChange={setYouSubViewOpen}
+          {...youDrillHandlers}
           onRefresh={refreshYou}
         />
       )}

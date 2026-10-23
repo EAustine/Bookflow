@@ -164,7 +164,45 @@ translate popovers all stay as they are.
 | Routes total | **~31** |
 | Screen components | 35 |
 
-## 6. Open before implementation
+## 6. Progress
+
+| Route | Status |
+|---|---|
+| `/settings/reading-display` | ✅ |
+| `/settings/default-voice` | ✅ |
+| `/settings/translation-language` | ✅ |
+| `/settings/playback-speed` | ✅ |
+| `/settings/notifications` | ✅ |
+| `/you/settings` | ✅ |
+| `/you/help` | ✅ |
+| `/you/feedback` | ✅ |
+| `/you/account` | **blocked on M3** — needs `profile` and `plan`, which the shell assembles from `useIsPro`, `useBooks`, `useCurrentUser` and the month-stats refresh. Lifting that is the data-layer milestone. Falls back to YouScreen's internal view, which is the shipped behaviour |
+| `/you/account/edit-profile` | blocked, same reason |
+| `/discover/category/[id]` | not started |
+| `/book/[id]` | not started |
+| `/listen/now-playing` | not started |
+| `/listen/history` | not started |
+| `/read/[bookId]` and its 3 sub-routes | not started |
+
+**The duplication is resolved.** Reading display, default voice and
+translation language are one route each, reached from both You and Settings.
+`YouScreen` and `SettingsScreen` both gained optional handler props that fall
+back to their internal `view` state, so the migration was additive — the
+fallbacks are dead in the app but are the cheapest possible revert, and they
+stay until a signed-in account can verify the routes.
+
+### F-46 — two components named `SendFeedbackScreen`
+
+Found while wiring `/you/feedback`. `src/screens/SendFeedbackScreen.tsx` is a
+380-line compose form requiring an `onSubmit`, and **nothing imports it**. The
+app ships the `YouDrillScreens` version, which hands off to the user's mail app
+instead. The new route picked the standalone one by name and the type error is
+the only reason it was caught — on a milestone whose rule is that nothing
+changes, it would have silently replaced a mail hand-off with a form.
+
+## 7. Open before the rest
+
+
 
 1. **The app domain** — universal links (iOS) and App Links (Android) both need
    it, and `/(auth)/callback` is the magic-link target. Blocking.

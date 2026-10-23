@@ -43,11 +43,30 @@ const WARN_BORDER = tokens.colors.warnBorder;
 
 export type SettingsScreenProps = {
   onBack: () => void;
+  /**
+   * Drill-in handlers, wired to routes by `app/you/settings.tsx` in M2.
+   *
+   * Optional, each falling back to the internal `view` state, so the
+   * screen still works standalone. Same shape `YouScreen` already used —
+   * which is what let the route migration be additive instead of a
+   * rewrite. The fallbacks are dead in the app now and are kept only
+   * until the drill-ins are verified against a signed-in account.
+   */
+  onReadingDisplay?: () => void;
+  onDefaultVoice?: () => void;
+  onPlaybackSpeed?: () => void;
+  onTranslationLanguage?: () => void;
 };
 
 // ─── Screen ───────────────────────────────────────────────────────────────────
 
-export function SettingsScreen({ onBack }: SettingsScreenProps) {
+export function SettingsScreen({
+  onBack,
+  onReadingDisplay,
+  onDefaultVoice,
+  onPlaybackSpeed,
+  onTranslationLanguage,
+}: SettingsScreenProps) {
   // Real OS permission state — replaces the v1 hardcode that just
   // pretended we always had permission. `granted` flips when the
   // user grants in the system prompt OR returns from app-settings
@@ -191,7 +210,7 @@ export function SettingsScreen({ onBack }: SettingsScreenProps) {
               label="Reading display"
               hint={readingHint}
               drillsInto
-              onPress={() => setView('reading')}
+              onPress={onReadingDisplay ?? (() => setView('reading'))}
             />
             <RowDivider />
             <ListRow
@@ -199,7 +218,7 @@ export function SettingsScreen({ onBack }: SettingsScreenProps) {
               label="Default voice"
               hint={voiceHint}
               drillsInto
-              onPress={() => setView('voice')}
+              onPress={onDefaultVoice ?? (() => setView('voice'))}
             />
             <RowDivider />
             <ListRow
@@ -207,7 +226,7 @@ export function SettingsScreen({ onBack }: SettingsScreenProps) {
               label="Default playback speed"
               hint={speedHint}
               drillsInto
-              onPress={() => setView('speed')}
+              onPress={onPlaybackSpeed ?? (() => setView('speed'))}
             />
             <RowDivider />
             <ListRow
@@ -236,7 +255,7 @@ export function SettingsScreen({ onBack }: SettingsScreenProps) {
               sublabel="Language used for word/sentence translations"
               hint={translationHint}
               drillsInto
-              onPress={() => setView('language')}
+              onPress={onTranslationLanguage ?? (() => setView('language'))}
             />
           </SectionBlock>
 
