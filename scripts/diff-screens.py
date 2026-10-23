@@ -89,6 +89,12 @@ def read_png(path):
 # would report that flicker as a change M1 caused.
 STATUS_BAR_PX = 60
 
+# The gesture-navigation pill at the bottom is system chrome too, and it
+# anti-aliases differently between app launches — measured at 2 pixels
+# with a max channel delta of 1 across builds, which is imperceptible
+# but not zero. Excluded for the same reason as the status bar.
+NAV_BAR_PX = 40
+
 
 def compare(a_path, b_path):
     aw, ah, a, ac = read_png(a_path)
@@ -100,14 +106,15 @@ def compare(a_path, b_path):
 
     # Skip the status bar rows entirely.
     start_row = STATUS_BAR_PX
-    total = aw * (ah - start_row)
+    end_row = ah - NAV_BAR_PX
+    total = aw * (end_row - start_row)
     differing = 0
     worst = 0
     # Row band of the first difference, to say *where* rather than only
     # how much.
     first_row = None
     stride = aw * ac
-    for i in range(start_row * stride, len(a), ac):
+    for i in range(start_row * stride, end_row * stride, ac):
         if a[i:i + 3] != b[i:i + 3]:
             differing += 1
             d = max(abs(a[i + k] - b[i + k]) for k in range(3))

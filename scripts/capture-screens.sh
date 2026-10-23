@@ -27,7 +27,7 @@ export ANDROID_HOME="${ANDROID_HOME:-/opt/homebrew/share/android-commandlinetool
 export PATH="$ANDROID_HOME/platform-tools:$PATH"
 
 HERE="$(cd "$(dirname "$0")/.." && pwd)"
-OUT="$HERE/docs/evidence/m1/$LABEL"
+OUT="$HERE/docs/evidence/m2/$LABEL"
 mkdir -p "$OUT"
 
 adb() { command adb -s "$SERIAL" "$@"; }
@@ -61,7 +61,7 @@ tap_text() {
   sleep 1.5
 }
 
-echo "capturing '$LABEL' from $SERIAL -> docs/evidence/m1/$LABEL"
+echo "capturing '$LABEL' from $SERIAL -> docs/evidence/m2/$LABEL"
 
 # Freeze the status bar. The clock alone would differ between the before
 # and after runs and register as changed pixels, which is exactly the

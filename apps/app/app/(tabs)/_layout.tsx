@@ -1,35 +1,60 @@
 /**
- * Tab layout.
+ * The signed-in shell, mounted once.
  *
- * Uses the app's own `TabBar` as `tabBar`, not the stock one. The
- * design system has a specific bar — 4 tabs, Tabler icons at
- * `tokens.iconStrokeWidth`, filled variants for the active state — and
- * restyling the default to match would be a reimplementation with worse
- * fidelity. M2's rule is no visual change, and this is the literal same
- * component the stage machine rendered.
+ * Not `<Tabs>`. The shell owns the audio session, the mini-player
+ * overlay and the share-intent hand-off, and all three must survive a
+ * tab change — the player cannot unmount when you leave Listen.
+ * `<Tabs>` would mount each screen in its own navigator subtree and
+ * take that guarantee away.
  *
- * The side rail for Medium/Expanded (§3) comes in M7 from these same
- * route definitions. Nothing here needs to change for it.
+ * So the shell stays one component and the **route drives which tab it
+ * shows**, replacing the `activeTab` state that `App.tsx` held. That is
+ * precisely M2's change: the URL is the source of truth, and the stage
+ * machine is gone. Each tab has a real URL and real history.
+ *
+ * What is NOT done here: the 15 drill-in routes from
+ * docs/M2_ROUTE_MAP.md. You's nine-value `view` and Settings' five are
+ * still internal state. They are the next step and each is reviewable
+ * on its own; doing them in this change would mean one commit nobody
+ * could review against a signed-in app that cannot be tested here.
  */
-import { Tabs } from 'expo-router';
-import { TabBar, type TabKey } from '~/components';
+import { useCallback } from 'react';
+import { Slot, usePathname, useRouter } from 'expo-router';
+import type { TabKey } from '~/components';
+import { SignedInShell } from '~/shell/SignedInShell';
+import { useShellSession } from '~/shell/useShellSession';
 
-const ORDER: TabKey[] = ['library', 'discover', 'listen', 'you'];
+const TABS: TabKey[] = ['library', 'discover', 'listen', 'you'];
 
 export default function TabsLayout() {
+  const router = useRouter();
+  const pathname = usePathname();
+  const session = useShellSession();
+
+  const activeTab =
+    TABS.find((t) => pathname.startsWith(`/${t}`)) ?? 'library';
+
+  const setActiveTab = useCallback(
+    (tab: TabKey) => router.navigate(`/${tab}`),
+    [router],
+  );
+
   return (
-    <Tabs
-      screenOptions={{ headerShown: false }}
-      tabBar={({ state, navigation }) => (
-        <TabBar
-          activeTab={(state.routeNames[state.index] ?? 'library') as TabKey}
-          onChange={(tab) => navigation.navigate(tab)}
-        />
-      )}
-    >
-      {ORDER.map((name) => (
-        <Tabs.Screen key={name} name={name} />
-      ))}
-    </Tabs>
+    <>
+      <SignedInShell
+        activeTab={activeTab}
+        setActiveTab={setActiveTab}
+        userName={session.userName}
+        onSignOut={session.onSignOut}
+        onUpgrade={session.onUpgrade}
+        listenState={session.listenState}
+        setListenState={session.setListenState}
+        pendingUploadAssets={session.pendingUploadAssets}
+        onPendingUploadAssetsConsumed={session.onPendingUploadAssetsConsumed}
+      />
+      {/* Keeps the tab route files live so Expo Router registers the
+          URLs. They render nothing — the shell above draws the screen. */}
+      <Slot />
+    </>
   );
 }
