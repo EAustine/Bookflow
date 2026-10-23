@@ -18,15 +18,21 @@ The full product scope, personas, MVP features, pricing, and beta plan are in `/
 
 ---
 
+> **This file is kept in step with `/docs/ARCHITECTURE.md`.** Where the two
+> disagree, the architecture document wins and this file is the bug. The app is
+> mid-migration (see `/docs/ARCHITECTURE_LOG.md` for which milestone is live),
+> so some code still follows patterns this file no longer describes; that is
+> leftover to be replaced, not a precedent to copy.
+
 ## Tech stack — these are decided, not suggestions
 
 **Core:**
 - React Native + Expo (managed workflow)
 - TypeScript with strict mode enabled (non-negotiable)
-- **No router.** Navigation is a hand-rolled `stage` state machine in `App.tsx`, with screens swapping on local `view` state inside each tab. Expo Router was planned and never adopted — don't reach for it or for `src/app/`.
+- **Expo Router**, file-based, in `apps/app/app/`. Typed routes on. It replaced a hand-rolled `stage` state machine in `App.tsx` during migration milestone M2 — if you find code still switching on `stage` or on per-tab `view` state, that is leftover, not the pattern. The route map is `/docs/M2_ROUTE_MAP.md`.
 - **`StyleSheet.create` + `tokens.ts` for styling.** NativeWind is installed but unused (0 `className` usages, no `tailwind.config`). Don't introduce Tailwind classes; follow the surrounding `StyleSheet` + tokens pattern.
 - Zustand for global state (not Redux, not Context for everything)
-- TanStack Query is installed, but server state is mostly bespoke hooks (`useBooks`, `useChat`, `useAudio`) over Supabase + Zustand. Match the local pattern rather than introducing Query into a screen that doesn't use it.
+- **TanStack Query** for all server state, with query keys per feature. Bespoke hooks over Supabase (`useBooks`, `useBooksImpl`, `useCurrentUser`) are the old pattern and are being replaced in M3 — match Query in new code, and do not add another bespoke hook. Zustand stays for client state.
 
 **Backend & services:**
 - Supabase for auth, database (Postgres), storage, edge functions, pgvector for RAG
@@ -40,7 +46,7 @@ The full product scope, personas, MVP features, pricing, and beta plan are in `/
 - `@tabler/icons-react-native` for icons (with `react-native-svg`), wrapped by `src/components/Icon.tsx` — **never import Tabler directly**. The wrapper applies `tokens.iconStrokeWidth` (1.0); don't pass `strokeWidth` at all. The one exception is `strokeWidth={0}` on Tabler's `*Filled` glyphs (Play, Pause, ThumbUpFilled), which paint from `fill`.
 - `@gorhom/bottom-sheet` for bottom sheets (don't roll our own)
 - `expo-audio` for audio playback (not `expo-av` or `react-native-track-player`)
-- `react-native-webview` + injected CSS for EPUB Full mode (not `epubjs`); `react-native-pdf` for PDF Full mode
+- `react-native-webview` + injected CSS for EPUB Full mode (not `epubjs`); **`react-native-pdf` for PDF Full mode, permanently** — M0 spike 1 measured pdf.js in a WebView at 42 dropped frames in 60 during ordinary reading scroll on a low-end device, so it is ruled out of the unified reader engine. See `/docs/ARCHITECTURE.md` §7.6.
 - Read `/docs/specs/bookflow_engineering_scoping.md` for the full rationale on each choice
 
 **Don't suggest alternatives** like "have you considered Flutter?" or "we should use Redux instead." These were debated; the answers are above. If a genuinely new constraint emerges, then revisit — but don't second-guess proactively.
@@ -52,10 +58,14 @@ The full product scope, personas, MVP features, pricing, and beta plan are in `/
 ### File structure
 
 ```
-App.tsx                   # Root. Holds the `stage` machine, the tab
-                          # switch, the audio session and the global
-                          # overlays (mini player, toast host).
-src/
+apps/app/                 # The Expo app. Routes in app/, screens in src/.
+apps/site/                # Marketing site (static), deployed to Vercel.
+packages/tokens/          # Design tokens -> RN theme + tokens.css.
+packages/shared/          # Types and pure logic. No platform imports.
+supabase/                 # Migrations and 21 edge functions. Repo root.
+
+apps/app/app/             # Expo Router routes (file-based).
+apps/app/src/
 ├── screens/             # Every screen and sheet. Tabs swap on local
 │   │                    # `view` state; there is no router.
 │   ├── LibraryScreen.tsx
@@ -218,8 +228,8 @@ npx expo start --android
 # Type check
 npx tsc --noEmit
 
-# Run tests
-npx jest
+# Run tests (Vitest, on the pure packages — there is no RN test runner)
+npm test
 
 # Build for TestFlight/Play Store internal testing
 eas build --profile preview --platform all

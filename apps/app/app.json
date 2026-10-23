@@ -21,7 +21,11 @@
         "UIBackgroundModes": [
           "audio"
         ]
-      }
+      },
+      "associatedDomains": [
+        "applinks:getbookflow.co",
+        "applinks:www.getbookflow.co"
+      ]
     },
     "android": {
       "adaptiveIcon": {
@@ -34,7 +38,29 @@
         "image": "./assets/splash-icon-android.png",
         "resizeMode": "contain",
         "backgroundColor": "#FAF7F2"
-      }
+      },
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "autoVerify": true,
+          "data": [
+            {
+              "scheme": "https",
+              "host": "getbookflow.co",
+              "pathPrefix": "/auth"
+            },
+            {
+              "scheme": "https",
+              "host": "www.getbookflow.co",
+              "pathPrefix": "/auth"
+            }
+          ],
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ]
+        }
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -68,10 +94,12 @@
           "color": "#2D6A4F"
         }
       ],
-      "./plugins/withAndroidSplashIcon"
+      "./plugins/withAndroidSplashIcon",
+      "expo-router"
     ],
     "experiments": {
-      "tsconfigPaths": true
+      "tsconfigPaths": true,
+      "typedRoutes": true
     },
     "extra": {
       "eas": {

@@ -26,7 +26,7 @@ The full product scope, personas, MVP features, pricing, and beta plan are in `/
 - Expo Router for file-based routing
 - NativeWind for styling
 - Zustand for global state (not Redux, not Context for everything)
-- TanStack Query for server state and caching
+- TanStack Query for server state and caching (being adopted in M3; bespoke Supabase hooks are the old pattern)
 
 **Backend & services:**
 - Supabase for auth, database (Postgres), storage, edge functions, pgvector for RAG
@@ -217,7 +217,7 @@ npx expo start --android
 npx tsc --noEmit
 
 # Run tests
-npx jest
+npm test
 
 # Build for TestFlight/Play Store internal testing
 eas build --profile preview --platform all
