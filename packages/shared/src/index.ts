@@ -14,4 +14,5 @@
  */
 export * from './format';
 export * from './playback';
+export * from './offline-queue';
 export type * from './database';
