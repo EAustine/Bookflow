@@ -24,6 +24,8 @@ import { BottomSheetModalProvider } from '@gorhom/bottom-sheet';
 import { SplashScreen } from '~/screens/SplashScreen';
 import { RootErrorBoundary } from '~/components/RootErrorBoundary';
 import { AudioSessionProvider } from '~/lib/audioSession';
+import { ToastHost } from '~/components/ToastHost';
+import { StatusBar } from 'expo-status-bar';
 import { supabase } from '~/lib/supabase';
 import { useAppFonts } from '~/lib/useAppFonts';
 
@@ -147,8 +149,13 @@ export default function RootLayout() {
                   animation, so the transition has nothing to wait for. */}
               <Slot />
               {!splashDone && <SplashScreen onComplete={onSplashComplete} />}
+              <StatusBar style="dark" />
             </BottomSheetModalProvider>
           </AudioSessionProvider>
+          {/* Outside AudioSessionProvider and the modal provider, exactly
+              as App.tsx had it: toasts must paint above bottom sheets,
+              and the modal provider's portal would otherwise cover them. */}
+          <ToastHost />
         </SafeAreaProvider>
       </GestureHandlerRootView>
     </RootErrorBoundary>

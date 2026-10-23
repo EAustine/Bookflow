@@ -21,6 +21,7 @@
 import { useCallback } from 'react';
 import { Slot, usePathname, useRouter } from 'expo-router';
 import type { TabKey } from '~/components';
+import { BooksProvider } from '~/hooks/useBooks';
 import { SignedInShell } from '~/shell/SignedInShell';
 import { useShellSession } from '~/shell/useShellSession';
 
@@ -40,7 +41,18 @@ export default function TabsLayout() {
   );
 
   return (
-    <>
+    /*
+     * BooksProvider mounts HERE, not in the root layout — the same
+     * boundary App.tsx used, for the same reason its comment gave:
+     * unmounting on sign-out tears down the realtime subscription and
+     * the AsyncStorage cache handles, so a fresh session starts fresh.
+     * Sign-out replaces to /(auth)/welcome, which leaves this layout.
+     *
+     * It was missed in the cutover. `useBooks()` throws without it, so
+     * every signed-in launch would have crashed on arrival — invisible
+     * to the type checker and unreachable without a test account.
+     */
+    <BooksProvider>
       <SignedInShell
         activeTab={activeTab}
         setActiveTab={setActiveTab}
@@ -72,6 +84,6 @@ export default function TabsLayout() {
       {/* Keeps the tab route files live so Expo Router registers the
           URLs. They render nothing — the shell above draws the screen. */}
       <Slot />
-    </>
+    </BooksProvider>
   );
 }
