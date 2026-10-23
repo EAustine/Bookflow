@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useReducer, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as Crypto from 'expo-crypto';
 import { supabase } from '~/lib/supabase';
+import { enqueue } from '~/core/offline-queue';
 
 // AsyncStorage-backed highlight cache.
 //
@@ -93,6 +95,17 @@ function rowToHighlight(row: HighlightRow): Highlight {
  * same page is a no-op — we surface that as a successful save anyway
  * (the UI doesn't need to know).
  */
+/**
+ * A highlight's id is generated here, client-side, rather than by
+ * Postgres.
+ *
+ * That is what makes the offline fallback safe. If the direct insert
+ * times out, we cannot know whether it landed — so the operation is
+ * queued, and the queued retry carries the same id. The primary key
+ * turns a double-write into a no-op instead of a duplicate highlight.
+ * `23505` was already treated as a soft success below for the same
+ * reason, arrived at independently.
+ */
 export async function saveHighlight(args: {
   bookId: string;
   pageId: string | null;
@@ -103,6 +116,7 @@ export async function saveHighlight(args: {
   color?: string;
 }): Promise<Highlight | null> {
   if (!UUID_RE.test(args.bookId)) return null;
+  const id = Crypto.randomUUID();
   try {
     const {
       data: { user },
@@ -112,6 +126,7 @@ export async function saveHighlight(args: {
     const { data, error } = await supabase
       .from('highlights')
       .insert({
+        id,
         user_id: user.id,
         book_id: args.bookId,
         page_id: args.pageId,
@@ -130,11 +145,45 @@ export async function saveHighlight(args: {
       // refetch if it cares.
       if (error.code === '23505') return null;
       console.warn('[highlights] save failed:', error.message);
+      // Offline, or the server is unreachable. Queue it so the
+      // highlight survives — before this, it was simply lost.
+      if (args.pageId) {
+        await enqueue(
+          {
+            kind: 'highlight.create',
+            highlightId: id,
+            bookId: args.bookId,
+            pageId: args.pageId,
+            pageIndex: args.pageIndex,
+            highlightKind: args.kind,
+            text: args.text,
+            at: Date.now(),
+          },
+          id,
+        );
+      }
       return null;
     }
     return data ? rowToHighlight(data as HighlightRow) : null;
   } catch (err) {
+    // A throw here is almost always the fetch itself — the same
+    // offline case as an error response, so queue it too.
     console.warn('[highlights] save threw:', err);
+    if (args.pageId) {
+      await enqueue(
+        {
+          kind: 'highlight.create',
+          highlightId: id,
+          bookId: args.bookId,
+          pageId: args.pageId,
+          pageIndex: args.pageIndex,
+          highlightKind: args.kind,
+          text: args.text,
+          at: Date.now(),
+        },
+        id,
+      );
+    }
     return null;
   }
 }
@@ -159,7 +208,17 @@ export async function deleteHighlight(id: string): Promise<boolean> {
       .eq('user_id', userId);
     if (error) {
       console.warn('[highlights] delete failed:', error.message);
-      return false;
+      // Queue it. If the create is still queued too, the queue drops
+      // both — the server never knew about that highlight, so there is
+      // nothing to delete.
+      await enqueue(
+        { kind: 'highlight.delete', highlightId: id, at: Date.now() },
+        `del:${id}`,
+      );
+      // Reported as success: the user's intent is recorded durably and
+      // the local store has already removed it. Returning false would
+      // put a highlight back on screen that is on its way out.
+      return true;
     }
     return true;
   } catch (err) {

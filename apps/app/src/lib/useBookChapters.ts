@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '~/lib/supabase';
+import { enqueue } from '~/core/offline-queue';
 import { getCachedPages } from '~/lib/audioDownloads';
 
 /**
@@ -375,10 +376,30 @@ export async function persistReadingPosition(args: {
       })
       .eq('id', args.bookId)
       .eq('user_id', userId);
-    if (error) console.warn('[reader] persist position failed:', error.message);
+    if (error) {
+      console.warn('[reader] persist position failed:', error.message);
+      await enqueuePosition(args.bookId, args.pageIndex);
+    }
   } catch (err) {
     console.warn('[reader] persist position threw:', err);
+    await enqueuePosition(args.bookId, args.pageIndex);
   }
+}
+
+/**
+ * Queue a page-position write that could not be sent.
+ *
+ * The clientId is keyed on the book, not made unique per call: the
+ * queue coalesces progress per book anyway, so a stable key means a
+ * reader turning pages offline leaves one pending op rather than
+ * hundreds that collapse later. Same end state, far less churn on
+ * AsyncStorage.
+ */
+async function enqueuePosition(bookId: string, pageIndex: number): Promise<void> {
+  await enqueue(
+    { kind: 'progress.set', bookId, pageIndex, at: Date.now() },
+    `progress:${bookId}`,
+  );
 }
 
 /**
