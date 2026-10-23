@@ -178,11 +178,11 @@ translate popovers all stay as they are.
 | `/you/feedback` | ✅ |
 | `/you/account` | **blocked on M3** — needs `profile` and `plan`, which the shell assembles from `useIsPro`, `useBooks`, `useCurrentUser` and the month-stats refresh. Lifting that is the data-layer milestone. Falls back to YouScreen's internal view, which is the shipped behaviour |
 | `/you/account/edit-profile` | blocked, same reason |
-| `/discover/category/[id]` | not started |
-| `/book/[id]` | not started |
-| `/listen/now-playing` | not started |
-| `/listen/history` | not started |
-| `/read/[bookId]` and its 3 sub-routes | not started |
+| `/discover/category/[id]` | **deferred to M3** |
+| `/book/[id]` | **deferred to M3** |
+| `/listen/now-playing` | **deferred to M3** |
+| `/listen/history` | **deferred to M3** |
+| `/read/[bookId]` and its 3 sub-routes | **deferred to M3** |
 
 **The duplication is resolved.** Reading display, default voice and
 translation language are one route each, reached from both You and Settings.
@@ -199,6 +199,28 @@ app ships the `YouDrillScreens` version, which hands off to the user's mail app
 instead. The new route picked the standalone one by name and the type error is
 the only reason it was caught — on a milestone whose rule is that nothing
 changes, it would have silently replaced a mail hand-off with a form.
+
+### Why seven routes moved to M3
+
+Austine's call, 2026-10-23. The eight that landed share a shape: their screens
+take only `onBack`, use no React context, and already had optional handler
+props. Purely additive.
+
+The seven that did not share a different one. `openDetail(book)` and
+`openCategory(cat)` take **whole objects**; a URL carries an id, so they need
+fetch-by-id that does not exist yet. `/read/[bookId]` needs to resolve a `Book`
+from an id, and `BooksProvider` is deliberately scoped to `(tabs)` for sign-out
+cleanup. Listen's two are driven by shell state and the audio session.
+
+Each needs either M3's data layer or threading the shell's in-memory
+collections into routes — which recreates exactly the coupling routing was
+meant to remove, and would be undone again in M3.
+
+The deciding evidence was two latent crashes found in the already-committed
+cutover: `BooksProvider` and `ToastHost` were both dropped, invisible to the
+type checker and unreachable without an account. Two bugs in ~20 routes of
+unverifiable work is the rate; adding seven more that each need data plumbing
+raises the odds of shipping something broken faster than it delivers value.
 
 ## 7. Open before the rest
 

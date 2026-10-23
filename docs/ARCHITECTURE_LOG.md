@@ -11,7 +11,7 @@ Target: `docs/ARCHITECTURE.md` · Distance to it: `docs/ARCHITECTURE_GAPS.md`
 
 | | |
 |---|---|
-| **Current step** | **M1 merged to `main`.** Monorepo, tokens, shared, CI, tests, lint boundaries. Sentry and PostHog deferred — see below. M2 (routing) is next |
+| **Current step** | **M2 on `arch/m2-routing`, not merged.** Expo Router is the entry, 8 of 15 drill-ins done, 7 deferred to M3. Cannot be signed off without the test account — nothing post-auth is verified |
 | **Branch** | Phase 0 merged to `main` via [#2](https://github.com/EAustine/Bookflow/pull/2), rebased. Nothing in flight |
 | **`main`** | `28250be`, pushed. Carries `v11-batch`, the UI cleanup round, and Phase 0 |
 | **Next** | M0 spikes, on `arch/m0-spikes`. Throwaway code; nothing merges to `main` |
@@ -37,6 +37,49 @@ Target: `docs/ARCHITECTURE.md` · Distance to it: `docs/ARCHITECTURE_GAPS.md`
 ---
 
 ## Progress
+
+### M2 — routing · ◑ in progress on `arch/m2-routing`
+
+Expo Router is the entry point; the `stage` machine no longer drives
+navigation. Auth, onboarding and the four tabs are routes. 8 of 15 drill-ins
+landed; **7 deferred to M3** because each needs fetch-by-id, which is what M3
+builds — doing them now meant building them twice.
+
+**The duplication finding is resolved.** Reading display, default voice and
+translation language are one canonical route each instead of existing twice
+with a copy of the state in each parent. The migration was additive:
+`YouScreen` already had optional handler props falling back to internal `view`
+state and `SettingsScreen` gained the same, so the fallbacks go dead rather
+than being deleted — the cheapest revert while nothing can be verified.
+
+`(tabs)/_layout.tsx` is deliberately not `<Tabs>`: the shell owns the audio
+session and mini player and must stay mounted across tab changes, which
+`<Tabs>` would prevent by putting each screen in its own navigator subtree.
+The shell itself moved out of `App.tsx` unmodified, and stays router-free so
+it remains a reviewable move of code that cannot be run here.
+
+**Evidence: 4 of 5 auth screens pixel-identical**, the fifth off by 3 pixels
+the same build reproduces against itself — the caret, same signature as M1.
+Two emulator artifacts first reported it as a 7.5% regression: the IME toolbar
+returns after an app reinstall, and an Android clipboard popup rendered text
+from the working session into a screenshot.
+
+**Two latent crashes found and fixed**, both from the cutover dropping
+providers `App.tsx` had mounted: `BooksProvider` (every signed-in launch would
+have crashed on `useBooks`) and `ToastHost` (toasts silently gone). Neither is
+visible to the type checker; neither is reachable without an account. They are
+the clearest measure of what the missing test account costs — two bugs in
+roughly twenty routes of unverifiable work.
+
+**F-46.** Two components are named `SendFeedbackScreen`. The standalone
+380-line compose form is imported by nothing; the app ships the
+`YouDrillScreens` version, which hands off to the user's mail app. A new route
+picked the dead one by name and only a missing required prop caught it.
+
+**Blocked for sign-off:** the Maestro flow the brief asks for needs the test
+account, and iOS Universal Link verification needs a physical device (§13.1).
+The Apple Team ID and Play signing fingerprint are also outstanding —
+`docs/M2_DEEP_LINKS.md`.
 
 ### M1 — foundation · ✅ 2026-10-22 (merged)
 
@@ -195,6 +238,7 @@ migrations, not ten.
 | 10 | What actually hides the credit gauge? Not metering — that is already server-side and transactional. §9.2 now says so, and this is an open item in §14 | before M5 |
 | 11 | ~~Does the canonical document preserve character offsets?~~ — **settled**: §7.4 now requires it. Still needs *proving* in the M0 canonical-document spike | M0 |
 | 12 | `listen_sessions.chapter_id` is a leftover from `0010_chapters_to_pages.sql`. Reconcile or drop while the schema is open | M5 |
+| 15 | **F-46 — two components named `SendFeedbackScreen`.** The standalone 380-line form is dead; the app ships the mail hand-off. Delete the dead one, or wire it and delete the stub | M3 |
 | 13 | **Can Ghanaian customers actually pay?** Web Billing is Stripe-only, card-only, and its purchase links cannot be localised. The persona the web app most helps is the one least served by that checkout. Needs a direct answer from RevenueCat or Stripe | before M8 |
 | ~~14~~ | ~~Real-device confirmation for pdf.js~~ — **closed by the result, 2026-10-22.** The spike failed, and a failure on flattering hardware is conclusive. Successor: confirm **text/EPUB** on a real device before M6 ships, since a *pass* is the case needing confirmation | before M6 |
 
