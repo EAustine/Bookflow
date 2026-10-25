@@ -15,7 +15,7 @@
  * send half of them to the wrong screen.
  */
 import { useRouter } from 'expo-router';
-import { SendFeedbackScreen } from '~/screens/YouDrillScreens';
+import { SendFeedbackScreen } from '~/features/account';
 
 export default function Route() {
   const router = useRouter();

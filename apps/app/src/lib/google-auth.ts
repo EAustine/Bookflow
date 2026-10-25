@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import * as Google from 'expo-auth-session/providers/google';
 import * as WebBrowser from 'expo-web-browser';
 import { supabase } from './supabase';
-import type { AuthExchangeErrorKind } from './auth';
+import type { AuthExchangeErrorKind } from '~/features/auth';
 
 // Required for the OAuth browser redirect to close and hand control back to
 // the app on Android.

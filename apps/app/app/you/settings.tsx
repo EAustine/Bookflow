@@ -11,7 +11,7 @@
  * signed-in account; it is the cheapest revert if the routing is wrong.
  */
 import { useRouter } from 'expo-router';
-import { SettingsScreen } from '~/screens/SettingsScreen';
+import { SettingsScreen } from '~/features/account';
 
 export default function Settings() {
   const router = useRouter();

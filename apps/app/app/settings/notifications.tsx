@@ -7,7 +7,7 @@
  * send half of them to the wrong screen.
  */
 import { useRouter } from 'expo-router';
-import { NotificationsScreen } from '~/screens/YouDrillScreens';
+import { NotificationsScreen } from '~/features/account';
 
 export default function Route() {
   const router = useRouter();

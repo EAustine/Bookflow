@@ -1,5 +1,5 @@
 import { useRouter } from 'expo-router';
-import { SignInScreen } from '~/screens/SignInScreen';
+import { SignInScreen } from '~/features/auth';
 
 export default function SignIn() {
   const router = useRouter();

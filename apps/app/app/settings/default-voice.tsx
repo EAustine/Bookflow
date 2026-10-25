@@ -7,7 +7,7 @@
  * send half of them to the wrong screen.
  */
 import { useRouter } from 'expo-router';
-import { DefaultVoiceScreen } from '~/screens/YouDrillScreens';
+import { DefaultVoiceScreen } from '~/features/account';
 
 export default function Route() {
   const router = useRouter();

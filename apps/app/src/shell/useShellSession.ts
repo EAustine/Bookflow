@@ -17,11 +17,11 @@ import { useShareIntent } from 'expo-share-intent';
 import { useRouter } from 'expo-router';
 import { supabase } from '~/lib/supabase';
 import { reset as resetOfflineQueue } from '~/core/offline-queue';
-import { clearBookCoverCache as clearLibrarySignedUrlCache } from '~/lib/bookCovers';
-import { clearLastListenedBookId } from '~/lib/audioSession';
-import { clearReaderImageSignedUrlCache } from '~/screens/ReaderScreen';
-import { presentPaywall, ENTITLEMENT_PRO } from '~/lib/revenuecat';
-import type { ListenPlaybackState } from '~/screens/ListenNowPlayingScreen';
+import { clearBookCoverCache as clearLibrarySignedUrlCache } from '~/features/library';
+import { clearLastListenedBookId } from '~/features/listen';
+import { clearReaderImageSignedUrlCache } from '~/features/reader';
+import { presentPaywall, ENTITLEMENT_PRO } from '~/features/billing';
+import type { ListenPlaybackState } from '~/features/listen';
 
 export type ShellSession = {
   userName: string;

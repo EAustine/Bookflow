@@ -1,5 +1,5 @@
 import { useRouter } from 'expo-router';
-import { OnboardingIntentScreen } from '~/screens/OnboardingIntentScreen';
+import { OnboardingIntentScreen } from '~/features/auth';
 
 export default function Intent() {
   const router = useRouter();

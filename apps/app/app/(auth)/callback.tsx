@@ -21,8 +21,8 @@ import * as Linking from 'expo-linking';
 import {
   AuthCallbackScreen,
   type AuthCallbackError,
-} from '~/screens/AuthCallbackScreen';
-import { completeAuthCallback, parseAuthCallback } from '~/lib/auth';
+} from '~/features/auth';
+import { completeAuthCallback, parseAuthCallback } from '~/features/auth';
 import { supabase } from '~/lib/supabase';
 
 export default function Callback() {

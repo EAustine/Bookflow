@@ -52,7 +52,7 @@ import {
   presentPaywall,
   useIsPro,
   ENTITLEMENT_PRO,
-} from '~/lib/revenuecat';
+} from '~/features/billing';
 import {
   fireBookReadyNotification,
   installNotificationHandler,
@@ -80,35 +80,35 @@ import {
   completeAuthCallback,
   parseAuthCallback,
   setupRevenueCatAuthSync,
-} from '~/lib/auth';
+} from '~/features/auth';
 import { supabase } from '~/lib/supabase';
 import type { TabKey } from '~/components';
-import { AuthCallbackScreen } from '~/screens/AuthCallbackScreen';
-import { DiscoverScreen } from '~/screens/DiscoverScreen';
-import { ListenHistoryScreen } from '~/screens/ListenHistoryScreen';
-import { ListenHomeScreen } from '~/screens/ListenHomeScreen';
-import { ListenScreen, MiniPlayer } from '~/screens/ListenScreen';
+import { AuthCallbackScreen } from '~/features/auth';
+import { DiscoverScreen } from '~/features/discover';
+import { ListenHistoryScreen } from '~/features/listen';
+import { ListenHomeScreen } from '~/features/listen';
+import { ListenScreen, MiniPlayer } from '~/features/listen';
 import {
   AudioSessionProvider,
   clearLastListenedBookId,
   readLastListenedBookId,
   useAudioSession,
   useAudioStable,
-} from '~/lib/audioSession';
-import { VOICE_OPTIONS } from '~/lib/aiAudio';
+} from '~/features/listen';
+import { VOICE_OPTIONS } from '~/features/listen';
 import { BooksProvider, useBooks } from '~/hooks/useBooks';
 import { useBackHandler } from '~/lib/useBackHandler';
 import { useCurrentUser } from '~/hooks/useCurrentUser';
-import { useMonthlyListenStats } from '~/lib/readingStats';
+import { useMonthlyListenStats } from '~/features/reader';
 import {
   useMonthlyAiUsage,
   useMonthlyAudioUsage,
   usePurchasedBalances,
-} from '~/lib/aiUsage';
+} from '~/features/ai';
 import {
   type ListenPlaybackState,
   type MonthStats,
-} from '~/screens/ListenNowPlayingScreen';
+} from '~/features/listen';
 import type { Book } from '~/types/book';
 // PaywallPlanScreen (custom mockup) retired — all upgrade entry points
 // now use RevenueCat's hosted paywall via presentPaywall(). The custom
@@ -117,19 +117,19 @@ import type { Book } from '~/types/book';
 import {
   LibraryScreen,
   clearLibrarySignedUrlCache,
-} from '~/screens/LibraryScreen';
-import { clearReaderImageSignedUrlCache } from '~/screens/ReaderScreen';
+} from '~/features/library';
+import { clearReaderImageSignedUrlCache } from '~/features/reader';
 import {
   OnboardingFirstBookScreen,
   type FirstBookSelection,
-} from '~/screens/OnboardingFirstBookScreen';
-import { importDiscoverBook } from '~/lib/discoverImport';
-import { OnboardingIntentScreen, type OnboardingIntent } from '~/screens/OnboardingIntentScreen';
-import { SignInScreen } from '~/screens/SignInScreen';
-import { SignUpScreen } from '~/screens/SignUpScreen';
-import { SplashScreen } from '~/screens/SplashScreen';
-import { WelcomeScreen } from '~/screens/WelcomeScreen';
-import { YouScreen, type YouPlan, type YouProfile } from '~/screens/YouScreen';
+} from '~/features/auth';
+import { importDiscoverBook } from '~/features/discover';
+import { OnboardingIntentScreen, type OnboardingIntent } from '~/features/auth';
+import { SignInScreen } from '~/features/auth';
+import { SignUpScreen } from '~/features/auth';
+import { SplashScreen } from '~/features/auth';
+import { WelcomeScreen } from '~/features/auth';
+import { YouScreen, type YouPlan, type YouProfile } from '~/features/account';
 
 /**
  * The top-level navigation states. There is no router: `stage` is the
@@ -832,10 +832,10 @@ function formatTimecode(seconds: number): string {
  * renders end-to-end.
  */
 
-function snapSpeed(rate: number): import('~/screens/PlaybackSpeedSheet').Speed {
+function snapSpeed(rate: number): import('~/features/listen').Speed {
   // Single source of truth — see F-7. Previously a local literal that
   // included 3×, a speed the store rejected.
-  const allowed: import('~/screens/PlaybackSpeedSheet').Speed[] = [
+  const allowed: import('~/features/listen').Speed[] = [
     ...PLAYBACK_SPEEDS,
   ];
   if (!Number.isFinite(rate) || rate <= 0) return 1;

@@ -1,5 +1,5 @@
 import { useRouter } from 'expo-router';
-import { OnboardingFirstBookScreen } from '~/screens/OnboardingFirstBookScreen';
+import { OnboardingFirstBookScreen } from '~/features/auth';
 
 export default function FirstBook() {
   const router = useRouter();

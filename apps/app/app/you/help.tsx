@@ -7,7 +7,7 @@
  * send half of them to the wrong screen.
  */
 import { useRouter } from 'expo-router';
-import { HelpFAQScreen } from '~/screens/HelpFAQScreen';
+import { HelpFAQScreen } from '~/features/account';
 
 export default function Route() {
   const router = useRouter();
