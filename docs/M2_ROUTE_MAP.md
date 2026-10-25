@@ -76,10 +76,22 @@ it is permanent, since PDF stays native (§7.6).
 |---|---|
 | `home` | `/(tabs)/discover` |
 | `category` | `/discover/category/[id]` |
-| `detail` | `/book/[id]` |
+| `detail` | `/discover/book/[id]` — **corrected**, see below |
 
-Book detail is reachable from Library *and* Discover, so it is a top-level
-route, not nested under Discover.
+**Correction, 2026-10-25.** This originally said book detail was reachable
+from Library *and* Discover and should therefore be a top-level `/book/[id]`.
+That is wrong on both counts, found while building the route in M3:
+
+- **Library has no detail view.** `LibraryScreen.tsx:718` goes straight from
+  a selected book to the reader.
+- **The ids are different namespaces.** `DiscoverBook.id` is a source-prefixed
+  catalogue id (`gutenberg:1342`), not a `books.id` uuid. A single route
+  taking "an id" would have had to guess which kind it was holding.
+
+So it nests under Discover and fetches from `discoverApi`, not from the
+`books` table. `DetailView` is also private to `DiscoverScreen` and takes
+Discover's `libraryIds`/`pendingIds` state, so the route needs the Discover
+feature extracted first — it is blocked on that, not on the query layer.
 
 ### Listen
 
@@ -179,7 +191,7 @@ translate popovers all stay as they are.
 | `/you/account` | **blocked on M3** — needs `profile` and `plan`, which the shell assembles from `useIsPro`, `useBooks`, `useCurrentUser` and the month-stats refresh. Lifting that is the data-layer milestone. Falls back to YouScreen's internal view, which is the shipped behaviour |
 | `/you/account/edit-profile` | blocked, same reason |
 | `/discover/category/[id]` | **deferred to M3** |
-| `/book/[id]` | **deferred to M3** |
+| `/discover/book/[id]` | **deferred to M3** — needs the Discover feature extracted, not just a query |
 | `/listen/now-playing` | **deferred to M3** |
 | `/listen/history` | **deferred to M3** |
 | `/read/[bookId]` and its 3 sub-routes | **deferred to M3** |

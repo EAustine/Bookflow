@@ -15,19 +15,20 @@
  *
  * Route tree: docs/M2_ROUTE_MAP.md
  */
-import { useCallback, useEffect, useState } from 'react';
-import { StyleSheet } from 'react-native';
-import { Slot, useRouter } from 'expo-router';
-import { GestureHandlerRootView } from 'react-native-gesture-handler';
-import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { BottomSheetModalProvider } from '@gorhom/bottom-sheet';
-import { SplashScreen } from '~/screens/SplashScreen';
-import { RootErrorBoundary } from '~/components/RootErrorBoundary';
-import { AudioSessionProvider } from '~/lib/audioSession';
-import { ToastHost } from '~/components/ToastHost';
-import { StatusBar } from 'expo-status-bar';
-import { supabase } from '~/lib/supabase';
-import { useAppFonts } from '~/lib/useAppFonts';
+import { useCallback, useEffect, useState } from "react";
+import { StyleSheet } from "react-native";
+import { Slot, useRouter } from "expo-router";
+import { GestureHandlerRootView } from "react-native-gesture-handler";
+import { SafeAreaProvider } from "react-native-safe-area-context";
+import { BottomSheetModalProvider } from "@gorhom/bottom-sheet";
+import { SplashScreen } from "~/screens/SplashScreen";
+import { RootErrorBoundary } from "~/components/RootErrorBoundary";
+import { AudioSessionProvider } from "~/lib/audioSession";
+import { ToastHost } from "~/components/ToastHost";
+import { QueryProvider } from "~/core/query";
+import { StatusBar } from "expo-status-bar";
+import { supabase } from "~/lib/supabase";
+import { useAppFonts } from "~/lib/useAppFonts";
 
 /**
  * Last-resort ceiling on the splash. Every branch of session restore
@@ -45,7 +46,8 @@ const SESSION_RESTORE_CEILING_MS = 8000;
 const PROFILE_LOOKUP_TIMEOUT_MS = 4000;
 
 /** Where boot decided to go. `null` until restore answers. */
-type Destination = '/(auth)/welcome' | '/(onboarding)/intent' | '/(tabs)/library';
+type Destination =
+  "/(auth)/welcome" | "/(onboarding)/intent" | "/(tabs)/library";
 
 export default function RootLayout() {
   const router = useRouter();
@@ -76,37 +78,41 @@ export default function RootLayout() {
     let cancelled = false;
     void (async () => {
       try {
-        const { data: { session } } = await supabase.auth.getSession();
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
         if (cancelled) return;
         if (!session?.user) {
-          setDestination('/(auth)/welcome');
+          setDestination("/(auth)/welcome");
           return;
         }
 
         const lookup = supabase
-          .from('profiles')
-          .select('onboarding_complete')
-          .eq('id', session.user.id)
+          .from("profiles")
+          .select("onboarding_complete")
+          .eq("id", session.user.id)
           .single();
         const timeout = new Promise<{ data: null; error: { message: string } }>(
           (resolve) =>
             setTimeout(
-              () => resolve({ data: null, error: { message: 'timeout' } }),
+              () => resolve({ data: null, error: { message: "timeout" } }),
               PROFILE_LOOKUP_TIMEOUT_MS,
             ),
         );
         const { data: profile, error } = await Promise.race([lookup, timeout]);
         if (cancelled) return;
         if (error) {
-          console.warn('[boot] profile lookup failed:', error.message);
+          console.warn("[boot] profile lookup failed:", error.message);
         }
 
         setDestination(
-          profile?.onboarding_complete ? '/(tabs)/library' : '/(onboarding)/intent',
+          profile?.onboarding_complete
+            ? "/(tabs)/library"
+            : "/(onboarding)/intent",
         );
       } catch (err) {
-        console.warn('[boot] session restore threw:', err);
-        if (!cancelled) setDestination('/(auth)/welcome');
+        console.warn("[boot] session restore threw:", err);
+        if (!cancelled) setDestination("/(auth)/welcome");
       }
     })();
     return () => {
@@ -116,7 +122,7 @@ export default function RootLayout() {
 
   useEffect(() => {
     const timer = setTimeout(
-      () => setDestination((prev) => prev ?? '/(auth)/welcome'),
+      () => setDestination((prev) => prev ?? "/(auth)/welcome"),
       SESSION_RESTORE_CEILING_MS,
     );
     return () => clearTimeout(timer);
@@ -126,9 +132,10 @@ export default function RootLayout() {
 
   return (
     <RootErrorBoundary>
-      <GestureHandlerRootView style={styles.root}>
-        <SafeAreaProvider>
-          {/*
+      <QueryProvider>
+        <GestureHandlerRootView style={styles.root}>
+          <SafeAreaProvider>
+            {/*
             AudioSessionProvider sits ABOVE BottomSheetModalProvider so
             bottom sheets — which render through the modal provider's
             portal, OUTSIDE the React tree where they are declared — can
@@ -141,23 +148,24 @@ export default function RootLayout() {
             dormant while `book === null`, and the only mount-time work
             is reading a few Zustand values synchronously.
           */}
-          <AudioSessionProvider>
-            <BottomSheetModalProvider>
-              {/* The splash covers the whole tree until the hand-off.
+            <AudioSessionProvider>
+              <BottomSheetModalProvider>
+                {/* The splash covers the whole tree until the hand-off.
                   Rendering it over `<Slot />` rather than instead of it
                   lets the destination route mount and settle behind the
                   animation, so the transition has nothing to wait for. */}
-              <Slot />
-              {!splashDone && <SplashScreen onComplete={onSplashComplete} />}
-              <StatusBar style="dark" />
-            </BottomSheetModalProvider>
-          </AudioSessionProvider>
-          {/* Outside AudioSessionProvider and the modal provider, exactly
+                <Slot />
+                {!splashDone && <SplashScreen onComplete={onSplashComplete} />}
+                <StatusBar style="dark" />
+              </BottomSheetModalProvider>
+            </AudioSessionProvider>
+            {/* Outside AudioSessionProvider and the modal provider, exactly
               as App.tsx had it: toasts must paint above bottom sheets,
               and the modal provider's portal would otherwise cover them. */}
-          <ToastHost />
-        </SafeAreaProvider>
-      </GestureHandlerRootView>
+            <ToastHost />
+          </SafeAreaProvider>
+        </GestureHandlerRootView>
+      </QueryProvider>
     </RootErrorBoundary>
   );
 }

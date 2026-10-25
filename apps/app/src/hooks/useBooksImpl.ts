@@ -91,7 +91,14 @@ function pickCoverColor(id: string): string {
   return COVER_PALETTE[hash % COVER_PALETTE.length];
 }
 
-function rowToBook(row: BookRow): Book {
+/**
+ * Exported in M3 so `features/library/api` can reuse it.
+ *
+ * A second copy in the Query layer would be a mapper that drifts —
+ * and the drift would show up as subtly wrong book metadata rather
+ * than as a build error.
+ */
+export function rowToBook(row: BookRow): Book {
   const totalPagesRaw = row.total_pages ?? 0;
   const lastReadPage = row.last_read_page ?? 0;
   // Position is a 0..100 integer in the DB; we treat it as the *fraction*
@@ -147,6 +154,8 @@ function rowToBook(row: BookRow): Book {
     source_url: row.source_url,
   };
 }
+
+export type { BookRow };
 
 export type UseBooksResult = {
   books: Book[];
