@@ -24,6 +24,7 @@ import { CURATED_LIBRARY } from '~/data/curatedLibrary';
 import {
   BottomSheet,
   type BottomSheetRef,
+  Presenter,
   Button,
   Icon,
   RemoveBookSheetBody,
@@ -187,6 +188,12 @@ export function LibraryScreen({
   const [pendingSort, setPendingSort] = useState<SortKey>('recent');
   const [pendingFilter, setPendingFilter] = useState<FilterKey>('all');
   const sheetRef = useRef<BottomSheetRef>(null);
+  // The Filter button in the header. Above Compact the sort and filter
+  // options open as a popover anchored to it (§3); on a phone the ref
+  // is simply unused. Both triggers — the header icon and the section
+  // header's sort label — open the same menu, and the Figma frames
+  // anchor it under the header icons, so one ref covers both.
+  const filterAnchorRef = useRef<View>(null);
   const addSheetRef = useRef<BottomSheetRef>(null);
   const bookActionSheetRef = useRef<BottomSheetRef>(null);
   const removeConfirmSheetRef = useRef<BottomSheetRef>(null);
@@ -1009,7 +1016,7 @@ export function LibraryScreen({
           />
         }
       >
-        <Header onSearch={openSearch} onFilter={openSheet} onAdd={() => addSheetRef.current?.present()} isOffline={isOffline} />
+        <Header onSearch={openSearch} onFilter={openSheet} filterAnchorRef={filterAnchorRef} onAdd={() => addSheetRef.current?.present()} isOffline={isOffline} />
         <ReadingStatsCard stats={readingStats} weekDays={readingStats.weekDays} />
         {continueBook && (
           <ContinueCard
@@ -1033,7 +1040,12 @@ export function LibraryScreen({
       </ScrollView>
       <TabBar activeTab="library" onChange={onTabChange} />
 
-      <BottomSheet ref={sheetRef} onDismiss={handleSheetDismiss}>
+      <Presenter
+        kind="menu"
+        anchorRef={filterAnchorRef}
+        ref={sheetRef}
+        onDismiss={handleSheetDismiss}
+      >
         <SortFilterSheet
           sortBy={pendingSort}
           filterBy={pendingFilter}
@@ -1043,7 +1055,7 @@ export function LibraryScreen({
           onReset={handleReset}
           onApply={handleApply}
         />
-      </BottomSheet>
+      </Presenter>
       <AddBookSheet
         ref={addSheetRef}
         onUpload={handleUploadTap}
@@ -1372,11 +1384,13 @@ function OfflineBanner({ onRetry }: { onRetry: () => void }) {
 function Header({
   onSearch,
   onFilter,
+  filterAnchorRef,
   onAdd,
   isOffline,
 }: {
   onSearch: () => void;
   onFilter?: () => void;
+  filterAnchorRef?: React.RefObject<View | null>;
   onAdd: () => void;
   isOffline?: boolean;
 }) {
@@ -1385,7 +1399,7 @@ function Header({
       <Text style={styles.headerTitle}>Library</Text>
       <View style={styles.headerActions}>
         <CircleIconButton icon="Search" onPress={onSearch} dimmed={isOffline} />
-        {onFilter && <CircleIconButton icon="Filter" onPress={onFilter} dimmed={isOffline} />}
+        {onFilter && <CircleIconButton icon="Filter" onPress={onFilter} dimmed={isOffline} anchorRef={filterAnchorRef} />}
         <CircleIconButton icon="Plus" onPress={onAdd} dimmed={isOffline} />
       </View>
     </View>
@@ -1396,13 +1410,17 @@ function CircleIconButton({
   icon,
   onPress,
   dimmed,
+  anchorRef,
 }: {
   icon: 'Search' | 'Filter' | 'Plus';
   onPress: () => void;
   dimmed?: boolean;
+  /** Set when a wide-screen popover anchors to this button. */
+  anchorRef?: React.RefObject<View | null>;
 }) {
   return (
     <Pressable
+      ref={anchorRef}
       accessibilityRole="button"
       onPress={onPress}
       disabled={dimmed}

@@ -29,11 +29,23 @@ export type { ToggleProps } from './Toggle';
 export { BottomSheet } from './BottomSheet';
 export type { BottomSheetProps, BottomSheetRef } from './BottomSheet';
 
+export { Presenter } from './Presenter';
+export type { PresenterProps, PresenterKind, PresenterRef } from './Presenter';
+export { Popover } from './Popover';
+export type { PopoverProps, AnchorRect } from './Popover';
+export { SidePanel } from './SidePanel';
+export type { SidePanelProps, SidePanelMode } from './SidePanel';
+export { Modal } from './Modal';
+export type { ModalProps, ModalSize } from './Modal';
+
 export { Text } from './Text';
 export type { TextProps, TextAlign } from './Text';
 
 export { TabBar } from './TabBar';
 export type { TabBarProps, TabKey } from './TabBar';
+
+export { SideRail } from './SideRail';
+export type { SideRailProps } from './SideRail';
 
 export { ChapterSheet } from './ChapterSheet';
 export type { ChapterSheetProps } from './ChapterSheet';
