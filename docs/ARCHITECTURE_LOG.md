@@ -90,6 +90,48 @@ signed-URL infrastructure over Supabase Storage, so it now lives in `core/`.
 That had been an ESLint error on the branch since `9bdf6ee`, meaning **lint
 was red and reported green** — corrected here.
 
+### Production deploy · 2026-10-28
+
+Austine approved a full catch-up after the PDF page-fidelity work turned
+out not to be live at all.
+
+**Why text mode still looked word-sliced after a re-process:** `process-book`
+on production was version 29, deployed **2026-05-28** — five months before the
+fix was written. Migrations `0026`–`0029` were all unapplied. The code was
+correct and simply had never shipped. Nothing in the repo surfaces this; the
+only way to see it is to ask the project what is actually deployed.
+
+Applied `0026`→`0029` and deployed `process-book` (v29→30), `generate-summary`
+(14→15), `chat-message` (11→12) and `discover-doab` (7→8). Verified: all four
+migrations now report local **and** remote; the deployed DOAB function answers
+200 with 24 usable books in 0.9 s.
+
+Two things the push exposed:
+
+- **The schema had drifted from the ledger.** `0026` reported *"column
+  ai_credits_balance_total already exists, skipping"* — production already
+  had those columns without the migration being recorded, so someone had
+  applied them by hand. The `if not exists` guards absorbed it.
+- **`public.chapters` really was free to create.** `0010` did
+  `alter table public.chapters rename to pages`, so the 0001-era table had
+  not existed under that name since. Confirmed from the push output itself:
+  `create table if not exists` emits a *"relation already exists, skipping"*
+  notice when it skips, and none appeared for `chapters` — unlike 0026's
+  columns, which did. 0010 also renamed the dependent FK columns
+  (`chapter_id` → `page_id`), so the new `chapters` table collides with
+  nothing.
+
+**17 edge functions remain stale**, in two groups that matter:
+
+| Commit | Functions | What is undeployed |
+|---|---|---|
+| `7a117d1` | 13 | The `deno check` fixes — 22 real type errors, including the PostgREST embedded-array bug that silently dropped the chapter name from every AI page marker |
+| `ea34369` | 4 | The whole credits / metering feature — `generate-audio`, `generate-practice`, `generate-translation`, `revenuecat-webhook` — while its migrations `0026`/`0027` are now applied |
+
+The DB side of `0026`/`0027` is self-contained (the RPCs keep their
+signatures, so June-era callers get the new behaviour), so this is drift
+rather than breakage. It still wants closing.
+
 ### M2 — routing · ✅ merged to `main`
 
 Expo Router is the entry point; the `stage` machine no longer drives
