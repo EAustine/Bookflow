@@ -118,7 +118,18 @@ export default function RootLayout() {
         const { data: profile, error } = await Promise.race([lookup, timeout]);
         if (cancelled) return;
         if (error) {
+          // A failed or slow lookup tells us nothing about onboarding, so
+          // it must not be read as "not onboarded". It used to fall
+          // through to the shared line below, where `profile` is null and
+          // `profile?.onboarding_complete` is undefined — so a signed-in
+          // user with a full library was sent back through onboarding
+          // because one query took longer than 4s. Seen on the emulator:
+          // "[boot] profile lookup failed: timeout" and then the intent
+          // screen. The comment on this effect already said failures
+          // should fall through to Library; only the code disagreed.
           console.warn("[boot] profile lookup failed:", error.message);
+          setDestination("/(tabs)/library");
+          return;
         }
 
         setDestination(
