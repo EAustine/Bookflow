@@ -15,6 +15,7 @@ import { Pressable, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Icon, type IconName } from './Icon';
 import { Text } from './Text';
+import { useSizeClass } from '~/hooks/useSizeClass';
 import { tokens } from '~/design/tokens';
 
 export type TabKey = 'library' | 'discover' | 'listen' | 'you';
@@ -40,6 +41,15 @@ export type TabBarProps = {
 
 export function TabBar({ activeTab, onChange }: TabBarProps) {
   const insets = useSafeAreaInsets();
+  const { isWide } = useSizeClass();
+
+  // Above Compact the side rail is the primary nav (§2), and the rail
+  // is rendered once by SignedInShell rather than per screen. Returning
+  // null here is what lets all eleven call sites keep rendering
+  // <TabBar/> as their last child, unchanged: the bar simply draws
+  // nothing on a tablet, and the flex column it sat in closes up.
+  if (isWide) return null;
+
   return (
     <View
       style={[
