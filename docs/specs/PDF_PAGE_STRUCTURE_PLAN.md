@@ -154,7 +154,7 @@ in Full view. Testable on any PDF without an account.
 
 **Acceptance:** chapter page ranges match the outline.
 
-### Phase 3 — Reader and AI read real pages
+### Phase 3 — Reader and AI read real pages · ✅ partial
 
 8. Inline "Page 15" dividers as a `pageMarker` item; sticky
    "Chapter 3 · p. 15 of 20"; drop the screen count.
@@ -163,6 +163,19 @@ in Full view. Testable on any PDF without an account.
     carry `[Page N | Chapter C]` markers with post-generation citation checks.
 
 **Acceptance:** "summarise page N" quotes only page N.
+
+**Done:** AI page context is page-anchored — `[Page 15 | printed xii |
+Chapter 3]` markers, a citation instruction, and post-generation verification
+that every cited page was actually retrieved (invalid ones are stripped, not
+regenerated: the prose is still grounded, only the pointer is wrong, and a
+retry costs the user credits for a result that is mostly right). The reader's
+page divider shows "Page 15 of 20" from `pdf_page_number`, with the
+denominator derived from the data so it is correct for pre-0028 books too.
+
+**Not done:** go-to-page accepting printed labels; the sticky
+"Chapter 3 · p. 15 of 20" indicator; `chat-message` and `generate-practice`
+still send unanchored context. Q&A chunking by page boundary is the larger
+remaining piece and belongs with the `chunk_embeddings` work.
 
 This is where the §7.2 question bites — see Decision 1.
 

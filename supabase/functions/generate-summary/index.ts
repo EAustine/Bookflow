@@ -103,8 +103,39 @@ const LENGTH_CONFIG: Record<SummaryLength, { instruction: string; maxTokens: num
   },
 };
 
-const SYSTEM_PROMPT =
-  'You are a concise, accurate book-passage summarizer. Stay grounded in the text — do not introduce details that aren\'t directly supported. Use plain language. Output the summary only — no preamble, no headings, no "this passage…" framing.';
+const SYSTEM_PROMPT = [
+  'You are a concise, accurate book-passage summarizer.',
+  'Stay grounded in the text — do not introduce details that aren\'t directly supported.',
+  'Use plain language.',
+  'Output the summary only — no preamble, no headings, no "this passage…" framing.',
+  '',
+  'The text is divided by markers like [Page 15 | printed xii | Chapter 3].',
+  'Cite the page for each substantive claim, as "(p. 15)".',
+  'Use ONLY page numbers that appear in those markers. If you are unsure which',
+  'page a point came from, leave the citation off rather than guessing — an',
+  'unsourced sentence is recoverable, a wrong page number is not.',
+  'The markers are not part of the passage; never quote or describe them.',
+].join('\n');
+
+/**
+ * Page numbers the model cited, as `(p. 15)` or `(pp. 15-16)`.
+ *
+ * Used to verify citations against what was actually retrieved. The
+ * product principle is that every AI claim cites back to its source;
+ * a citation pointing at a page the model never saw is worse than none,
+ * because it looks checkable and isn't.
+ */
+function extractCitedPages(text: string): number[] {
+  const out = new Set<number>();
+  for (const m of text.matchAll(/\(pp?\.\s*([0-9]+(?:\s*[-\u2013]\s*[0-9]+)?)\)/g)) {
+    const span = m[1] ?? '';
+    for (const n of span.split(/[-\u2013]/)) {
+      const v = Number.parseInt(n.trim(), 10);
+      if (Number.isFinite(v)) out.add(v);
+    }
+  }
+  return [...out];
+}
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -199,7 +230,10 @@ Deno.serve(async (req) => {
   // subset of the requested indices that actually exist.
   const { data: pageRows, error: pageErr } = await supabase
     .from('pages')
-    .select('id, page_index, content, word_count')
+    // pdf_page_number, page_label and the chapter title are what make a
+    // citation point at something the user can open. Without them the
+    // model can only say "the passage", which is the problem this fixes.
+    .select('id, page_index, content, word_count, pdf_page_number, page_label, chapters(title)')
     .eq('book_id', book_id)
     .in('page_index', requestedIndices)
     .order('page_index', { ascending: true });
@@ -212,41 +246,73 @@ Deno.serve(async (req) => {
     page_index: number;
     content: string | null;
     word_count: number | null;
+    pdf_page_number: number | null;
+    page_label: string | null;
+    chapters: { title: string } | null;
   }>;
   if (pages.length === 0) {
     return json({ error: 'page_not_found' }, 404);
   }
 
-  // 2. Build the source text. Single-page: just the one page's
-  // content. Multi-page: concatenate with a soft truncation cap.
+  /**
+   * The page number a citation should use.
+   *
+   * `pdf_page_number` when the source is a PDF, because that is what the
+   * Full view shows and what the user means by "page 15". Falls back to
+   * `page_index + 1` for EPUB, which has no original pages.
+   *
+   * Correct for both extraction versions. At version 1 several rows
+   * share one `pdf_page_number` — that is accurate, not a bug: those
+   * rows really were slices of one page.
+   */
+  const citePage = (p: { page_index: number; pdf_page_number: number | null }) =>
+    p.pdf_page_number ?? p.page_index + 1;
+
+  /** The set of pages actually in context. Citations are checked against it. */
+  const pagesInContext = new Set(pages.map(citePage));
+
+  /**
+   * `[Page 15 | printed xii | Chapter 3]` ahead of each page's text.
+   *
+   * Every page is marked, including in single-page mode. The model
+   * cannot cite a number it was never shown, and a summary that says
+   * "(p. 15)" without the marker is the model guessing.
+   */
+  const pageMarker = (p: typeof pages[number]) => {
+    const parts = [`Page ${citePage(p)}`];
+    if (p.page_label) parts.push(`printed ${p.page_label}`);
+    const chapter = p.chapters?.title;
+    if (chapter) parts.push(chapter);
+    return `[${parts.join(' | ')}]`;
+  };
+
+  // 2. Build the source text, page-anchored.
   let sourceText: string;
-  if (!isMultiPage) {
-    const single = pages[0];
-    if (!single.content || single.content.trim().length < 50) {
-      return json({ error: 'page_too_short' }, 400);
-    }
-    sourceText = single.content.trim();
-  } else {
+  let truncated = false;
+  {
     let buf = '';
-    let truncated = false;
     for (const p of pages) {
       if (!p.content) continue;
-      if (buf.length + p.content.length > MAX_MULTI_PAGE_CHARS) {
-        buf += p.content.slice(0, MAX_MULTI_PAGE_CHARS - buf.length);
+      const block = `${pageMarker(p)}\n${p.content.trim()}`;
+      if (isMultiPage && buf.length + block.length > MAX_MULTI_PAGE_CHARS) {
+        buf += block.slice(0, Math.max(0, MAX_MULTI_PAGE_CHARS - buf.length));
         truncated = true;
         break;
       }
-      buf += p.content + '\n\n';
-    }
-    if (buf.length < 100) {
-      return json({ error: 'page_too_short' }, 400);
+      buf += block + '\n\n';
     }
     sourceText = buf.trim();
-    if (truncated) {
-      console.log(
-        `[generate-summary] multi-page text truncated to ${MAX_MULTI_PAGE_CHARS} chars (${pages.length} pages requested)`,
-      );
-    }
+  }
+  if (!isMultiPage && sourceText.length < 50 + 20) {
+    return json({ error: 'page_too_short' }, 400);
+  }
+  if (isMultiPage && sourceText.length < 100) {
+    return json({ error: 'page_too_short' }, 400);
+  }
+  if (truncated) {
+    console.log(
+      `[generate-summary] multi-page text truncated to ${MAX_MULTI_PAGE_CHARS} chars (${pages.length} pages requested)`,
+    );
   }
 
   // 3. Cache lookup — only for the single-page path. Multi-page
@@ -336,6 +402,31 @@ Deno.serve(async (req) => {
       return json({ error: 'no_summary_generated' }, 500);
     }
 
+    // Verify every citation points at a page that was actually in
+    // context. A hallucinated page number is worse than no citation:
+    // it looks checkable, so the user trusts it, and source
+    // traceability is a marketed promise rather than a nicety.
+    //
+    // Stripped rather than regenerated. The prose is still grounded —
+    // only the pointer is wrong — and a retry costs the user credits
+    // for a result that is mostly right.
+    const cited = extractCitedPages(summary);
+    const invalid = cited.filter((n) => !pagesInContext.has(n));
+    let cleanedSummary = summary;
+    if (invalid.length > 0) {
+      console.warn(
+        `[generate-summary] dropped citations to pages not in context: ${invalid.join(', ')} ` +
+          `(context had ${[...pagesInContext].join(', ')})`,
+      );
+      cleanedSummary = summary.replace(
+        /\s*\(pp?\.\s*[0-9]+(?:\s*[-\u2013]\s*[0-9]+)?\)/g,
+        (match) => {
+          const nums = extractCitedPages(match);
+          return nums.every((n) => pagesInContext.has(n)) ? match : '';
+        },
+      );
+    }
+
     // 4. Persist (single-page only — see cache-lookup note above for
     // why multi-page skips this). Failure here is non-fatal: we still
     // return the summary; a future re-request will just regenerate
@@ -343,7 +434,7 @@ Deno.serve(async (req) => {
     if (!isMultiPage) {
       const { error: insertErr } = await supabase
         .from('summaries')
-        .insert({ page_id: pages[0].id, length, content: summary });
+        .insert({ page_id: pages[0].id, length, content: cleanedSummary });
 
       if (insertErr) {
         console.warn(
@@ -363,12 +454,12 @@ Deno.serve(async (req) => {
     });
 
     console.log(
-      `[generate-summary] generated in ${Date.now() - t0}ms (length=${length} pages=${pages.length} words=${summary.split(/\s+/).length})`,
+      `[generate-summary] generated in ${Date.now() - t0}ms (length=${length} pages=${pages.length} words=${cleanedSummary.split(/\s+/).length} cited=${cited.join('/') || 'none'})`,
     );
 
     return json(
       {
-        summary,
+        summary: cleanedSummary,
         length,
         cached: false,
         page_index: primaryPageIndex,
