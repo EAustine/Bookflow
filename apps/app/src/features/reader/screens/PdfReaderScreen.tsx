@@ -578,16 +578,24 @@ export function PdfReaderScreen({
     // `book.totalPages` being in step with the row count — and a stale
     // or zero value silently sent the reader to page 1.
     const totalDbPages = book.totalPages ?? 0;
-    const pageRowCount = pageLabels.length;
-    const pageFaithful = pageRowCount > 0 && pageRowCount === totalPages;
-    const targetPageIndex = pageFaithful
+    // Legacy ONLY when there are demonstrably more text rows than PDF
+    // pages — that is what pre-0028 slicing produces. Anything else
+    // takes the exact mapping.
+    //
+    // This deliberately does not consult `pageLabels`: that is an async
+    // fetch, and keying the decision on it meant a quick toggle found
+    // it still empty, fell through to the estimate, and multiplied by a
+    // stale `book.totalPages`. Observed: Full on PDF 17 opened Text on
+    // page 4. Defaulting to exact also means a stale page count can no
+    // longer send the reader to the wrong place — it is only consulted
+    // to recognise the legacy case.
+    const legacySlicedPages = totalDbPages > totalPages && totalPages > 0;
+    const targetPageIndex = !legacySlicedPages
       ? Math.max(0, currentPage - 1)
-      : totalPages > 0 && totalDbPages > 0
-      ? Math.min(
+      : Math.min(
           totalDbPages - 1,
           Math.floor(((currentPage - 1) / Math.max(1, totalPages)) * totalDbPages),
-        )
-      : 0;
+        );
     return (
       <ReaderScreen
         book={book}

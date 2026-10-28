@@ -999,36 +999,6 @@ export function ReaderScreen({
     return out;
   }, [pageList]);
 
-  const stickyChapterTitle = useMemo(() => {
-    let title: string | null = null;
-    for (const row of pageList) {
-      if (row.page_index > pageIndex) break;
-      if (row.title) title = row.title;
-    }
-    return title;
-  }, [pageList, pageIndex]);
-
-  /**
-   * The sticky indicator's text for the topmost visible page.
-   *
-   * Built from the same inputs as the in-content divider — the row's
-   * `page_index` / `pdf_page_number` / `page_label` through
-   * `pageDisplay` — so the two can never print different strings for
-   * the same sheet. Chapter comes first when the page has one, per the
-   * brief's "Chapter 3 · Page 15 · PDF 23 of 120".
-   */
-  const stickyPage = useMemo(() => {
-    const row = pageList.find((p) => p.page_index === pageIndex);
-    if (!row) return null;
-    const display = pageDisplayText(
-      pdfIndexOf(row.page_index, row.pdf_page_number),
-      row.page_label,
-    );
-    const total = pdfTotalPages ? ` of ${pdfTotalPages}` : '';
-    const chapter = stickyChapterTitle ? `${stickyChapterTitle} · ` : '';
-    return `${chapter}${display}${total}`;
-  }, [pageList, pageIndex, pdfTotalPages, stickyChapterTitle]);
-
   const handleWordPress = useCallback((word: string) => {
     const cleaned = word.replace(/[^a-zA-Z'-]/g, '').toLowerCase();
     if (cleaned.length <= 1) return;
@@ -1418,25 +1388,6 @@ export function ReaderScreen({
           three strings cannot disagree. That agreement is the point:
           it is what the reader checks against the paper page.
         */}
-        {stickyPage && (
-          <Pressable
-            onPress={() => {
-              setGoToQuery('');
-              setGoToMatches(null);
-              goToSheetRef.current?.present();
-            }}
-            accessibilityRole="button"
-            accessibilityLabel={`${stickyPage}. Go to page`}
-            style={[
-              styles.stickyPage,
-              { backgroundColor: palette.bg, borderBottomColor: palette.border },
-            ]}
-          >
-            <Text style={[styles.stickyPageLabel, { color: palette.muted }]} numberOfLines={1}>
-              {stickyPage}
-            </Text>
-          </Pressable>
-        )}
         <FlatList<PageListItem>
           ref={listRef}
           data={pageList}
@@ -1741,6 +1692,14 @@ export function ReaderScreen({
       {/* Typography sheet */}
       <BottomSheet ref={typoSheetRef}>
         <TypographySheet
+          onGoToPage={() => {
+            typoSheetRef.current?.dismiss();
+            setGoToQuery('');
+            setGoToMatches(null);
+            // Let the first sheet finish dismissing before presenting
+            // the second; presenting into a closing sheet drops it.
+            setTimeout(() => goToSheetRef.current?.present(), 250);
+          }}
           preset={preset}
           fontSize={fontSize}
           fontFamily={fontFamily}
@@ -3055,6 +3014,7 @@ function TypographySheet({
   onTheme,
   onAutoHide,
   onReset,
+  onGoToPage,
 }: {
   preset: ReaderPreset;
   fontSize: number;
@@ -3067,6 +3027,13 @@ function TypographySheet({
   onTheme: (t: ReaderTheme) => void;
   onAutoHide: (v: boolean) => void;
   onReset: () => void;
+  /**
+   * Opens Go to page. It lived on the sticky page indicator until that
+   * was removed for naming pages that were not on screen; this sheet is
+   * the reader's utility surface and the only other place it is
+   * reachable from without adding a sixth item to the action bar.
+   */
+  onGoToPage: () => void;
 }) {
   return (
     <View>
@@ -3076,6 +3043,14 @@ function TypographySheet({
           <Text style={styles.sheetReset}>Reset</Text>
         </Pressable>
       </View>
+
+      <ListRow
+        label="Go to page"
+        sublabel="Jump by page number, or a printed label like xii"
+        onPress={onGoToPage}
+      />
+
+      <View style={styles.sheetDivider} />
 
       {/* Presets */}
       <Text style={styles.sheetSectionLabel}>Presets</Text>
@@ -3398,20 +3373,6 @@ const styles = StyleSheet.create({
   },
   goToResults: {
     gap: tokens.space.xs,
-  },
-  stickyPage: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    zIndex: 5,
-    paddingHorizontal: tokens.space.lg,
-    paddingVertical: tokens.space.xs,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-  },
-  stickyPageLabel: {
-    ...tokens.textStyles['label-sm'],
-    textAlign: 'center',
   },
   chapterTitle: {
     fontFamily: tokens.fonts.display,
