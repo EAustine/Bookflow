@@ -34,11 +34,12 @@ import {
   Icon,
   Text,
 } from '~/components';
+import { pageDisplayText } from '@bookflow/shared';
 import { tokens } from '~/design/tokens';
 import type { Book } from '~/types/book';
 import { formatNetworkError } from '~/lib/networkErrors';
 import { supabase } from '~/lib/supabase';
-import { persistReadingPosition } from '../api/useBookChapters';
+import { persistReadingPosition, usePageLabels } from '../api/useBookChapters';
 import { useBackHandler } from '~/lib/useBackHandler';
 import { useReadingSession } from '../api/readingSessions';
 import {
@@ -174,6 +175,10 @@ export function PdfReaderScreen({
       : (book as { last_read_page?: number }).last_read_page || 1,
   );
   const [currentPage, setCurrentPage] = useState<number>(initialPage);
+  // Full view must print the SAME string as the text divider for the
+  // same sheet — that is the comparison the reader makes against the
+  // paper page. `currentPage` is 1-based, so index with -1.
+  const pageLabels = usePageLabels(book.id);
   const [totalPages, setTotalPages] = useState<number>(book.totalPages ?? 0);
 
   // The `<Pdf page>` prop is decoupled from `currentPage` to keep
@@ -727,7 +732,11 @@ export function PdfReaderScreen({
         </View>
         <View style={styles.progressMeta}>
           <Text style={styles.progressText}>
-            Page {currentPage} of {totalPages || '–'}
+            {pageDisplayText(
+              Math.max(0, currentPage - 1),
+              pageLabels[currentPage - 1] ?? null,
+            )}
+            {totalPages ? ` of ${totalPages}` : ' of –'}
           </Text>
         </View>
       </Animated.View>

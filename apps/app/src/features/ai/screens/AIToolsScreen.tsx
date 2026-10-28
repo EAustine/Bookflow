@@ -28,6 +28,8 @@ import Animated, {
   withRepeat,
   withTiming,
 } from 'react-native-reanimated';
+import { pageDisplayText } from '@bookflow/shared';
+import { usePageLabels } from '~/features/reader';
 import { tokens } from '~/design/tokens';
 import { formatNetworkError } from '~/lib/networkErrors';
 import { useBackHandler } from '~/lib/useBackHandler';
@@ -155,7 +157,11 @@ export const AIToolsSheet = forwardRef<BottomSheetRef, AIToolsSheetProps>(
       pageIndex ??
       (book as { last_read_page?: number }).last_read_page ??
       0;
-    const chNum = String(livePageIndex + 1);
+    // Printed labels so this sheet prints the same page string as the
+    // reader divider underneath it.
+    const toolLabels = usePageLabels(book.id);
+    // chNum retired — page strings go through `pageDisplay` so the AI
+    // sheet agrees with the reader divider behind it.
     const dismiss = () => modalRef.current?.dismiss();
 
     // Launch a tool — but divert a credit-exhausted free user to the paywall
@@ -193,7 +199,8 @@ export const AIToolsSheet = forwardRef<BottomSheetRef, AIToolsSheetProps>(
           <View style={sheetStyles.header}>
             <Text style={sheetStyles.title}>AI tools</Text>
             <Text style={sheetStyles.subtitle}>
-              Page {chNum} · {book.title}
+              {pageDisplayText(livePageIndex, toolLabels[livePageIndex] ?? null)} ·{' '}
+              {book.title}
             </Text>
           </View>
 
@@ -309,6 +316,8 @@ export function SummaryScreen({
   const wholeBookSheetRef = useRef<BottomSheetModal>(null);
   const resolvedPageIndex =
     pageIndex ?? (book as { last_read_page?: number }).last_read_page ?? 0;
+  // The brief: the answer header shows which page it used.
+  const summaryLabels = usePageLabels(book.id);
 
   // Real summary fetch. Single page when scope='chapter'; full-book
   // page index list when scope='whole-book' and the user has confirmed
@@ -397,7 +406,10 @@ export function SummaryScreen({
           <Text style={sumStyles.headerSub} numberOfLines={1} ellipsizeMode="tail">
             {scope === 'whole-book'
               ? `${book.title} · all ${book.totalPages || ''} pages`
-              : `${book.title} · Page ${resolvedPageIndex + 1}`}
+              : `${book.title} · ${pageDisplayText(
+                  resolvedPageIndex,
+                  summaryLabels[resolvedPageIndex] ?? null,
+                )}`}
           </Text>
         </View>
         <Pressable
@@ -527,7 +539,13 @@ export function SummaryScreen({
               (Step 5) will fan this out into multiple chips. */}
           <Text style={sumStyles.sourceLabel}>Source</Text>
           <View style={sumStyles.sourceChips}>
-            <Badge kind="source" label={`Page ${resolvedPageIndex + 1}`} />
+            <Badge
+              kind="source"
+              label={pageDisplayText(
+                resolvedPageIndex,
+                summaryLabels[resolvedPageIndex] ?? null,
+              )}
+            />
           </View>
 
           {/* Quality rating — `onRegenerate` triggers a forced refetch

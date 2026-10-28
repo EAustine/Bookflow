@@ -22,6 +22,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Icon, Text } from '~/components';
+import { pageDisplayText, pdfIndexOf } from '@bookflow/shared';
 import { tokens } from '~/design/tokens';
 import type { Book } from '~/types/book';
 import { useBookSearch, type SearchHit } from '../api/bookSearch';
@@ -148,9 +149,10 @@ function ResultRow({ hit, onPress }: { hit: SearchHit; onPress: () => void }) {
       <View style={styles.rowHeader}>
         <Icon name="Book" size={11} color={tokens.textColors.muted} />
         <Text style={styles.rowPage}>
-          {hit.pdfPageNumber !== null
-            ? `Page ${hit.pdfPageNumber}`
-            : `Page ${hit.pageIndex + 1}`}
+          {pageDisplayText(
+            pdfIndexOf(hit.pageIndex, hit.pdfPageNumber),
+            hit.pageLabel,
+          )}
         </Text>
       </View>
       <Text style={styles.rowSnippet}>

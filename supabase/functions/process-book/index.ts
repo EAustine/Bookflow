@@ -1302,8 +1302,12 @@ async function parsePdf(
   // duplicates (a heading sometimes appears on its own "cover" page
   // and then again at the top of the body page right after it).
   let lastEmittedTitle: string | null = null;
+  // Computed once over every page: running chrome is a property of the
+  // book, and the per-page detector inside normalizePdfText cannot see
+  // across pages.
+  const runningChrome = detectRunningChrome(perPageText);
   for (let i = 0; i < perPageText.length; i++) {
-    const cleaned = normalizePdfText(perPageText[i] ?? '');
+    const cleaned = normalizePdfText(perPageText[i] ?? '', runningChrome);
     // NOTE: near-empty pages are emitted, not skipped. Section
     // dividers, plate pages and blanks are real pages in the Full
     // view, and skipping them made the text page count smaller than
@@ -1660,8 +1664,9 @@ async function ocrPdfChunk(
       // Seed from the previous chunk so a chapter heading sitting on
       // the chunk boundary doesn't get emitted twice.
       let lastEmittedTitle: string | null = initialLastTitle;
+      const chunkChrome = detectRunningChrome(matches);
       for (let i = 0; i < matches.length; i++) {
-        const cleaned = normalizePdfText(matches[i] ?? '');
+        const cleaned = normalizePdfText(matches[i] ?? '', chunkChrome);
         // Emitted, not skipped — see the note on the main PDF path.
         const detected = cleaned ? detectChapterTitle(cleaned) : null;
         if (detected && countWords(detected.body) < 5) {
@@ -1873,7 +1878,97 @@ function sniffImageMime(bytes: Uint8Array): string | null {
  *   - Words that ran together because the PDF had no word spacing.
  *     Requires a dictionary, slow, and rarely needed.
  */
-function normalizePdfText(text: string): string {
+/**
+ * Key a line for running-header/footer matching.
+ *
+ * A running head and its page number usually share one visual line, so
+ * the extracted line differs on every page ("Sit . Walk . Stand 21",
+ * "Sit . Walk . Stand 22"). Exact-match counting therefore never sees a
+ * repeat, which is why headers survived into the body text and read as
+ * "Sit . Walk . Stand22 \u201CGod, being rich in mercy..." at the start of
+ * every page. Stripping a leading/trailing page number (arabic or
+ * roman) before counting makes the two lines the same key.
+ */
+function chromeKey(line: string): string {
+  return (
+    line
+      // Leading page number. Digits may sit flush against the text;
+      // a roman numeral must be its own token, because every letter in
+      // `ivxlcdm` also starts ordinary words. Without the lookahead,
+      // "More body text" keys as "ore body text" (the M is eaten) and
+      // "Stand" as "Stan" — found by the unit test below this file's
+      // behaviour, not in review.
+      .replace(/^\s*\d{1,4}[\s.\u2022|-]*/, '')
+      // Whitespace-delimited only: a hyphen joins words, so allowing it
+      // here turned "Ill-advised" into "advised".
+      .replace(/^\s*[ivxlcdm]{1,8}(?=\s)[\s.\u2022|-]*/i, '')
+      // Trailing page number, same asymmetry.
+      .replace(/[\s.\u2022|-]*\d{1,4}\s*$/, '')
+      .replace(/\s+[.\u2022|-]*\s*[ivxlcdm]{1,8}\s*$/i, '')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .toLowerCase()
+  );
+}
+
+/**
+ * Collect the running header/footer keys for a book.
+ *
+ * Must see every page at once. The detector inside `normalizePdfText`
+ * counts repeats across the "pages" it can find in the string it is
+ * given — which, now that the PDF path calls it once per page, is one
+ * page, where nothing can repeat. Running chrome is a property of the
+ * book, so it is computed once here and passed in.
+ *
+ * Only the two outermost non-empty lines at each end of a page are
+ * candidates. A running head is positional; restricting to the edges
+ * means a phrase that genuinely recurs mid-paragraph is never stripped
+ * out of the prose.
+ */
+function detectRunningChrome(pageTexts: string[]): Set<string> {
+  const counts = new Map<string, number>();
+  for (const raw of pageTexts) {
+    const lines = raw.split('\n').map((l) => l.trim()).filter(Boolean);
+    if (lines.length === 0) continue;
+    const edges = [
+      lines[0],
+      lines[1],
+      lines[lines.length - 2],
+      lines[lines.length - 1],
+    ];
+    const seen = new Set<string>();
+    for (const candidate of edges) {
+      // A running head is a SHORT PHRASE, not a sentence. Both caps
+      // earn their place: on the roman-numeral fixture a repeated
+      // 61-character, 11-word body line sat at the page edge on every
+      // page and was detected as chrome under the looser limits. 60
+      // characters and 8 words still clear real heads comfortably
+      // ("Sit . Walk . Stand 22" is 21 and 6).
+      if (!candidate || candidate.length > 60) continue;
+      if (candidate.split(/\s+/).length > 8) continue;
+      const key = chromeKey(candidate);
+      // Very short keys ("3", "x") are page numbers, already handled by
+      // isPageNumberLine, and too generic to match on safely.
+      if (key.length < 4) continue;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      counts.set(key, (counts.get(key) ?? 0) + 1);
+    }
+  }
+  // A running head appears on most pages. Requiring ~30% with a floor of
+  // 3 keeps short documents from stripping a line that happened twice.
+  const threshold = Math.max(3, Math.ceil(pageTexts.length * 0.3));
+  const out = new Set<string>();
+  for (const [key, n] of counts) {
+    if (n >= threshold) out.add(key);
+  }
+  return out;
+}
+
+function normalizePdfText(
+  text: string,
+  runningChrome?: ReadonlySet<string>,
+): string {
   let out = text;
 
   // 1. Character-level cleanup that's safe to do up-front.
@@ -1915,11 +2010,32 @@ function normalizePdfText(text: string): string {
   // Strip per-page chrome.
   const cleanedPages = pages.map((page) => {
     const lines = page.split('\n');
+    // Positions of the first and last non-empty lines, so the
+    // book-wide running-chrome set is only applied at the edges of the
+    // page where a header or footer can actually sit.
+    let firstIdx = -1;
+    let lastIdx = -1;
+    for (let i = 0; i < lines.length; i++) {
+      if (lines[i].trim()) {
+        if (firstIdx < 0) firstIdx = i;
+        lastIdx = i;
+      }
+    }
     const kept: string[] = [];
-    for (const raw of lines) {
+    for (let i = 0; i < lines.length; i++) {
+      const raw = lines[i];
       const line = raw.trim();
       if (!line) {
         kept.push('');
+        continue;
+      }
+      if (
+        runningChrome &&
+        runningChrome.size > 0 &&
+        (i <= firstIdx + 1 || i >= lastIdx - 1) &&
+        line.length <= 80 &&
+        runningChrome.has(chromeKey(line))
+      ) {
         continue;
       }
       if (repeatedLines.has(line)) continue;

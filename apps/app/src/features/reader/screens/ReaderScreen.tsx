@@ -22,6 +22,8 @@ import {
   type BottomSheetRef,
   type ReaderMode,
   Icon,
+  Input,
+  ListRow,
   Text,
 } from '~/components';
 import { AIToolsSheet, SummaryScreen, ChatScreen } from '~/features/ai';
@@ -30,6 +32,12 @@ import { PracticeQuestionsScreen } from '~/features/ai';
 import { TranslateChapterScreen } from './TranslateChapterScreen';
 import { formatNetworkError } from '~/lib/networkErrors';
 import { reprocessBook } from '~/features/library';
+import {
+  pageDisplayText,
+  pdfIndexOf,
+  resolvePageQuery,
+  type PageMatch,
+} from '@bookflow/shared';
 import { tokens } from '~/design/tokens';
 import { useBackHandler } from '~/lib/useBackHandler';
 import { useSlowOp } from '~/hooks/useSlowOp';
@@ -405,6 +413,11 @@ export function ReaderScreen({
   // navigated by swipe and the page counter at top right; per the
   // chapters→pages refactor, chapters no longer have a list UI.
   const aiSheetRef = useRef<BottomSheetRef>(null);
+  // Go to page. `goToMatches` is null until a query has been resolved;
+  // an empty array means "resolved, nothing matched".
+  const goToSheetRef = useRef<BottomSheetRef>(null);
+  const [goToQuery, setGoToQuery] = useState('');
+  const [goToMatches, setGoToMatches] = useState<PageMatch[] | null>(null);
   const sentenceSheetRef = useRef<BottomSheetModal>(null);
 
   // Auto-hide chrome. State, not ref: pointerEvents below reads
@@ -960,6 +973,54 @@ export function ReaderScreen({
     return max > 0 ? max : null;
   }, [pageList]);
 
+  /**
+   * The chapter the current page sits in: the nearest titled page at or
+   * before it. `pages.title` is only set on the row where a chapter
+   * starts, so a page in the middle of chapter 3 carries no title of
+   * its own and has to look backwards.
+   */
+  /**
+   * Labels positioned by `page_index`, which is what `resolvePageQuery`
+   * expects — the array position IS the lookup key, so a label is never
+   * used as one.
+   */
+  const pageLabelList = useMemo(() => {
+    const out: (string | null)[] = [];
+    for (const row of pageList) out[row.page_index] = row.page_label;
+    for (let i = 0; i < out.length; i++) if (out[i] === undefined) out[i] = null;
+    return out;
+  }, [pageList]);
+
+  const stickyChapterTitle = useMemo(() => {
+    let title: string | null = null;
+    for (const row of pageList) {
+      if (row.page_index > pageIndex) break;
+      if (row.title) title = row.title;
+    }
+    return title;
+  }, [pageList, pageIndex]);
+
+  /**
+   * The sticky indicator's text for the topmost visible page.
+   *
+   * Built from the same inputs as the in-content divider — the row's
+   * `page_index` / `pdf_page_number` / `page_label` through
+   * `pageDisplay` — so the two can never print different strings for
+   * the same sheet. Chapter comes first when the page has one, per the
+   * brief's "Chapter 3 · Page 15 · PDF 23 of 120".
+   */
+  const stickyPage = useMemo(() => {
+    const row = pageList.find((p) => p.page_index === pageIndex);
+    if (!row) return null;
+    const display = pageDisplayText(
+      pdfIndexOf(row.page_index, row.pdf_page_number),
+      row.page_label,
+    );
+    const total = pdfTotalPages ? ` of ${pdfTotalPages}` : '';
+    const chapter = stickyChapterTitle ? `${stickyChapterTitle} · ` : '';
+    return `${chapter}${display}${total}`;
+  }, [pageList, pageIndex, pdfTotalPages, stickyChapterTitle]);
+
   const handleWordPress = useCallback((word: string) => {
     const cleaned = word.replace(/[^a-zA-Z'-]/g, '').toLowerCase();
     if (cleaned.length <= 1) return;
@@ -1339,6 +1400,33 @@ export function ReaderScreen({
             </Text>
           </View>
         )}
+        {/*
+          Sticky page indicator — brief, "Reader UX": "Chapter 3 · Page
+          15 · PDF 23 of 120" for the topmost visible block. It reads the
+          same `pageIndex` the scroll tracker already maintains and the
+          same `pageDisplay` helper as the divider and Full view, so the
+          three strings cannot disagree. That agreement is the point:
+          it is what the reader checks against the paper page.
+        */}
+        {stickyPage && (
+          <Pressable
+            onPress={() => {
+              setGoToQuery('');
+              setGoToMatches(null);
+              goToSheetRef.current?.present();
+            }}
+            accessibilityRole="button"
+            accessibilityLabel={`${stickyPage}. Go to page`}
+            style={[
+              styles.stickyPage,
+              { backgroundColor: palette.bg, borderBottomColor: palette.border },
+            ]}
+          >
+            <Text style={[styles.stickyPageLabel, { color: palette.muted }]} numberOfLines={1}>
+              {stickyPage}
+            </Text>
+          </Pressable>
+        )}
         <FlatList<PageListItem>
           ref={listRef}
           data={pageList}
@@ -1584,6 +1672,61 @@ export function ReaderScreen({
         onAsk={() => setAIMode('chat')}
         onTranslate={() => setAIMode('translate')}
       />
+
+      {/*
+        Go to page — brief: "uses PDF page numbers and accepts printed
+        labels like 'xii'". Resolution lives in `resolvePageQuery`, which
+        tries a label match first and then a PDF number, and returns BOTH
+        when they point at different sheets. In a book with roman front
+        matter "12" is genuinely ambiguous: printed 12 and PDF 12 are
+        different pages, and only the reader knows which they meant.
+      */}
+      <BottomSheet ref={goToSheetRef} title="Go to page">
+        <View style={styles.goToBody}>
+          <Input
+            value={goToQuery}
+            onChangeText={(text: string) => {
+              setGoToQuery(text);
+              setGoToMatches(null);
+            }}
+            placeholder="Page number or label, e.g. 15 or xii"
+            autoFocus
+            returnKeyType="go"
+            onSubmitEditing={() => setGoToMatches(resolvePageQuery(goToQuery, pageLabelList))}
+          />
+          {goToMatches && goToMatches.length === 0 && (
+            <Text style={[styles.goToEmpty, { color: palette.muted }]}>
+              No page matches "{goToQuery.trim()}" in this book.
+            </Text>
+          )}
+          {goToMatches && goToMatches.length > 0 && (
+            <View style={styles.goToResults}>
+              {goToMatches.map((match) => (
+                <ListRow
+                  key={`${match.via}-${match.pageIndex}`}
+                  label={pageDisplayText(
+                    pdfIndexOf(
+                      match.pageIndex,
+                      pageList.find((r) => r.page_index === match.pageIndex)
+                        ?.pdf_page_number ?? null,
+                    ),
+                    pageLabelList[match.pageIndex] ?? null,
+                  )}
+                  sublabel={
+                    match.via === 'label'
+                      ? 'Printed page number'
+                      : 'PDF page number'
+                  }
+                  onPress={() => {
+                    goToSheetRef.current?.dismiss();
+                    jumpToPage(match.pageIndex);
+                  }}
+                />
+              ))}
+            </View>
+          )}
+        </View>
+      </BottomSheet>
 
       {/* Typography sheet */}
       <BottomSheet ref={typoSheetRef}>
@@ -1986,11 +2129,11 @@ const PageSection = memo(function PageSection({
               figure because it is the one that is unique, ordered, and
               used by AI citations; the label is a reconciliation hint.
             */}
-            {dbPage?.pdf_page_number && pdfTotalPages
-              ? dbPage.page_label &&
-                dbPage.page_label !== String(dbPage.pdf_page_number)
-                ? `Page ${dbPage.pdf_page_number} of ${pdfTotalPages} · printed ${dbPage.page_label}`
-                : `Page ${dbPage.pdf_page_number} of ${pdfTotalPages}`
+            {dbPage
+              ? `${pageDisplayText(
+                  pdfIndexOf(dbPage.page_index, dbPage.pdf_page_number),
+                  dbPage.page_label,
+                )}${pdfTotalPages ? ` of ${pdfTotalPages}` : ''}`
               : `Page ${pageIndex + 1}`}
           </Text>
           <View
@@ -3235,6 +3378,30 @@ const styles = StyleSheet.create({
     letterSpacing: 0.8,
     textTransform: 'uppercase',
     marginBottom: tokens.space.md,
+  },
+  goToBody: {
+    gap: tokens.space.md,
+    paddingBottom: tokens.space.md,
+  },
+  goToEmpty: {
+    ...tokens.textStyles['body-sm'],
+  },
+  goToResults: {
+    gap: tokens.space.xs,
+  },
+  stickyPage: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 5,
+    paddingHorizontal: tokens.space.lg,
+    paddingVertical: tokens.space.xs,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  stickyPageLabel: {
+    ...tokens.textStyles['label-sm'],
+    textAlign: 'center',
   },
   chapterTitle: {
     fontFamily: tokens.fonts.display,

@@ -109,8 +109,10 @@ const SYSTEM_PROMPT = [
   'Use plain language.',
   'Output the summary only — no preamble, no headings, no "this passage…" framing.',
   '',
-  'The text is divided by markers like [Page 15 | printed xii | Chapter 3].',
+  'The text is divided by markers like [Page 15 | PDF 23 | Chapter 3].',
   'Cite the page for each substantive claim, as "(p. 15)".',
+  'Cite the number after "Page" — that is the page as it is printed in the',
+  'book, which is what the reader sees. Never cite the "PDF" number.',
   'Use ONLY page numbers that appear in those markers. If you are unsure which',
   'page a point came from, leave the citation off rather than guessing — an',
   'unsourced sentence is recoverable, a wrong page number is not.',
@@ -125,13 +127,19 @@ const SYSTEM_PROMPT = [
  * a citation pointing at a page the model never saw is worse than none,
  * because it looks checkable and isn't.
  */
-function extractCitedPages(text: string): number[] {
-  const out = new Set<number>();
-  for (const m of text.matchAll(/\(pp?\.\s*([0-9]+(?:\s*[-\u2013]\s*[0-9]+)?)\)/g)) {
+function extractCitedPages(text: string): string[] {
+  const out = new Set<string>();
+  // Tokens, not integers: a book with roman front matter is cited as
+  // "(p. xii)", and parsing that as a number threw the citation away —
+  // the check then passed vacuously on exactly the books the labels
+  // exist for.
+  for (const m of text.matchAll(
+    /\(pp?\.\s*([0-9ivxlcdm]+(?:\s*[-\u2013]\s*[0-9ivxlcdm]+)?)\)/gi,
+  )) {
     const span = m[1] ?? '';
-    for (const n of span.split(/[-\u2013]/)) {
-      const v = Number.parseInt(n.trim(), 10);
-      if (Number.isFinite(v)) out.add(v);
+    for (const token of span.split(/[-\u2013]/)) {
+      const t = token.trim().toLowerCase();
+      if (t) out.add(t);
     }
   }
   return [...out];
@@ -276,8 +284,17 @@ Deno.serve(async (req) => {
   const citePage = (p: { page_index: number; pdf_page_number: number | null }) =>
     p.pdf_page_number ?? p.page_index + 1;
 
-  /** The set of pages actually in context. Citations are checked against it. */
-  const pagesInContext = new Set(pages.map(citePage));
+  /**
+   * The token the model is asked to cite: the PRINTED label when the
+   * book has one, else the PDF page. Same precedence as `pageDisplay`
+   * in the reader, so a citation the user taps matches the page number
+   * they can see on the page.
+   */
+  const citeToken = (p: { page_index: number; pdf_page_number: number | null; page_label: string | null }) =>
+    (p.page_label && p.page_label.trim()) || String(citePage(p));
+
+  /** The set of citable tokens actually in context, lower-cased. */
+  const pagesInContext = new Set(pages.map((p) => citeToken(p).toLowerCase()));
 
   /**
    * `[Page 15 | printed xii | Chapter 3]` ahead of each page's text.
@@ -287,8 +304,14 @@ Deno.serve(async (req) => {
    * "(p. 15)" without the marker is the model guessing.
    */
   const pageMarker = (p: typeof pages[number]) => {
-    const parts = [`Page ${citePage(p)}`];
-    if (p.page_label) parts.push(`printed ${p.page_label}`);
+    // Brief: "[Page 15 | PDF 23 | Chapter 3]" — printed label first,
+    // because that is what the model should cite and what the reader
+    // sees. The PDF number rides along so a citation can still be
+    // resolved back to a sheet.
+    const token = citeToken(p);
+    const pdf = String(citePage(p));
+    const parts = [`Page ${token}`];
+    if (token !== pdf) parts.push(`PDF ${pdf}`);
     const chapter = Array.isArray(p.chapters)
       ? p.chapters[0]?.title
       : p.chapters?.title;
@@ -421,18 +444,20 @@ Deno.serve(async (req) => {
     // only the pointer is wrong — and a retry costs the user credits
     // for a result that is mostly right.
     const cited = extractCitedPages(summary);
-    const invalid = cited.filter((n) => !pagesInContext.has(n));
+    const invalid = cited.filter((t) => !pagesInContext.has(t));
     let cleanedSummary = summary;
     if (invalid.length > 0) {
       console.warn(
         `[generate-summary] dropped citations to pages not in context: ${invalid.join(', ')} ` +
           `(context had ${[...pagesInContext].join(', ')})`,
       );
+      // Same token class as `extractCitedPages`, or a roman citation
+      // would be detected as invalid above and then left in the text.
       cleanedSummary = summary.replace(
-        /\s*\(pp?\.\s*[0-9]+(?:\s*[-\u2013]\s*[0-9]+)?\)/g,
+        /\s*\(pp?\.\s*[0-9ivxlcdm]+(?:\s*[-\u2013]\s*[0-9ivxlcdm]+)?\)/gi,
         (match) => {
-          const nums = extractCitedPages(match);
-          return nums.every((n) => pagesInContext.has(n)) ? match : '';
+          const tokens = extractCitedPages(match);
+          return tokens.every((t) => pagesInContext.has(t)) ? match : '';
         },
       );
     }

@@ -40,6 +40,8 @@ export type PageListItem = {
   id: string;
   page_index: number;
   pdf_page_number: number | null;
+  /** Printed label, for `pageDisplay`. Display only — never a key. */
+  page_label: string | null;
   title: string | null;
   word_count: number | null;
 };
@@ -51,6 +53,7 @@ function toListItem(p: PageRow): PageListItem {
     id: p.id,
     page_index: p.page_index,
     pdf_page_number: p.pdf_page_number,
+    page_label: p.page_label,
     title: p.title,
     word_count: p.word_count,
   };
@@ -95,7 +98,7 @@ export function usePageList(bookId: string) {
       try {
         const { data, error } = await supabase
           .from('pages')
-          .select('id, page_index, pdf_page_number, title, word_count')
+          .select('id, page_index, pdf_page_number, page_label, title, word_count')
           .eq('book_id', bookId)
           .order('page_index', { ascending: true })
           .range(0, 9999);
@@ -437,4 +440,69 @@ export async function touchLastReadAt(bookId: string) {
   } catch (err) {
     console.warn('[reader] touchLastReadAt threw:', err);
   }
+}
+
+/**
+ * Printed page labels for a book, indexed by `page_index`.
+ *
+ * The brief requires Full view and Text view to show the SAME string for
+ * the same page — that is the comparison a reader actually makes, with
+ * the paper page in front of them. Full view (`PdfReaderScreen`) only
+ * knows a 1-based PDF page number, so it needs the labels to call
+ * `pageDisplay` the way the text divider does.
+ *
+ * Deliberately not `usePageList`: that pulls title, word_count and
+ * `pdf_page_number` for every row to drive the text reader's virtual
+ * list. All that is needed here is the label column, so this asks for
+ * two columns and nothing else.
+ *
+ * The array is positional — `labels[page_index]` — so the lookup stays on
+ * `page_index` and labels are never used as a key.
+ */
+export function usePageLabels(bookId: string): (string | null)[] {
+  const [labels, setLabels] = useState<(string | null)[]>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!UUID_RE.test(bookId)) {
+      setLabels([]);
+      return;
+    }
+    (async () => {
+      try {
+        const { data, error } = await supabase
+          .from('pages')
+          .select('page_index, page_label')
+          .eq('book_id', bookId)
+          .order('page_index', { ascending: true })
+          .range(0, 9999);
+        if (cancelled) return;
+        if (error) {
+          // Non-fatal: without labels every surface falls back to the
+          // PDF number, which is what a book with no labels shows
+          // anyway.
+          console.warn('[reader] page label fetch failed:', error.message);
+          setLabels([]);
+          return;
+        }
+        const rows = (data ?? []) as { page_index: number; page_label: string | null }[];
+        const out: (string | null)[] = [];
+        for (const row of rows) out[row.page_index] = row.page_label;
+        // Fill holes so `labels.length` is the page count and indexing
+        // never yields `undefined`.
+        for (let i = 0; i < out.length; i++) if (out[i] === undefined) out[i] = null;
+        setLabels(out);
+      } catch (err) {
+        if (!cancelled) {
+          console.warn('[reader] page label fetch threw:', err);
+          setLabels([]);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [bookId]);
+
+  return labels;
 }

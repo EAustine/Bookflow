@@ -34,7 +34,7 @@ blocks(id, document_id, page_index, ordinal,
        chapter_id, char_start, char_end)
 ```
 
-- Display page number = `page_index + 1`. Show `page_label` only as secondary text when it differs ("p. 15 · printed xii").
+- Lookup key = `page_index`. Display uses the printed label first when it exists (see "Page labels").
 - A paragraph that crosses a page break is stored as two blocks with the `continues_*` flags. The renderer joins them visually and puts the page marker at the exact point page 15 starts.
 - De-hyphenate across lines and pages. A joined word belongs to the page where it starts.
 - Remove running headers, footers and page numbers: the top and bottom ~8% of each page, with lines that repeat on 30 to 50% of pages. Keep the removed text in a debug field.
@@ -68,12 +68,32 @@ Licensing: PyMuPDF and pymupdf4llm are AGPL unless you buy the Artifex licence, 
 
 ## Reader UX
 
-- Inline page dividers: a thin rule with "Page 15" (plus "· xii" when the label differs) at each page start, rendered as a `pageMarker` item in the FlashList of blocks. Tapping it opens that page in Full view.
-- Sticky indicator: "Chapter 3 · p. 15 of 20" for the topmost visible block. Remove the screen-count page numbers.
+- Inline page dividers: a thin rule with the page display string (see "Page labels") at each page start, rendered as a `pageMarker` item in the FlashList of blocks. Tapping it opens that page in Full view.
+- Sticky indicator: "Chapter 3 · Page 15 · PDF 23 of 120" for the topmost visible block (PDF part only when a label exists). Remove the screen-count page numbers.
 - Contents shows chapters with page ranges ("Chapter 3 · pp. 15-21").
 - Go to page uses PDF page numbers and accepts printed labels like "xii".
 - The Full/Text toggle keeps your place: Text to Full opens the page of the topmost block, and Full to Text scrolls to the first block of that page.
 - TTS is queued by block, highlights words by character offsets, updates the page indicator when it crosses a page marker, and skips header, footer and footnote roles.
+
+## Page labels: show them, everywhere, the same way
+
+Storing `page_label` is not enough. If the reader never shows it, a book whose printed "15" sits on PDF page 23 looks wrong: the page footer says 15, Bookflow says 23. Every place that shows a page number uses one helper:
+
+```ts
+// page_index is 0-based. label comes from getPageLabels(), or null.
+function pageDisplay(pageIndex: number, label: string | null) {
+  const pdf = String(pageIndex + 1);
+  if (!label || label === pdf) return { primary: `Page ${pdf}`, secondary: null };
+  return { primary: `Page ${label}`, secondary: `PDF ${pdf}` };
+}
+```
+
+- **Printed label first when it exists**, PDF number second ("Page xii · PDF 14", "Page 15 · PDF 23"). When there is no label, or it equals the PDF number, show only "Page 23".
+- **The same helper everywhere:** text-mode page dividers, the sticky indicator, the Full-view page counter, the contents page ranges, Go to page, highlight and search result rows, AI summary headers and AI citations.
+- **Full view and text view must show the same string for the same page.** That is the comparison the user actually makes.
+- **Lookup stays on `page_index`.** Labels are display only. Go to page accepts either: try a label match first, then a PDF number. If both match different pages, show both options.
+- **AI:** the prompt marker carries both (`[Page 15 | PDF 23 | Chapter 3]`). The model cites the printed label when it exists. "Summarise page 15" resolves the label first, then the PDF number, and the answer header shows which page it used ("Page 15 · PDF 23").
+- **Bad labels:** if labels are missing on most pages, repeat, or go backwards, ignore them for the whole book (set `has_page_labels = false`) and show PDF numbers only.
 
 ## AI features
 
@@ -81,7 +101,7 @@ Licensing: PyMuPDF and pymupdf4llm are AGPL unless you buy the Artifex licence, 
 - Cache summaries by `(document_id, page_index or chapter_id, extraction_version, model)`.
 - Q&A chunks stay inside page boundaries, or cross at most one and record `page_indices: [14, 15]`. Every chunk carries `chapter_id` and `page_label`. A chunk without a page number never goes into the index.
 - Put markers in the prompt context, like `[Page 15 | label xii | Chapter 3]`, and ask for citations like "(p. 15)" using only pages in the context. After generation, check that every cited page was retrieved, and link each citation to that page in Full view.
-- "Page 15" in a user question means `page_index + 1`. If it only matches a printed label, resolve it and say "printed p. 15 (PDF page 23)".
+- "Page 15" in a user question resolves through the same rule as Go to page (label first, then PDF number), and the answer says which page it used.
 - Translate per block and store it next to the original, so page markers and TTS offsets still line up.
 
 ## Acceptance tests
@@ -91,3 +111,4 @@ Use five PDFs: a 20-page single-column PDF with an outline, a novel with roman-n
 - chapter page ranges match the outline;
 - the text of page N matches page N in the Full view;
 - "summarise page N" quotes only page N content.
+- For the roman-numeral novel: the divider, the sticky indicator and the Full-view counter all show the same "Page 15 · PDF 23" for the same page, and Go to page "xii" lands on the right page.

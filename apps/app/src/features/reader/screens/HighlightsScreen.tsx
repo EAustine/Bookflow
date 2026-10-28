@@ -21,9 +21,11 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Icon, Text } from '~/components';
+import { pageDisplayText } from '@bookflow/shared';
 import { tokens } from '~/design/tokens';
 import { useBackHandler } from '~/lib/useBackHandler';
 import { deleteHighlight, type Highlight, useBookHighlights } from '../api/highlights';
+import { usePageLabels } from '../api/useBookChapters';
 import type { Book } from '~/types/book';
 
 export type HighlightsScreenProps = {
@@ -44,6 +46,10 @@ export function HighlightsScreen({
   onClose,
   onJumpToPage,
 }: HighlightsScreenProps) {
+  // Group headers show the same page string as the reader divider; a
+  // highlight the user made on printed page 15 should not be filed
+  // under "Page 23".
+  const pageLabels = usePageLabels(book.id);
   // Route Android hardware-back to the in-screen close affordance
   // so testers land back on the reader instead of falling through
   // to the reader's own back handler (which goes to Library).
@@ -165,7 +171,9 @@ export function HighlightsScreen({
           {grouped.map(([chapterIdx, items]) => (
             <View key={chapterIdx} style={styles.group}>
               <Text style={styles.groupLabel}>
-                {chapterIdx >= 0 ? `Page ${chapterIdx + 1}` : 'Other'}
+                {chapterIdx >= 0
+                  ? pageDisplayText(chapterIdx, pageLabels[chapterIdx] ?? null)
+                  : 'Other'}
               </Text>
               {items.map((h) => (
                 <HighlightRow

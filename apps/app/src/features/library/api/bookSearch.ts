@@ -19,6 +19,8 @@ export type SearchHit = {
   pageId: string;
   pageIndex: number;
   pdfPageNumber: number | null;
+  /** Printed label, so result rows use `pageDisplay` like everywhere else. */
+  pageLabel: string | null;
   /** A short excerpt centered on the first match within this page. */
   snippet: string;
   /** [start, end] character offsets within `snippet` of the highlighted match. */
@@ -87,7 +89,7 @@ export async function searchBook(args: {
   // order — relevance isn't critical for in-book search, sequence is).
   const { data, error } = await supabase
     .from('pages')
-    .select('id, page_index, pdf_page_number, content')
+    .select('id, page_index, pdf_page_number, page_label, content')
     .eq('book_id', bookId)
     .textSearch('content_tsv', trimmed, {
       type: 'websearch',
@@ -106,6 +108,7 @@ export async function searchBook(args: {
       id: string;
       page_index: number;
       pdf_page_number: number | null;
+      page_label: string | null;
       content: string | null;
     };
     const { snippet, highlightRange } = buildSnippet(r.content ?? '', trimmed);
@@ -113,6 +116,7 @@ export async function searchBook(args: {
       pageId: r.id,
       pageIndex: r.page_index,
       pdfPageNumber: r.pdf_page_number,
+      pageLabel: r.page_label,
       snippet,
       highlightRange,
     };
