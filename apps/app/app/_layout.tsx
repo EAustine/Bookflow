@@ -17,7 +17,7 @@
  */
 import { useCallback, useEffect, useState } from "react";
 import { StyleSheet } from "react-native";
-import { Slot, useRouter } from "expo-router";
+import { Slot, useRouter, usePathname } from "expo-router";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { BottomSheetModalProvider } from "@gorhom/bottom-sheet";
@@ -51,7 +51,22 @@ type Destination =
 
 export default function RootLayout() {
   const router = useRouter();
+  const pathname = usePathname();
   const fontsLoaded = useAppFonts();
+
+  // A cold start from a magic link opens `/auth/callback` directly. That
+  // route owns navigation from then on: it exchanges the token and routes
+  // to Library or onboarding, or renders the "link expired" screen.
+  //
+  // Session restore must not race it. Restore finds no session (the
+  // exchange has not happened yet), sets Welcome, and the hand-off below
+  // replaced the callback route with Welcome the moment the splash
+  // finished — so a user who tapped a link was returned to the start,
+  // mid-exchange, with no explanation. The error screen existed and was
+  // simply never allowed to render.
+  // `usePathname`, not `useSegments`: with typed routes the segments
+  // tuple is a union whose shortest member has no index 1.
+  const onAuthCallback = pathname.startsWith('/auth/callback');
 
   const [destination, setDestination] = useState<Destination | null>(null);
   const [splashDone, setSplashDone] = useState(false);
@@ -61,8 +76,9 @@ export default function RootLayout() {
   // a splash that has finished saying what it had to say.
   useEffect(() => {
     if (!splashDone || !destination) return;
+    if (onAuthCallback) return;
     router.replace(destination);
-  }, [splashDone, destination, router]);
+  }, [splashDone, destination, router, onAuthCallback]);
 
   /**
    * Session restore. Decides the destination and nothing else.

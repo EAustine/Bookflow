@@ -11,6 +11,11 @@
  * rather than somewhere tidier — the native manifests claim that prefix,
  * so the route has to be under it.
  *
+ * It did not, until 2026-10-28. M2 put this file in the `(auth)` GROUP,
+ * and Expo Router strips parenthesised segments from the URL, so it
+ * actually served `/callback`. Every magic link hit "Unmatched Route".
+ * The directory is now `auth/`, unparenthesised, so the path is real.
+ *
  * Moved out of `App.tsx` in M2. The logic is unchanged; what changed is
  * that the URL now *is* the navigation rather than something that pokes
  * a state machine from the outside.
@@ -42,6 +47,19 @@ export default function Callback() {
       if (!url) return;
       const payload = parseAuthCallback(url);
       if (!payload) return;
+
+      // An error callback carries nothing to exchange, so it skips the
+      // in-flight guard entirely — there is no request to duplicate.
+      // Without this branch the handler fell through, no error state was
+      // set, and the root layout's session restore quietly replaced the
+      // route with Welcome: the user tapped a link and was returned to
+      // the start with no explanation.
+      if (payload.kind === 'error') {
+        setError(payload.error);
+        setState('error');
+        return;
+      }
+
       if (inFlight.current) return;
       inFlight.current = true;
 
@@ -86,12 +104,24 @@ export default function Callback() {
     return () => sub.remove();
   }, [handleUrl]);
 
-  // Warm start: the app was already open on this route and the params
-  // carry the code. Reconstruct a URL so one code path handles both.
+  // Warm start: the app was already running, so the link arrives AS the
+  // navigation. `getInitialURL()` still returns the URL that originally
+  // launched the process, and the `url` listener above is registered on
+  // mount — which happens after the event that caused this navigation.
+  // Neither sees it. The router's parsed params are the only copy.
+  //
+  // This used to read `params.code` alone, so an error callback (which
+  // carries `error`/`error_code` and no code) matched nothing and the
+  // screen span on "Verifying your sign-in link…" forever.
+  const { code, error: errParam, error_code: errCode } = params;
   useEffect(() => {
-    const code = typeof params.code === 'string' ? params.code : null;
-    if (code) void handleUrl(Linking.createURL('/auth/callback', { queryParams: { code } }));
-  }, [params.code, handleUrl]);
+    const qp: Record<string, string> = {};
+    if (typeof code === 'string' && code) qp.code = code;
+    if (typeof errParam === 'string' && errParam) qp.error = errParam;
+    if (typeof errCode === 'string' && errCode) qp.error_code = errCode;
+    if (Object.keys(qp).length === 0) return;
+    void handleUrl(Linking.createURL('/auth/callback', { queryParams: qp }));
+  }, [code, errParam, errCode, handleUrl]);
 
   return (
     <AuthCallbackScreen

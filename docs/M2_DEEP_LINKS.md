@@ -18,7 +18,13 @@ looks exactly like a broken magic link to the user, with nothing in the logs.
 | Android package | `com.eaustine.bookflow` |
 | Custom scheme | `bookflow://` |
 | Claimed path prefix | `/auth` |
-| Callback route | `/(auth)/callback` → `https://getbookflow.co/auth/callback` |
+| Callback route | `app/auth/callback.tsx` → `/auth/callback` → `https://getbookflow.co/auth/callback` |
+
+**The directory must not be `(auth)`.** Parentheses make a group, which
+Expo Router strips from the URL, so `app/(auth)/callback.tsx` serves
+`/callback` and every magic link lands on "Unmatched Route". This table
+previously recorded `/(auth)/callback` as if it mapped to
+`/auth/callback`; it does not. Fixed 2026-10-28.
 
 The path prefix is why the route lives at `/auth/callback` rather than
 somewhere tidier: the native manifests claim that prefix, so the route has to

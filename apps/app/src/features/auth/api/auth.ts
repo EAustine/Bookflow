@@ -226,9 +226,45 @@ export type ExchangeCodeResult =
  *              same-browser/same-storage requirement that breaks PKCE on
  *              web in dev.
  */
-export type AuthCallbackPayload =
+export type AuthCallbackExchangeable =
   | { kind: 'code'; code: string }
   | { kind: 'tokens'; accessToken: string; refreshToken: string };
+
+/**
+ * A callback can also carry no auth material at all. When the link is
+ * expired, already consumed, or refused, Supabase redirects to
+ * `…/auth/callback?error=access_denied&error_code=otp_expired&…`
+ * (query for PKCE, fragment for implicit) with no `code` and no tokens.
+ *
+ * Until 2026-10-28 this parsed to `null`, the handler returned early,
+ * nothing set an error state, and the root layout's session restore
+ * dropped the user on Welcome with no explanation — on a screen that
+ * already had the copy written for exactly this case. Modelling it as a
+ * payload is what makes the error branch reachable.
+ */
+export type AuthCallbackPayload =
+  | AuthCallbackExchangeable
+  | { kind: 'error'; error: AuthExchangeErrorKind };
+
+/**
+ * Maps Supabase's callback error params onto the four kinds the screen
+ * renders. Supabase reports both an expired link and an already-consumed
+ * one as `otp_expired`, so 'expired' covers both; its copy offers a new
+ * link, which is the right action either way.
+ */
+function categorizeCallbackError(
+  error: string | null,
+  code: string | null,
+): AuthExchangeErrorKind {
+  const c = (code ?? '').toLowerCase();
+  const e = (error ?? '').toLowerCase();
+  if (c.includes('otp_expired') || c.includes('expired')) return 'expired';
+  if (c.includes('used')) return 'used';
+  // `access_denied` with no more specific code is, in practice, a link
+  // that is expired or spent.
+  if (e === 'access_denied') return 'expired';
+  return 'unknown';
+}
 
 /**
  * Pulls auth material out of an inbound deep link.
@@ -247,6 +283,25 @@ export function parseAuthCallback(url: string): AuthCallbackPayload | null {
       // Web in dev: the full URL still parses, path is '/auth/callback'
       url.includes('/auth/callback');
     if (!isCallback) return null;
+
+    // 0. Error callback — no token to exchange. Checked first because
+    //    these carry neither a code nor tokens, and the params can
+    //    arrive in either the query (PKCE) or the fragment (implicit).
+    const hash = url.indexOf('#');
+    const fragmentParams = hash >= 0 ? new URLSearchParams(url.slice(hash + 1)) : null;
+    const errParam =
+      (typeof parsed.queryParams?.error === 'string' ? parsed.queryParams.error : null) ??
+      fragmentParams?.get('error') ??
+      null;
+    const errCode =
+      (typeof parsed.queryParams?.error_code === 'string'
+        ? parsed.queryParams.error_code
+        : null) ??
+      fragmentParams?.get('error_code') ??
+      null;
+    if (errParam || errCode) {
+      return { kind: 'error', error: categorizeCallbackError(errParam, errCode) };
+    }
 
     // 1. Implicit flow — tokens in the URL fragment. `Linking.parse` doesn't
     //    surface the fragment, so we slice it off the raw URL ourselves.
@@ -289,7 +344,7 @@ export function parseAuthCallbackCode(url: string): string | null {
  * `setupRevenueCatAuthSync` listener picks it up and routes RevenueCat.
  */
 export async function completeAuthCallback(
-  payload: AuthCallbackPayload,
+  payload: AuthCallbackExchangeable,
 ): Promise<ExchangeCodeResult> {
   if (payload.kind === 'code') {
     const { data, error } = await supabase.auth.exchangeCodeForSession(payload.code);

@@ -12,7 +12,7 @@ export default function SignIn() {
       // would make back walk a chain of alternating variants.
       onSwitchVariant={() => router.replace('/(auth)/sign-up')}
       // The magic link arrives out of band; there is nothing to navigate
-      // to here. The deep link into /(auth)/callback is what advances.
+      // to here. The deep link into /auth/callback is what advances.
       onComplete={() => {}}
     />
   );

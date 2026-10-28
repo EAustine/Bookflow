@@ -38,8 +38,8 @@ root layout, which is where §5 puts the F-37 splash hand-off.
 | `welcome` | `/(auth)/welcome` | |
 | `signin` | `/(auth)/sign-in` | |
 | `signup` | `/(auth)/sign-up` | Same component as sign-in with `isSignup` |
-| `authCallback` | `/(auth)/callback` | Deep-link target. **Needs the app domain** |
-| `authCallbackError` | `/(auth)/callback` + state | Not a separate route — same screen, error branch |
+| `authCallback` | `/auth/callback` | Deep-link target. **Needs the app domain** |
+| `authCallbackError` | `/auth/callback` + state | Not a separate route — same screen, error branch |
 | `onboardingIntent` | `/(onboarding)/intent` | |
 | `onboardingFirstBook` | `/(onboarding)/first-book` | |
 | `library` | `/(tabs)/library` | The "signed in" terminal state |
@@ -239,7 +239,7 @@ raises the odds of shipping something broken faster than it delivers value.
 
 
 1. **The app domain** — universal links (iOS) and App Links (Android) both need
-   it, and `/(auth)/callback` is the magic-link target. Blocking.
+   it, and `/auth/callback` is the magic-link target. Blocking.
 2. **One canonical route for the shared four**, per §3. Recommended, and the
    route map above assumes it.
 3. **Sentry and PostHog**, deferred from M1. M2 replaces the navigation layer

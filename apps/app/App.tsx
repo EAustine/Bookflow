@@ -558,6 +558,17 @@ export default function App() {
       if (!url) return;
       const payload = parseAuthCallback(url);
       if (!payload) return;
+
+      // Error callbacks carry no token to exchange, so they skip the
+      // in-flight guard. Mirrors app/auth/callback.tsx; see the note on
+      // AuthCallbackPayload in features/auth/api/auth.ts.
+      if (payload.kind === 'error') {
+        if (cancelled) return;
+        setCallbackError(payload.error);
+        setStage('authCallbackError');
+        return;
+      }
+
       if (cancelled || authCallbackInFlight) return;
       authCallbackInFlight = true;
 
