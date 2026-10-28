@@ -38,6 +38,52 @@ Target: `docs/ARCHITECTURE.md` · Distance to it: `docs/ARCHITECTURE_GAPS.md`
 
 ## Progress
 
+### Reader — long jumps land · `fix/search-jump-landing` 2026-10-28
+
+Two independent bugs sat behind "a search result jumps to the wrong page".
+
+**1. The page list stopped at 1,000 rows.** Three queries in
+`useBookChapters.ts` and one in `audioDownloads.ts` asked for
+`.range(0, 9999)` on the belief that it lifted PostgREST's row cap. It
+does not — `db-max-rows` is a server setting and the response is
+truncated to it whatever range the client asks for. Measured on
+"Expositions of Holy Scripture" (1,570 pages): `pageList.length` came
+back as exactly 1000, so 570 pages were invisible to the text reader and
+an offline download saved two thirds of the book. Now one shared helper,
+`~/core/pageRows.ts`, pages through in chunks, stepping by rows actually
+returned rather than rows requested — the cap may be lower than the
+chunk and nothing in the response reveals it.
+
+**2. A vertical list cannot scroll to a row it has not measured.** With
+the page present, the jump still landed on page 50. Instrumented, the
+mechanism was unambiguous: the computed offset was right (~1.4M px, rows
+averaging 931px) but the list had measured only 50 rows, so the scroll
+clamped to the bottom of that content. `highestMeasuredFrameIndex`
+advanced four rows per attempt (`maxToRenderPerBatch` 2), which puts row
+1511 about 378 attempts — near a minute — away. Retrying harder was never
+going to work.
+
+So the list renders a **window** of `pageList` rather than all of it, and
+a jump moves the window so the destination is `WINDOW_LEAD` (12) rows
+from its top. The short hop the old retry loop was written for is now the
+only hop there is. `pageList` itself stays the whole book: page counts,
+chapter lookup and the PDF page total all read it, and `localIndexRef` is
+the single bridge between `page_index` and list index. A book of 300
+pages or fewer never windows, so normal-length books render exactly as
+before.
+
+The same fix makes the saved-page restore land — it was failing for the
+same reason, opening a book saved at page 1512 on chapter one.
+
+Verified on the emulator against the 1,570-page book: a jump forward to
+page 1512 lands on `PAGE 1512` with the matched sentence as its first
+line; a jump backward from ~1506 to page 62 lands on `PAGE 62`; scrolling
+up across the window start stays continuous (1512 → 1490). Sit-Walk-Stand
+(20 pages) scrolls both ways unchanged with its dividers in order.
+
+Not exercised by hand: forward reading across the window **end**. It is
+the mirror of the start edge, which was exercised.
+
 ### M3 — features and data · ✅ merged to `main` 2026-10-28
 
 Merged at Austine's call with these reader issues open and understood,
@@ -370,6 +416,7 @@ migrations, not ten.
 | 12 | `listen_sessions.chapter_id` is a leftover from `0010_chapters_to_pages.sql`. Reconcile or drop while the schema is open | M5 |
 | 15 | **F-46 — two components named `SendFeedbackScreen`.** The standalone 380-line form is dead; the app ships the mail hand-off. Delete the dead one, or wire it and delete the stub | M3 |
 | 13 | **Can Ghanaian customers actually pay?** Web Billing is Stripe-only, card-only, and its purchase links cannot be localised. The persona the web app most helps is the one least served by that checkout. Needs a direct answer from RevenueCat or Stripe | before M8 |
+| 16 | **A real import cycle between the reader and listen barrels.** `reader/api/useBookChapters` → `~/features/listen` → `ListenScreen` → `~/features/reader` → back. `import/no-cycle` reports it when that one file is linted and misses it on a whole-tree run, so the gate is green on a cycle that exists. Harmless today only because every crossing is called from inside a function, never at module load — the same shape that crashed the M3 launch. `getCachedPages` is shared by both features, so the `bookCovers` fix applies: move it to `~/core/` | M4 |
 | ~~14~~ | ~~Real-device confirmation for pdf.js~~ — **closed by the result, 2026-10-22.** The spike failed, and a failure on flattering hardware is conclusive. Successor: confirm **text/EPUB** on a real device before M6 ships, since a *pass* is the case needing confirmation | before M6 |
 
 ---
