@@ -57,6 +57,11 @@ alter table public.chapters enable row level security;
 
 -- Chapters are readable by whoever can read the book, and written only
 -- by the service role (process-book). No client writes chapters.
+-- `create policy` has no `if not exists` in Postgres, so a re-run of
+-- this file would fail where every other statement in it is safe.
+-- Supabase tracks applied migrations and will not normally re-run one,
+-- but a recovery or a manual re-apply should not be a landmine.
+drop policy if exists "chapters readable by book owner" on public.chapters;
 create policy "chapters readable by book owner"
   on public.chapters for select
   using (
