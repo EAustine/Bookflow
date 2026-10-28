@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   pageIndexToScrollFraction,
   scrollFractionToPageIndex,
+  windowStartFor,
 } from '../readerPosition';
 
 describe('EPUB position round-trip', () => {
@@ -48,5 +49,58 @@ describe('EPUB position round-trip', () => {
     expect(scrollFractionToPageIndex(0.5, 0)).toBe(0);
     expect(pageIndexToScrollFraction(5, Number.NaN)).toBe(0);
     expect(scrollFractionToPageIndex(Number.NaN, 20)).toBe(0);
+  });
+});
+
+describe('windowStartFor', () => {
+  const WINDOW = 300;
+  const LEAD = 12;
+
+  it('keeps a book that fits in one window unwindowed', () => {
+    // The common case: nothing about the list changes for a normal book,
+    // so none of the windowing can regress it.
+    expect(windowStartFor(0, 60, WINDOW, LEAD)).toBe(0);
+    expect(windowStartFor(59, 60, WINDOW, LEAD)).toBe(0);
+    expect(windowStartFor(299, 300, WINDOW, LEAD)).toBe(0);
+  });
+
+  it('puts the target `lead` rows from the top', () => {
+    expect(windowStartFor(1511, 1570, WINDOW, LEAD)).toBe(1499);
+    expect(windowStartFor(500, 1570, WINDOW, LEAD)).toBe(488);
+  });
+
+  it('does not scroll off the front of the book', () => {
+    // A target inside the first `lead` pages has nowhere to put the
+    // backward context, and must not produce a negative start.
+    expect(windowStartFor(0, 1570, WINDOW, LEAD)).toBe(0);
+    expect(windowStartFor(5, 1570, WINDOW, LEAD)).toBe(0);
+    expect(windowStartFor(12, 1570, WINDOW, LEAD)).toBe(0);
+  });
+
+  it('lets the window run short at the end rather than move the target', () => {
+    // Keeping the last page "filling" the list is what put a jump to
+    // page 1507 two hundred rows down its own window, and it landed on
+    // page 1323. A short window at the end of the book is the correct
+    // trade.
+    expect(windowStartFor(1569, 1570, WINDOW, LEAD)).toBe(1557);
+  });
+
+  it('always puts the target within `lead` rows of the window start', () => {
+    // The property the whole jump depends on: the list can only scroll
+    // to a row it has measured, and it measures about four rows per
+    // attempt. Checked across a whole long book because the failure is a
+    // single target drifting out of reach, not a wholesale break.
+    const total = 1570;
+    for (let i = 0; i < total; i++) {
+      const local = i - windowStartFor(i, total, WINDOW, LEAD);
+      expect(local).toBeGreaterThanOrEqual(0);
+      expect(local).toBeLessThanOrEqual(LEAD);
+    }
+  });
+
+  it('degrades to the start on nonsense input', () => {
+    expect(windowStartFor(5, 0, WINDOW, LEAD)).toBe(0);
+    expect(windowStartFor(5, Number.NaN, WINDOW, LEAD)).toBe(0);
+    expect(windowStartFor(5, 1570, 0, LEAD)).toBe(0);
   });
 });

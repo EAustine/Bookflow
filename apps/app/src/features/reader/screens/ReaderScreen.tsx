@@ -1,4 +1,13 @@
-import { forwardRef, memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  forwardRef,
+  memo,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import {
   Alert,
   Animated,
@@ -32,7 +41,7 @@ import { PracticeQuestionsScreen } from '~/features/ai';
 import { TranslateChapterScreen } from './TranslateChapterScreen';
 import { formatNetworkError } from '~/lib/networkErrors';
 import { reprocessBook } from '~/features/library';
-import { pageDisplayText, pdfIndexOf } from '@bookflow/shared';
+import { pageDisplayText, pdfIndexOf, windowStartFor } from '@bookflow/shared';
 import { tokens } from '~/design/tokens';
 import { useBackHandler } from '~/lib/useBackHandler';
 import { useSlowOp } from '~/hooks/useSlowOp';
@@ -159,6 +168,32 @@ const RESTORE_MAX_PASSES = 12;
  */
 const SEEK_RETRY_MS = 140;
 const SEEK_MAX_ATTEMPTS = 14;
+
+/**
+ * The rendered window.
+ *
+ * Retrying alone is not enough for a long jump, which is what the
+ * comment above assumed. Measured on "Expositions of Holy Scripture"
+ * (1,570 pages), a jump to page 1512: the computed offset was right
+ * (~1.4M px, rows averaging 931px), but the list had measured only 50
+ * rows, so the scroll clamped to the bottom of that content and landed
+ * on page 50. `highestMeasuredFrameIndex` advanced by exactly four per
+ * attempt — `maxToRenderPerBatch` 2, two batches per retry — so
+ * reaching row 1511 that way needs about 378 attempts, near a minute.
+ *
+ * So the list renders a slice instead, positioned so the destination is
+ * always a few rows from the top. The retry loop above still does the
+ * last short hop; windowing is what keeps that hop short.
+ *
+ * `WINDOW_PAGES` is above any page count we ship for a normal book, so
+ * a book that fits in one window renders exactly as it did before and
+ * none of this can regress it. `WINDOW_LEAD` is the backward context
+ * kept behind a landing page: far enough to scroll back into, near
+ * enough that the list can mount it inside the retry budget (four rows
+ * per attempt).
+ */
+const WINDOW_PAGES = 300;
+const WINDOW_LEAD = 12;
 
 /**
  * Split prose into sentences WITHOUT losing any characters.
@@ -391,6 +426,46 @@ export function ReaderScreen({
     loading: pageListLoading,
   } = usePageList(book.id);
   const notFound = !pageListLoading && pageList.length === 0;
+
+  /**
+   * The slice of `pageList` the FlatList actually renders.
+   *
+   * `pageList` stays the whole book — page counts, chapter lookup and
+   * the PDF page total all read it, and they must not see a window.
+   * Only the list's `data` is sliced, so every row still carries its
+   * real `page_index` and nothing downstream has to know.
+   *
+   * Two index spaces exist from here on, and mixing them is the bug to
+   * watch for: `page_index` (the book's own numbering, what every
+   * feature keys on) and the list index (position within the window,
+   * what `scrollToIndex` takes). `localIndexRef` is the only bridge.
+   */
+  const [windowStart, setWindowStart] = useState(0);
+  const windowedPages = useMemo(
+    () => pageList.slice(windowStart, windowStart + WINDOW_PAGES),
+    [pageList, windowStart],
+  );
+  const windowStartRef = useRef(0);
+  const windowedPagesRef = useRef<PageListItem[]>(windowedPages);
+  const localIndexRef = useRef<Map<number, number>>(new Map());
+  const pageIndexRef = useRef(pageIndex);
+  useLayoutEffect(() => {
+    pageIndexRef.current = pageIndex;
+  }, [pageIndex]);
+  useLayoutEffect(() => {
+    windowStartRef.current = windowStart;
+    windowedPagesRef.current = windowedPages;
+    const map = new Map<number, number>();
+    windowedPages.forEach((p, i) => map.set(p.page_index, i));
+    localIndexRef.current = map;
+    // A layout effect, not a plain one: the scroll that follows a window
+    // change runs in an ordinary effect, and it needs these refs already
+    // describing the window React has just committed.
+  }, [windowStart, windowedPages]);
+
+  /** A seek waiting for a window change to commit. See `seekToPage`. */
+  const pendingSeekRef = useRef<number | null>(null);
+
   // The current "active" page row, used by AI-tools / highlights /
   // reading-session bookkeeping. Lazily fetched (single-row query) for
   // whatever the user is currently looking at; no impact on the FlatList.
@@ -568,14 +643,21 @@ export function ReaderScreen({
           // scrolling from inside onLayout races FlatList's own
           // layout integration.
           if (restoreTargetRef.current === pageIdx) {
-            const idx = pageIdx;
-            requestAnimationFrame(() => {
-              listRef.current?.scrollToIndex({
-                index: idx,
-                viewPosition: 0,
-                animated: false,
+            // scrollToIndex takes a LIST index. It matched `page_index`
+            // while the list held the whole book; with a window it does
+            // not, and passing the page number straight through would
+            // scroll to whatever page happens to sit at that position
+            // in the window.
+            const idx = localIndexRef.current.get(pageIdx);
+            if (idx !== undefined) {
+              requestAnimationFrame(() => {
+                listRef.current?.scrollToIndex({
+                  index: idx,
+                  viewPosition: 0,
+                  animated: false,
+                });
               });
-            });
+            }
           }
           restoreTargetRef.current = null;
         }
@@ -634,7 +716,13 @@ export function ReaderScreen({
   const FALLBACK_HEIGHT = 700;
   const computeOffsetForPage = useCallback((target: number): number => {
     const heights = pageHeightsRef.current;
-    if (heights.size === 0) return target * FALLBACK_HEIGHT;
+    // `target` is a page_index; the offset is measured from the top of
+    // the WINDOW, so the sum runs over the rendered pages only. Summing
+    // from page 0 would add every page the list isn't rendering and put
+    // the offset far past the end of the content.
+    const pages = windowedPagesRef.current;
+    const localIdx = localIndexRef.current.get(target) ?? 0;
+    if (heights.size === 0) return localIdx * FALLBACK_HEIGHT;
     let totalMeasured = 0;
     for (const h of heights.values()) totalMeasured += h;
     const avg = totalMeasured / heights.size;
@@ -643,8 +731,8 @@ export function ReaderScreen({
     // the heights map grows, so each successive estimate is
     // closer to the truth.
     let sum = 0;
-    for (let i = 0; i < target; i++) {
-      sum += heights.get(i) ?? avg;
+    for (let i = 0; i < localIdx && i < pages.length; i++) {
+      sum += heights.get(pages[i].page_index) ?? avg;
     }
     return sum;
   }, []);
@@ -966,35 +1054,105 @@ export function ReaderScreen({
    * the reader touches the screen — `onScrollBeginDrag` calls
    * `cancelSeek`, because a jump must never fight a scroll.
    */
+  const runSeek = useCallback((pageIdx: number) => {
+    const listIdx = localIndexRef.current.get(pageIdx);
+    if (listIdx === undefined) return;
+    let attempts = 0;
+    const attempt = () => {
+      attempts += 1;
+      try {
+        listRef.current?.scrollToIndex({
+          index: listIdx,
+          viewPosition: 0,
+          animated: false,
+        });
+      } catch {
+        // Out of window — onScrollToIndexFailed approximates, and the
+        // next attempt reads the geometry that produced.
+      }
+      const landed = pageHeightsRef.current.has(pageIdx);
+      if (landed || attempts >= SEEK_MAX_ATTEMPTS) {
+        seekTimerRef.current = null;
+        return;
+      }
+      seekTimerRef.current = setTimeout(attempt, SEEK_RETRY_MS);
+    };
+    attempt();
+  }, []);
+
+  /**
+   * Move the window if the destination is not comfortably inside it,
+   * then do the short hop.
+   *
+   * The window move has to happen first and in its own render: the list
+   * can only scroll to a row it is holding, and `scrollToIndex` reads
+   * the data React has already committed. So this arms `pendingSeekRef`
+   * and returns; the effect below picks it up once the new window is on
+   * screen.
+   */
   const seekToPage = useCallback(
-    (pageIdx: number) => {
+    (pageIdx: number, recenter = false) => {
       cancelSeek();
-      const listIdx = pageList.findIndex((p) => p.page_index === pageIdx);
-      if (listIdx < 0) return;
-      let attempts = 0;
-      const attempt = () => {
-        attempts += 1;
-        try {
-          listRef.current?.scrollToIndex({
-            index: listIdx,
-            viewPosition: 0,
-            animated: false,
-          });
-        } catch {
-          // Out of window — onScrollToIndexFailed approximates, and the
-          // next attempt reads the geometry that produced.
-        }
-        const landed = pageHeightsRef.current.has(pageIdx);
-        if (landed || attempts >= SEEK_MAX_ATTEMPTS) {
-          seekTimerRef.current = null;
-          return;
-        }
-        seekTimerRef.current = setTimeout(attempt, SEEK_RETRY_MS);
-      };
-      attempt();
+      const globalIdx = pageList.findIndex((p) => p.page_index === pageIdx);
+      if (globalIdx < 0) return;
+
+      // "Already measured" is the real test for whether a scroll can
+      // land, not "inside the window". Being inside a 300-row window is
+      // no help if the row is 200 rows past anything the list has laid
+      // out — that is the same unreachable target in a smaller box. A
+      // measured row, on the other hand, scrolls to exactly, so leave
+      // the window alone and spare the reader the reset.
+      const reachable = !recenter && pageHeightsRef.current.has(pageIdx);
+      const desired = windowStartFor(
+        globalIdx,
+        pageList.length,
+        WINDOW_PAGES,
+        WINDOW_LEAD,
+      );
+      if (!reachable && desired !== windowStartRef.current) {
+        pendingSeekRef.current = pageIdx;
+        setWindowStart(desired);
+        return;
+      }
+      runSeek(pageIdx);
     },
-    [pageList, cancelSeek],
+    [pageList, cancelSeek, runSeek],
   );
+
+  // The second half of `seekToPage`, after the new window has rendered.
+  useEffect(() => {
+    const pending = pendingSeekRef.current;
+    if (pending === null) return;
+    pendingSeekRef.current = null;
+    // The old scroll position means nothing in the new window, and if it
+    // sits past the new content the list clamps it to the bottom — the
+    // same clamp that made a long jump land on page 50. Start from the
+    // top and let the short hop take it from there.
+    listRef.current?.scrollToOffset({ offset: 0, animated: false });
+    runSeek(pending);
+  }, [windowStart, runSeek]);
+
+  /**
+   * Open the window on the saved page.
+   *
+   * Without this a book saved past the window simply opened at chapter
+   * one: the restore loop was scrolling toward a row the list was not
+   * holding. Runs once, when the page list first arrives.
+   */
+  const initialWindowRef = useRef(false);
+  useEffect(() => {
+    if (initialWindowRef.current || pageList.length === 0) return;
+    initialWindowRef.current = true;
+    const globalIdx = pageList.findIndex((p) => p.page_index === pageIndex);
+    if (globalIdx < 0) return;
+    const desired = windowStartFor(
+      globalIdx,
+      pageList.length,
+      WINDOW_PAGES,
+      WINDOW_LEAD,
+    );
+    if (desired !== 0) setWindowStart(desired);
+  }, [pageList, pageIndex]);
 
   const jumpToPage = useCallback((idx: number) => {
     setPageIndex(idx);
@@ -1464,13 +1622,16 @@ export function ReaderScreen({
         */}
         <FlatList<PageListItem>
           ref={listRef}
-          data={pageList}
+          data={windowedPages}
           keyExtractor={(item) => String(item.page_index)}
-          renderItem={({ item, index }) => (
+          renderItem={({ item }) => (
             <PageSection
               pageIndex={item.page_index}
               dbPage={pageContentMap.get(item.page_index) ?? null}
-              isFirst={index === 0}
+              // The book's first page, not the window's: a window that
+              // starts at page 1270 has a first row, but it is not the
+              // start of the book and must not be dressed as one.
+              isFirst={item.page_index === 0}
               totalBookPages={totalBookPages}
               pdfTotalPages={pdfTotalPages}
               palette={palette}
@@ -1500,7 +1661,7 @@ export function ReaderScreen({
           // initialScrollIndex, converge via onContentSizeChange
           // + scrollToOffset) means we never need more than the
           // viewport's worth of sections mounted on first paint.
-          initialNumToRender={Math.min(4, pageList.length)}
+          initialNumToRender={Math.min(4, windowedPages.length)}
           maxToRenderPerBatch={2}
           updateCellsBatchingPeriod={50}
           // windowSize tuned to 11 (~5 viewports above and below
@@ -1549,11 +1710,42 @@ export function ReaderScreen({
             // pages with an average taken from whatever is mounted, and
             // near the start of a book those are the short ones (cover,
             // title, contents), so it undershoots a long jump badly.
+            // `info.index` is a list index. computeOffsetForPage takes
+            // a page_index, so translate before falling back to it.
+            const fallbackPage =
+              windowedPagesRef.current[info.index]?.page_index;
             const offset =
               info.averageItemLength > 0
                 ? info.averageItemLength * info.index
-                : computeOffsetForPage(info.index);
+                : fallbackPage !== undefined
+                  ? computeOffsetForPage(fallbackPage)
+                  : 0;
             listRef.current?.scrollToOffset({ offset, animated: false });
+          }}
+          // Reading out of the window. Rather than splice rows in —
+          // which shifts everything below the insertion point and moves
+          // the page out from under the reader — re-seek to the page
+          // they are on. That recentres the window with the same page
+          // still at the top of the viewport.
+          //
+          // Gated on `anchorReadyRef`, which only flips on the reader's
+          // first drag. Without it both handlers fire on mount, when the
+          // list is legitimately sitting at the top of a fresh window.
+          onEndReachedThreshold={1}
+          onEndReached={() => {
+            if (!anchorReadyRef.current || pendingSeekRef.current !== null)
+              return;
+            const end =
+              windowStartRef.current + windowedPagesRef.current.length;
+            if (end >= pageList.length) return; // the real end of the book
+            seekToPage(pageIndexRef.current, true);
+          }}
+          onStartReachedThreshold={1}
+          onStartReached={() => {
+            if (!anchorReadyRef.current || pendingSeekRef.current !== null)
+              return;
+            if (windowStartRef.current === 0) return; // the real start
+            seekToPage(pageIndexRef.current, true);
           }}
           // Track which section is currently most-visible to keep
           // pageIndex (and progress bar / page label) in sync with
@@ -1588,10 +1780,26 @@ export function ReaderScreen({
               1,
               contentSize.height - layoutMeasurement.height,
             );
-            progressFractionRef.current = Math.max(
+            // Scroll position is window-local; progress is about the
+            // book. Collapses to the plain ratio when the window holds
+            // the whole book, which is every normal-length book.
+            const localFraction = Math.max(
               0,
               Math.min(1, contentOffset.y / scrollable),
             );
+            const totalRows = pageList.length;
+            const windowRows = windowedPagesRef.current.length;
+            progressFractionRef.current =
+              totalRows > 0 && windowRows > 0
+                ? Math.max(
+                    0,
+                    Math.min(
+                      1,
+                      (windowStartRef.current + localFraction * windowRows) /
+                        totalRows,
+                    ),
+                  )
+                : localFraction;
             schedulePersist();
 
             // Page tracker — anchor-relative scroll estimate.
