@@ -7,6 +7,8 @@
  * Synced with the design system specs in /docs/specs/.
  */
 
+import { breakpoints } from './breakpoints';
+
 // ============================================================================
 // COLORS
 // ============================================================================
@@ -631,6 +633,67 @@ export const motion = {
 } as const;
 
 // ============================================================================
+// LAYOUT
+// ============================================================================
+
+/**
+ * Widths the tablet and desktop layouts are built from — §1 of
+ * docs/specs/responsive-handoff.md, mirroring the Figma `Layout`
+ * variable collection.
+ *
+ * These are fixed widths and gutters, not a scale: each one is a
+ * measurement a particular container was designed at, so they do not
+ * interpolate and nothing should derive one from another. The
+ * breakpoints that choose between them live in `breakpoints.ts`.
+ */
+export const layout = {
+  /** Primary nav. Collapsed on Medium and Expanded, expanded on Desktop. */
+  rail: {
+    collapsed: 72,
+    expanded: 240,
+  },
+  /** Master column of a master/detail split — Library list, You home. */
+  pane: {
+    master: 440,
+  },
+  /** Side panel, both Slide-over and Docked. */
+  panel: {
+    side: 380,
+  },
+  popover: {
+    width: 340,
+  },
+  modal: {
+    /** The desktop web dialog that stands in for an iOS alert. */
+    alert: 400,
+    confirm: 440,
+    large: 640,
+  },
+  /** Centred single-column lane: auth, onboarding, crash. */
+  lane: {
+    width: 480,
+  },
+  /** Reader text, PDF and player columns. Aliases `readingMeasure`. */
+  reading: {
+    measure: 680,
+  },
+  /** The widest the content area ever grows, however wide the window. */
+  content: {
+    max: 1280,
+  },
+  columnGap: 24,
+  /** Outer page padding, per size class. */
+  gutter: {
+    compact: 16,
+    medium: 32,
+    expanded: 32,
+    desktop: 40,
+  },
+} as const;
+
+export type LayoutSize = keyof typeof layout;
+
+// ============================================================================
 // EXPORTS
 // ============================================================================
 
@@ -658,6 +721,13 @@ export const tokens = {
   epubWeb,
   space,
   textStyles,
+  // Layout — §1 of the responsive brief. `breakpoints` lives in its own
+  // module but belongs on the aggregate: every screen reads tokens
+  // through this object, so a group that is only a named export is
+  // unreachable in practice (and ARCHITECTURE.md §3 already promised
+  // `tokens.breakpoints`).
+  breakpoints,
+  layout,
 } as const;
 
 export type Tokens = typeof tokens;
