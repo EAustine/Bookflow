@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { supabase } from '~/lib/supabase';
 import { enqueue } from '~/core/offline-queue';
 import { getCachedPages } from '~/features/listen';
+import { fetchAllPageRows } from '~/core/pageRows';
 
 /**
  * Reader-side data hooks for pages (the unit since the chapters→pages
@@ -82,13 +83,6 @@ export function usePageList(bookId: string) {
     }
 
     (async () => {
-      // Same row-cap bypass as useAllPagesContent below — without
-      // .range(), PostgREST silently truncates large lists at 1000.
-      // Multi-volume books that have more pages than that would
-      // otherwise miss everything past page 999 in the FlatList
-      // data array, which broke the saved-page restore and any
-      // jump-to-page above 999.
-      //
       // try/catch — the supabase call throws on offline with
       // "TypeError: Network request failed" and the effect IIFE
       // had no parent .catch. The rejection bubbled to LogBox and
@@ -96,12 +90,10 @@ export function usePageList(bookId: string) {
       // every offline open. In-band null/empty is the right
       // recovery: the reader skeleton handles the empty case.
       try {
-        const { data, error } = await supabase
-          .from('pages')
-          .select('id, page_index, pdf_page_number, page_label, title, word_count')
-          .eq('book_id', bookId)
-          .order('page_index', { ascending: true })
-          .range(0, 9999);
+        const { data, error } = await fetchAllPageRows<PageListItem>(
+          bookId,
+          'id, page_index, pdf_page_number, page_label, title, word_count',
+        );
 
         if (cancelled) return;
         if (error) {
@@ -257,28 +249,12 @@ export function useAllPagesContent(bookId: string) {
     }
 
     (async () => {
-      // PostgREST has a default cap on rows returned (commonly 1000).
-      // A multi-volume book like "Expositions of Holy Scripture" has
-      // 1570 spine rows in `pages`, and the default cap silently
-      // dropped everything past 1000 — visible pages near the end of
-      // the book then rendered as empty sections, and any sort-by-
-      // anything-other-than-page_index could push the user's saved
-      // page into the dropped tail too. An explicit large `.range`
-      // pulls the full set in one round-trip.
-      //
-      // 9999 is plenty for any realistic book (the largest classics
-      // we've seen are 4-5k pages), and Supabase happily returns
-      // fewer rows when there aren't that many.
       try {
-        const { data, error: queryError } = await supabase
-          .from('pages')
-          .select(
-            'id, book_id, page_index, pdf_page_number, page_label, title, content, html_content, word_count',
-          )
-          .eq('book_id', bookId)
-          .order('page_index', { ascending: true })
-          .range(0, 9999)
-          .abortSignal(abortController.signal);
+        const { data, error: queryError } = await fetchAllPageRows<PageRow>(
+          bookId,
+          'id, book_id, page_index, pdf_page_number, page_label, title, content, html_content, word_count',
+          abortController.signal,
+        );
 
         if (cancelled) return;
         clearTimeout(timeoutId);
@@ -470,12 +446,10 @@ export function usePageLabels(bookId: string): (string | null)[] {
     }
     (async () => {
       try {
-        const { data, error } = await supabase
-          .from('pages')
-          .select('page_index, page_label')
-          .eq('book_id', bookId)
-          .order('page_index', { ascending: true })
-          .range(0, 9999);
+        const { data, error } = await fetchAllPageRows<{
+          page_index: number;
+          page_label: string | null;
+        }>(bookId, 'page_index, page_label');
         if (cancelled) return;
         if (error) {
           // Non-fatal: without labels every surface falls back to the
