@@ -39,7 +39,7 @@ month or more.
 
 | § | Area | Today | Change | Size |
 |---|---|---|---|---|
-| 3 | Breakpoints and shells | None. No `useLayoutClass`, no breakpoint tokens, phone layout only | All new. **Blocked** — no tablet or desktop frames in Figma | **L** |
+| 3 | Breakpoints and shells | ~~None~~ — **unblocked and started.** The Figma tablet and desktop frames exist (`docs/specs/responsive-handoff.md`), and responsive M1 landed `tokens.layout.*`, a four-class `useSizeClass()`, the side rail and the `Presenter`. The flow layouts are still phone-only | Remaining: §4 of the brief, one milestone per flow, then hover/focus and the copy pass | **L** |
 | 4 | Repo layout | Single npm package. `src/{screens,components,lib,hooks,stores,design,types,utils}`. The marketing site is a **separate, unversioned** directory at `~/bookflow-site` | **npm** workspaces, `apps/`, `packages/`, `features/`. 35 screens and 33,203 lines move, plus 27 static files and one orphaned edge function | **M** |
 | 5 | Navigation | Hand-rolled `stage` machine in `App.tsx` (1,468 lines) plus local `view` state inside each tab. `expo-router` not installed | Expo Router, typed routes, every screen a URL. The highest-risk structural change in the plan | **L** |
 | 6 | Data layer | `@tanstack/react-query@5.100.5` **is installed** but server state is bespoke hooks (`useBooks`, `useBooksImpl`, `useCurrentUser`, `useBookChapters`) over Supabase. Zustand (2 stores) for client state. No persisted cache, no offline queue | Query for all server state, persisted cache, offline queue. Zustand stays | **L** |

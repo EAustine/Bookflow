@@ -38,6 +38,82 @@ Target: `docs/ARCHITECTURE.md` · Distance to it: `docs/ARCHITECTURE_GAPS.md`
 
 ## Progress
 
+### Responsive M1 — tokens, size class, shell, presenter · 2026-10-28
+
+The foundation for the tablet and desktop layouts in
+`docs/specs/responsive-handoff.md` (§9 steps 1-3). Nothing about the
+phone changes; the flow layouts are M2 onward.
+
+**Layout tokens.** `breakpoints.ts` already existed from M1 with three
+classes and was dead code; it gains `desktop: 1280` and a fourth class.
+The brief's §1 listed Expanded and Desktop as overlapping ("1024 and up"
+for both), which width alone cannot resolve — the rule that does is "the
+rail expands from 1280", so Desktop starts there, and the traits that are
+really about the web (no status bar, no splash, no pull to refresh,
+hover) key off `Platform.OS` instead. A new `tokens.layout.*` group
+carries the rail, pane, panel, popover, modal, lane, reading, content,
+gutter and column-gap widths.
+
+`breakpoints` was a named export that had never been added to the
+aggregate `tokens` object, so `tokens.breakpoints` was `undefined`
+despite ARCHITECTURE.md §3 promising it. Both groups are on the
+aggregate now, and `build-css.mjs` emits them (180 custom properties, up
+from 163).
+
+**`useSizeClass()`** returns the width class plus a separate `isWeb`,
+for the reason above. The repo's first width-reactive code.
+
+**Orientation.** Phones stay portrait, tablets and web rotate. `app.json`
+goes to `"orientation": "default"`; iOS splits it declaratively with
+`UISupportedInterfaceOrientations` and the `~ipad` variant, which the OS
+enforces before JS starts. Android has no per-idiom manifest key, so
+`src/platform/orientation.ts` locks at runtime via
+`expo-screen-orientation` (**new dependency**) when the shortest side of
+`Dimensions.get('screen')` is under 600 — *screen* so an iPad in split
+view is not mistaken for a phone, *shortest side* so the answer does not
+flip when the device rotates. First occupant of `src/platform/*`.
+
+**Shell.** `TabBar` returns `null` above Compact and `SignedInShell`
+renders the rail once, so all eleven `TabBar` call sites are untouched.
+The rail is suppressed by the same four flags that already hide the mini
+player, which is what gives the reader no rail at any size for free.
+
+Two tab-bar spacing problems, one of them latent: `ListenScreen`
+hardcoded `56 + inset` to lift the mini player over the tab bar, which on
+a tablet left an empty strip under it; and `miniPlayerOverlay` was
+`left: 0, right: 0` on the shell root, so once that became a row the bar
+would have run under the rail. Both fixed by moving the overlay into the
+content column, which is also §2's "bar along the bottom of the content".
+
+**Presenter.** One component picks BottomSheet, Popover, SidePanel or
+Modal by size class, keeping the imperative `present()`/`dismiss()` ref
+all 32 existing mount sites already use. The wide containers render in an
+RN `Modal` rather than in place: `position: 'absolute'` in React Native
+is relative to the direct parent, so an in-place overlay would be
+confined to whatever container the call site declared it in. One pilot
+converted (Library's Sort & filter).
+
+The popover's placement maths moved to `@bookflow/shared` so the edge
+rules are testable — the near-edge fallback cannot be reached by tapping,
+because no trigger in the app currently sits within 24 of the window
+edge. The tests caught a real bug on the way in: right-aligning bypassed
+the clamp, so in a window narrower than the card plus its gutters the
+card ran off the *left* edge.
+
+Verified on the emulator at 360, 820, 1180 and 1440 dp: phone unchanged
+with the sheet still a sheet and the mini player flush to the tab bar;
+rail collapsed at 820 and 1180, expanded with the lockup at 1440; no
+empty strip under the mini player and no bar under the rail; popover
+anchored with an arrow at both wide sizes. Orientation checked both ways
+— at 360 the app requests portrait (`mLastOrientation=1`) with the
+manifest at `unspecified`, at 820 it requests nothing.
+
+**Found while verifying:** the checked-in `android/` is a gitignored
+prebuild artifact and still had `android:screenOrientation="portrait"`
+baked in from an older `app.json`. It silently invalidated the first
+rotation test and would have locked tablets to portrait as well.
+`expo prebuild` regenerates it correctly from the committed `app.json`.
+
 ### M3 — features and data · ✅ merged to `main` 2026-10-28
 
 Merged at Austine's call with these reader issues open and understood,
