@@ -1,5 +1,4 @@
 import { File, Directory, Paths } from 'expo-file-system';
-import { supabase } from '~/lib/supabase';
 // Deliberate and safe: see the cycle note in audioDownloads.ts. Both sides
 // are hoisted function declarations called only at runtime, so neither is
 // read at module-eval time. Contrast the feature-barrel cycle, where
@@ -10,6 +9,7 @@ import { useDownloadsStore } from '~/stores/downloadsStore';
 import { fireDownloadCompleteNotification } from '~/lib/notifications';
 import type { Book } from '~/types/book';
 import type { PageRow } from '~/features/reader';
+import { fetchAllPageRows } from '~/core/pageRows';
 
 /**
  * Offline audio + text downloads.
@@ -221,14 +221,10 @@ const UUID_RE =
  * reader's `useAllPagesContent` query but as a plain async call. */
 async function fetchAllPages(bookId: string): Promise<PageRow[]> {
   if (!UUID_RE.test(bookId)) return [];
-  const { data, error } = await supabase
-    .from('pages')
-    .select(
-      'id, book_id, page_index, pdf_page_number, title, content, html_content, word_count',
-    )
-    .eq('book_id', bookId)
-    .order('page_index', { ascending: true })
-    .range(0, 9999);
+  const { data, error } = await fetchAllPageRows<PageRow>(
+    bookId,
+    'id, book_id, page_index, pdf_page_number, title, content, html_content, word_count',
+  );
   if (error) throw new Error(error.message);
   return (data ?? []) as PageRow[];
 }
