@@ -1,9 +1,8 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
-  Image,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -34,8 +33,15 @@ import {
   Text,
 } from '~/components';
 import { tokens } from '~/design/tokens';
+import { useSizeClass } from '~/hooks/useSizeClass';
+import { EmptyLibraryIllustration } from '~/components/illustrations/EmptyLibraryIllustration';
+import { BookCover, ProgressBar } from '../components/BookCover';
+import { bookStatusLine } from '../components/bookStatus';
+import { WEEKDAYS, formatDuration } from '../components/readingWeek';
+import { BookGrid } from '../components/BookGrid';
+import { LibraryHero } from '../components/LibraryHero';
+import { LibraryBookPane } from '../components/LibraryBookPane';
 import { useBooks } from '~/hooks/useBooks';
-import { peekCachedCoverUrl, resolveCoverUrl } from '~/core/bookCovers';
 import { formatNetworkError } from '~/lib/networkErrors';
 import { supabase } from '~/lib/supabase';
 import type { Book } from '~/types/book';
@@ -682,44 +688,151 @@ export function LibraryScreen({
     toast.show('Offline downloads are coming soon');
   }, []);
 
-  const filtered = books.filter((b) => {
-    if (appliedFilter === 'in-progress') return b.progressPercent > 0 && b.progressPercent < 100;
-    if (appliedFilter === 'not-started') return b.progressPercent === 0;
-    if (appliedFilter === 'finished') return b.progressPercent === 100;
-    return true;
-  });
+  const { sizeClass, isWide, width } = useSizeClass();
+  const gutter = tokens.layout.gutter[sizeClass];
 
-  const sorted = [...filtered].sort((a, b) => {
-    switch (appliedSort) {
-      case 'recent':
-        return (b.lastReadAt?.getTime() ?? 0) - (a.lastReadAt?.getTime() ?? 0);
-      case 'added':
-        return b.addedAt.getTime() - a.addedAt.getTime();
-      case 'title':
-        return a.title.localeCompare(b.title);
-      case 'progress':
-        return b.progressPercent - a.progressPercent;
-    }
-  });
+  /**
+   * The book the detail pane is showing, on Expanded and Desktop.
+   *
+   * Deliberately NOT `selectedBook`. That one is a route: setting it
+   * swaps the whole tree for a reader and tells the shell to hide the
+   * rail and mini player. Selecting a row in a master list must do
+   * neither — it fills the pane and leaves everything else standing.
+   */
+  const [paneBook, setPaneBook] = useState<Book | null>(null);
+
+  /*
+    These five passes over `books` used to run on every render. That was
+    survivable while the only thing that re-rendered this screen was its
+    own state; now `useSizeClass` re-renders it on every resize and
+    rotation, and the grid puts four times as many rows on screen at
+    once. Memoised on what each actually depends on.
+  */
+  const sorted = useMemo(() => {
+    const filtered = books.filter((b) => {
+      if (appliedFilter === 'in-progress') return b.progressPercent > 0 && b.progressPercent < 100;
+      if (appliedFilter === 'not-started') return b.progressPercent === 0;
+      if (appliedFilter === 'finished') return b.progressPercent === 100;
+      return true;
+    });
+    return [...filtered].sort((a, b) => {
+      switch (appliedSort) {
+        case 'recent':
+          return (b.lastReadAt?.getTime() ?? 0) - (a.lastReadAt?.getTime() ?? 0);
+        case 'added':
+          return b.addedAt.getTime() - a.addedAt.getTime();
+        case 'title':
+          return a.title.localeCompare(b.title);
+        case 'progress':
+          return b.progressPercent - a.progressPercent;
+      }
+    });
+  }, [books, appliedFilter, appliedSort]);
 
   const continueBook = continueBookFromHook;
 
-  const counts: Record<FilterKey, number> = {
-    all: books.length,
-    'in-progress': books.filter((b) => b.progressPercent > 0 && b.progressPercent < 100).length,
-    'not-started': books.filter((b) => b.progressPercent === 0).length,
-    finished: books.filter((b) => b.progressPercent === 100).length,
-  };
+  const counts: Record<FilterKey, number> = useMemo(
+    () => ({
+      all: books.length,
+      'in-progress': books.filter((b) => b.progressPercent > 0 && b.progressPercent < 100).length,
+      'not-started': books.filter((b) => b.progressPercent === 0).length,
+      finished: books.filter((b) => b.progressPercent === 100).length,
+    }),
+    [books],
+  );
 
   // Search results
   const lq = searchQuery.trim().toLowerCase();
-  const searchResults = lq
-    ? books.filter(
-        (b) =>
-          b.title.toLowerCase().includes(lq) ||
-          b.author.toLowerCase().includes(lq),
-      )
-    : [];
+  const searchResults = useMemo(
+    () =>
+      lq
+        ? books.filter(
+            (b) =>
+              b.title.toLowerCase().includes(lq) ||
+              b.author.toLowerCase().includes(lq),
+          )
+        : [],
+    [books, lq],
+  );
+
+  /**
+   * One `now` per data change rather than one per render.
+   *
+   * Every row used to build its own `new Date()` inside render, which
+   * is harmless for a list of five but makes the component impure — and
+   * the grid tile is `memo`ised, so a fresh Date on every render would
+   * defeat it exactly when there are most tiles on screen. Tied to
+   * `books` because that is when a relative time ("5h ago") can
+   * actually have changed meaningfully.
+   */
+  // `books` is the invalidation signal here, not a value read inside:
+  // recompute `now` when the data changes rather than on every render.
+  // The directive has to sit immediately above the code it covers.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const now = useMemo(() => new Date(), [books]);
+
+  /**
+   * The grid's usable width: the window, less the rail the shell draws
+   * beside it, less this screen's own gutters. The rail is not this
+   * screen's to measure, so its width comes from the same token the
+   * shell renders it at.
+   */
+  const gridWidth = Math.max(
+    0,
+    width - tokens.layout.rail.collapsed - gutter * 2,
+  );
+
+  // Shared across the three layout branches below, so the header, the
+  // sort control and the pull-to-refresh behave identically whichever
+  // one renders.
+  const libraryRefreshControl = (
+    <RefreshControl
+      refreshing={refreshing}
+      onRefresh={handleRefresh}
+      tintColor={tokens.textColors.subtle}
+    />
+  );
+
+  const libraryHeader = (
+    <Header
+      onSearch={openSearch}
+      onFilter={openSheet}
+      filterAnchorRef={filterAnchorRef}
+      onAdd={() => addSheetRef.current?.present()}
+      isOffline={isOffline}
+    />
+  );
+
+  // §4 and the Figma frames keep "All books" and its sort control above
+  // the grid, not just above the list.
+  const librarySectionHeader = (
+    <SectionHeader
+      count={sorted.length}
+      sortLabel={SORT_LABELS[appliedSort]}
+      onSortPress={openSheet}
+    />
+  );
+
+  const searchBody =
+    lq === '' ? (
+      <PreSearchContent
+        recentSearches={recentSearches}
+        onRecentTap={handleRecentTap}
+        onDiscoverTap={() => onTabChange('discover')}
+      />
+    ) : searchResults.length > 0 ? (
+      <SearchResults
+        results={searchResults}
+        query={searchQuery.trim()}
+        onBookPress={isWide ? setPaneBook : setSelectedBook}
+        onDiscoverTap={() => onTabChange('discover')}
+      />
+    ) : (
+      <NoResults
+        query={searchQuery.trim()}
+        onDiscoverTap={() => onTabChange('discover')}
+      />
+    );
 
   if (MOCK_LIBRARY_LOADING) {
     return <LibrarySkeleton />;
@@ -848,7 +961,10 @@ export function LibraryScreen({
     );
   }
 
-  if (searchMode) {
+  // On Expanded and Desktop search lives inside the master column so the
+  // pane keeps its book (§4), and the wide branch below renders it. Only
+  // the narrower classes hand the whole screen over.
+  if (searchMode && !isWide) {
     return (
       <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
         <SearchHeader
@@ -864,25 +980,7 @@ export function LibraryScreen({
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         >
-          {lq === '' ? (
-            <PreSearchContent
-              recentSearches={recentSearches}
-              onRecentTap={handleRecentTap}
-              onDiscoverTap={() => onTabChange('discover')}
-            />
-          ) : searchResults.length > 0 ? (
-            <SearchResults
-              results={searchResults}
-              query={searchQuery.trim()}
-              onBookPress={setSelectedBook}
-              onDiscoverTap={() => onTabChange('discover')}
-            />
-          ) : (
-            <NoResults
-              query={searchQuery.trim()}
-              onDiscoverTap={() => onTabChange('discover')}
-            />
-          )}
+          {searchBody}
         </ScrollView>
         <TabBar activeTab="library" onChange={onTabChange} />
       </SafeAreaView>
@@ -974,6 +1072,7 @@ export function LibraryScreen({
           <Header onSearch={openSearch} onAdd={() => addSheetRef.current?.present()} />
           <LibraryEmptyContent
             userName={userName}
+            wide={isWide}
             onUpload={() => addSheetRef.current?.present()}
             onSeeAll={() => onTabChange('discover')}
             onBookPress={() => {}}
@@ -991,7 +1090,12 @@ export function LibraryScreen({
 
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
-      {isOffline && <OfflineBanner onRetry={() => void refreshNetwork()} />}
+      {/*
+        §4: the banner sits at the top of the content on Medium, and at
+        the top of the master on Expanded and Desktop — where the wide
+        branch renders its own copy, inside the column.
+      */}
+      {isOffline && !isWide && <OfflineBanner onRetry={() => void refreshNetwork()} />}
       {!isOffline &&
         !isPro &&
         usageWarningsOn &&
@@ -1004,40 +1108,116 @@ export function LibraryScreen({
             onDismiss={() => setShowBanner(false)}
           />
         )}
-      <ScrollView
-        style={styles.scroll}
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={handleRefresh}
-            tintColor={tokens.textColors.subtle}
+      {sizeClass === 'compact' ? (
+        <ScrollView
+          style={styles.scroll}
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+          refreshControl={libraryRefreshControl}
+        >
+          {libraryHeader}
+          <ReadingStatsCard stats={readingStats} weekDays={readingStats.weekDays} />
+          {continueBook && (
+            <ContinueCard
+              book={continueBook}
+              onListen={onStartListening}
+              onRead={setSelectedBook}
+              isOffline={isOffline}
+            />
+          )}
+          {librarySectionHeader}
+          <BookList
+            books={sorted}
+            onBookPress={setSelectedBook}
+            onRemove={handleRemoveBook}
+            onLongPress={handleLongPressBook}
           />
-        }
-      >
-        <Header onSearch={openSearch} onFilter={openSheet} filterAnchorRef={filterAnchorRef} onAdd={() => addSheetRef.current?.present()} isOffline={isOffline} />
-        <ReadingStatsCard stats={readingStats} weekDays={readingStats.weekDays} />
-        {continueBook && (
-          <ContinueCard
+        </ScrollView>
+      ) : sizeClass === 'medium' ? (
+        /* Tablet portrait: one hero card, then the cover grid (§4). */
+        <ScrollView
+          style={styles.scroll}
+          contentContainerStyle={[styles.scrollContent, { paddingHorizontal: gutter }]}
+          showsVerticalScrollIndicator={false}
+          refreshControl={libraryRefreshControl}
+        >
+          {libraryHeader}
+          <LibraryHero
             book={continueBook}
+            stats={readingStats}
+            weekDays={readingStats.weekDays}
+            isOffline={isOffline}
             onListen={onStartListening}
             onRead={setSelectedBook}
-            isOffline={isOffline}
           />
-        )}
-        <SectionHeader
-          count={sorted.length}
-          sortLabel={SORT_LABELS[appliedSort]}
-          onSortPress={openSheet}
-        />
-        <BookList
-          books={sorted}
-          onBookPress={setSelectedBook}
-          onRemove={handleRemoveBook}
-          onLongPress={handleLongPressBook}
-        />
-      </ScrollView>
+          {librarySectionHeader}
+          <BookGrid
+            books={sorted}
+            availableWidth={gridWidth}
+            now={now}
+            onBookPress={setSelectedBook}
+            onRemove={handleRemoveBook}
+            onLongPress={handleLongPressBook}
+          />
+        </ScrollView>
+      ) : (
+        /* Tablet landscape and desktop: master and detail (§4). */
+        <View style={styles.masterDetail}>
+          <View style={styles.master}>
+            {isOffline && <OfflineBanner onRetry={() => void refreshNetwork()} />}
+            {searchMode ? (
+              /*
+                Search replaces the master's content, not the screen —
+                the pane keeps whatever book was selected, which is the
+                whole reason it is worth having search here at all.
+              */
+              <>
+                <SearchHeader
+                  query={searchQuery}
+                  onQueryChange={setSearchQuery}
+                  onBack={closeSearch}
+                  onCancel={closeSearch}
+                  inputRef={searchInputRef}
+                />
+                <ScrollView
+                  style={styles.scroll}
+                  contentContainerStyle={styles.searchScrollContent}
+                  showsVerticalScrollIndicator={false}
+                  keyboardShouldPersistTaps="handled"
+                >
+                  {searchBody}
+                </ScrollView>
+              </>
+            ) : (
+              <ScrollView
+                style={styles.scroll}
+                contentContainerStyle={styles.masterScrollContent}
+                showsVerticalScrollIndicator={false}
+                refreshControl={libraryRefreshControl}
+              >
+                {libraryHeader}
+                <ReadingStatsCard stats={readingStats} weekDays={readingStats.weekDays} />
+                {librarySectionHeader}
+                <BookList
+                  books={sorted}
+                  selectedId={paneBook?.id ?? null}
+                  onBookPress={setPaneBook}
+                  onRemove={handleRemoveBook}
+                  onLongPress={handleLongPressBook}
+                />
+              </ScrollView>
+            )}
+          </View>
+          <LibraryBookPane
+            book={paneBook}
+            now={now}
+            isOffline={isOffline}
+            onRead={setSelectedBook}
+            onListen={onStartListening}
+            onViewHighlights={setHighlightsBook}
+          />
+        </View>
+      )}
       <TabBar activeTab="library" onChange={onTabChange} />
 
       <Presenter
@@ -1472,10 +1652,10 @@ function ReadingStatsCard({
   const todayIndex = (jsDay + 6) % 7;
 
   const headline = stats.minutesToday > 0
-    ? `${formatMinutes(stats.minutesToday)} today`
-    : `${formatMinutes(stats.minutesThisWeek)} this week`;
+    ? `${formatDuration(stats.minutesToday)} today`
+    : `${formatDuration(stats.minutesThisWeek)} this week`;
   const subline = stats.minutesToday > 0
-    ? `${formatMinutes(stats.minutesThisWeek)} this week`
+    ? `${formatDuration(stats.minutesThisWeek)} this week`
     : 'No reading yet today';
 
   return (
@@ -1519,26 +1699,6 @@ function ReadingStatsCard({
       ) : null}
     </View>
   );
-}
-
-// Mon → Sun, with stable ids so React keys don't collide on the
-// repeated single-letter labels (T/T, S/S).
-const WEEKDAYS = [
-  { id: 'mon', label: 'M' },
-  { id: 'tue', label: 'T' },
-  { id: 'wed', label: 'W' },
-  { id: 'thu', label: 'T' },
-  { id: 'fri', label: 'F' },
-  { id: 'sat', label: 'S' },
-  { id: 'sun', label: 'S' },
-] as const;
-
-function formatMinutes(min: number): string {
-  if (min < 60) return `${min}m`;
-  const hours = Math.floor(min / 60);
-  const remaining = min % 60;
-  if (remaining === 0) return `${hours}h`;
-  return `${hours}h ${remaining}m`;
 }
 
 // ─── Continue card ───────────────────────────────────────────────────────────
@@ -1657,11 +1817,14 @@ function BookList({
   onBookPress,
   onRemove,
   onLongPress,
+  selectedId,
 }: {
   books: Book[];
   onBookPress: (book: Book) => void;
   onRemove?: (book: Book) => void;
   onLongPress?: (book: Book) => void;
+  /** Master-list selection on Expanded and Desktop. Unset on a phone. */
+  selectedId?: string | null;
 }) {
   return (
     <View style={styles.bookList}>
@@ -1669,6 +1832,7 @@ function BookList({
         <View key={book.id}>
           <BookListItem
             book={book}
+            selected={selectedId === book.id}
             onPress={onBookPress}
             onRemove={onRemove}
             onLongPress={onLongPress}
@@ -1685,11 +1849,18 @@ function BookListItem({
   onPress,
   onRemove,
   onLongPress,
+  selected,
 }: {
   book: Book;
   onPress: (book: Book) => void;
   onRemove?: (book: Book) => void;
   onLongPress?: (book: Book) => void;
+  /**
+   * The master-list selection fill on Expanded and Desktop. Not the
+   * shared `ListRow`'s `selected`, which draws a trailing check — a
+   * picker affordance, not a "this is what the pane is showing" one.
+   */
+  selected?: boolean;
 }) {
   const status = book.processingStatus;
   const isProcessing = status === 'pending' || status === 'processing';
@@ -1724,6 +1895,7 @@ function BookListItem({
       delayLongPress={350}
       style={({ pressed }) => [
         styles.bookRow,
+        selected && styles.bookRowSelected,
         pressed && !isProcessing && { backgroundColor: tokens.bgColors.raised },
         isProcessing && { opacity: 0.7 },
       ]}
@@ -1777,39 +1949,6 @@ function BookListItem({
       )}
     </Pressable>
   );
-}
-
-function bookStatusLine(book: Book, now: Date): string {
-  if (book.progressPercent === 100) {
-    return `Finished · 100% · ${formatRelativeTime(book.lastReadAt, now)}`;
-  }
-  if (book.progressPercent === 0) {
-    return `Not started · added ${formatRelativeTime(book.addedAt, now)}`;
-  }
-  const pageNum = book.currentChapter?.match(/\d+/)?.[0];
-  const pagePart = pageNum ? `Page ${pageNum}` : null;
-  return [pagePart, `read ${formatRelativeTime(book.lastReadAt, now)}`]
-    .filter(Boolean)
-    .join(' · ');
-}
-
-function formatRelativeTime(date: Date | null, now: Date): string {
-  if (!date) return 'never';
-  // Clamp to >= 0 so any clock skew (device behind server, or a stale `now`
-  // from a long-stationary screen) reads as "just now" instead of negative.
-  const diffMs = Math.max(0, now.getTime() - date.getTime());
-  const minutes = Math.floor(diffMs / 60000);
-  if (minutes < 1) return 'just now';
-  if (minutes < 60) return `${minutes}m ago`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.floor(hours / 24);
-  if (days === 1) return 'yesterday';
-  if (days < 7) return `${days} days ago`;
-  const weeks = Math.floor(days / 7);
-  if (weeks === 1) return '1 week ago';
-  if (weeks < 4) return `${weeks} weeks ago`;
-  return date.toLocaleDateString();
 }
 
 // ─── Sort / filter sheet ─────────────────────────────────────────────────────
@@ -2136,84 +2275,6 @@ function RemoveBookSheetContent({
 // under features/library/api by mistake, which made that import a lint
 // error; it is infrastructure over Supabase Storage, not library UI.
 
-function BookCover({
-  book,
-  size,
-}: {
-  book: Book;
-  size: 'sm' | 'hero' | 'result';
-}) {
-  const dims = COVER_DIMS[size];
-  const path = book.coverStoragePath ?? null;
-  const isDownloaded = useDownloadsStore(
-    (s) => s.downloads[book.id]?.status === 'complete',
-  );
-  const [coverUrl, setCoverUrl] = useState<string | null>(() =>
-    path ? peekCachedCoverUrl(path) : null,
-  );
-
-  useEffect(() => {
-    if (!path) {
-      setCoverUrl(null);
-      return;
-    }
-    let cancelled = false;
-    void resolveCoverUrl(path).then((url) => {
-      if (!cancelled) setCoverUrl(url);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [path]);
-
-  return (
-    <View
-      style={[
-        styles.cover,
-        {
-          width: dims.width,
-          height: dims.height,
-          backgroundColor: book.coverColor,
-          borderRadius: dims.radius,
-          overflow: 'hidden',
-        },
-      ]}
-    >
-      {coverUrl ? (
-        <Image
-          source={{ uri: coverUrl }}
-          style={{ width: dims.width, height: dims.height }}
-          resizeMode="cover"
-        />
-      ) : (
-        <Text style={[styles.coverInitial, { fontSize: dims.fontSize }]} color="inverse">
-          {book.title.charAt(0)}
-        </Text>
-      )}
-      {isDownloaded && (
-        <View style={[styles.downloadedBadge, size === 'sm' && styles.downloadedBadgeSm]}>
-          <Icon name="Download" size={size === 'sm' ? 7 : 8} color={tokens.colors.cream[50]} />
-        </View>
-      )}
-    </View>
-  );
-}
-
-function ProgressBar({ percent, height }: { percent: number; height: number }) {
-  const clamped = Math.max(0, Math.min(100, percent));
-  return (
-    <View style={[styles.progressTrack, { height }]}>
-      <View style={[styles.progressFill, { width: `${clamped}%` }]} />
-    </View>
-  );
-}
-
-const COVER_DIMS = {
-  sm:     { width: 40, height: 60, radius: tokens.radii.xs, fontSize: 16 },
-  hero:   { width: 64, height: 96, radius: tokens.radii.sm, fontSize: 22 },
-  result: { width: 36, height: 54, radius: tokens.radii.xs, fontSize: 14 },
-} as const;
-
 // ─── Library empty state ─────────────────────────────────────────────────────
 
 function greeting(now: Date): string {
@@ -2228,11 +2289,18 @@ function LibraryEmptyContent({
   onUpload,
   onSeeAll,
   onBookPress,
+  wide,
 }: {
   userName?: string;
   onUpload: () => void;
   onSeeAll: () => void;
   onBookPress: (id: string) => void;
+  /**
+   * Expanded and Desktop show the Figma "Empty library" illustration
+   * (`350:142`). The phone keeps its own line-drawing, so this change
+   * is invisible at Compact.
+   */
+  wide?: boolean;
 }) {
   const now = new Date();
   const firstName = userName?.split(' ')[0] ?? 'there';
@@ -2245,7 +2313,7 @@ function LibraryEmptyContent({
       </View>
 
       <View style={styles.uploadBlock}>
-        <BookIllustration />
+        {wide ? <EmptyLibraryIllustration size={180} /> : <BookIllustration />}
         <Text style={styles.uploadTitle}>Add your first book</Text>
         <Text style={styles.uploadSub}>
           Upload a PDF or EPUB, or choose something from our free library below.
@@ -2836,6 +2904,22 @@ const styles = StyleSheet.create({
   bookDivider: {
     height: StyleSheet.hairlineWidth,
     backgroundColor: tokens.borderColors.subtle,
+  },
+  masterDetail: {
+    flex: 1,
+    flexDirection: 'row',
+  },
+  master: {
+    width: tokens.layout.pane.master,
+  },
+  masterScrollContent: {
+    paddingHorizontal: tokens.space.lg,
+    paddingTop: tokens.space.sm,
+    paddingBottom: tokens.space['2xl'],
+  },
+  /** The selected master row, per the build log: `color/bg/accent-muted`. */
+  bookRowSelected: {
+    backgroundColor: tokens.bgColors.accentMuted,
   },
   bookRow: {
     flexDirection: 'row',

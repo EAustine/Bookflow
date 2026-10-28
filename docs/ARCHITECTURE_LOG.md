@@ -38,6 +38,65 @@ Target: `docs/ARCHITECTURE.md` · Distance to it: `docs/ARCHITECTURE_GAPS.md`
 
 ## Progress
 
+### Responsive M2a — Library layout · 2026-10-28
+
+§4 Library of the responsive brief, layout half. M2b carries the
+overlays, the upload refactor and §7's copy changes.
+
+**Medium** gets `LibraryHero` (one card replacing the separate stats and
+continue cards) and a 4-column `BookGrid`. The brief's tile width only
+resolves with the rail included — `820 − 72 − 2×32 = 684`, less `3×24`
+of gaps, over four, is 153 — so that arithmetic lives in
+`@bookflow/shared` with a test rather than in a stylesheet. Four is a
+ceiling, not a constant: Medium starts at 600, where four columns would
+be 98px wide, so the grid drops a column rather than render a cover too
+small to read.
+
+**Expanded and Desktop** get a 440 master plus `LibraryBookPane`. The
+master column is `layout/pane/master`, which matches the Figma frames —
+an earlier note in this log claiming the frames were drawn at 360 was
+wrong; all 57 masters are bound to the variable.
+
+The load-bearing change is that **selecting a row is not opening a
+book**. `selectedBook` is a route: setting it swaps the whole tree for a
+reader and tells the shell to hide the rail and mini player. A master
+selection must do neither, so the pane reads a separate `paneBook`, and
+the pane's own CTA is what sets `selectedBook`. Search follows the same
+logic — on wide it replaces the master's content and the pane keeps its
+book, so it is a branch inside the column rather than the whole-screen
+early return it stays at Compact.
+
+**Illustrations now exist.** The redrawn set landed at
+`apps/app/assets/illustrations/`. There is no SVG transformer in this
+project (no metro.config.js at all), so an illustration cannot be
+imported as a component; `EmptyLibraryIllustration` is converted by
+hand with every colour bound to a token, following `Logomark` and
+`Lockup`. The raw SVGs stay in the repo as the source for the rest.
+
+**Four duplicates collapsed on the way through.** `BookCover`,
+`ProgressBar`, `bookStatusLine` and the weekday strip moved into
+`features/library/components/` so the row, the tile and the pane share
+one definition — the search result row and the list row had already
+drifted apart from exactly this. `formatRelativeTime` turned out to be
+byte-identical to the tested one in `@bookflow/shared` and now uses it.
+
+**One trap worth recording:** `formatMinutes` exists in both
+`@bookflow/shared` and LibraryScreen and they mean different things —
+"381 min" for a quota, "6h 21m" for time spent reading. The reading one
+is now `formatDuration`, so the two cannot be confused again.
+
+The five unmemoised full-array passes per render are memoised. They were
+survivable when only this screen's own state re-rendered it; `useSizeClass`
+now re-renders on every resize, and the grid puts four times as many rows
+on screen.
+
+Verified on the emulator at 360, 820, 1180 and 1440 dp: the phone is
+unchanged; the Medium tile measures 153 with a 24 gap; the master
+measures 440; selecting a row fills the pane without opening the reader
+or hiding the rail; the pane's CTA does open it, full-bleed with no
+rail; search replaces the master while the pane holds its book; a
+long-press on a tile opens the actions sheet.
+
 ### Responsive M1 — tokens, size class, shell, presenter · 2026-10-28
 
 The foundation for the tablet and desktop layouts in
