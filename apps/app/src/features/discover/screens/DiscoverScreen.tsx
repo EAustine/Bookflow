@@ -519,6 +519,17 @@ export function DiscoverScreen({
       setBooks: (books: DiscoverBook[]) => void,
       setLoading: (l: boolean) => void,
       seed?: ApiBook[],
+      // Only the primary shelf may blank the screen with an error.
+      //
+      // Every shelf used to be able to call `setHomeError`, and
+      // `homeError` hides the whole tab. So one unreachable third-party
+      // source took Discover down with it: DOAB started answering 403
+      // and the user saw "Couldn't reach the catalog" while Wikisource
+      // (144 books) and Open Library (524) had already loaded fine and
+      // four seeded rails were ready to paint. The comment below the
+      // old code claimed the error was limited to the popular shelf;
+      // nothing implemented that. This parameter does.
+      ownsErrorState = false,
     ) => {
       let displayed: DiscoverBook[] = [];
       const setDisplayed = (b: DiscoverBook[]) => {
@@ -562,15 +573,19 @@ export function DiscoverScreen({
           // If displayed.length > 0 and books.length === 0, do nothing:
           // keep the seed/cache visible rather than blanking the rail.
         } else if (displayed.length === 0) {
-          // Network failed and we never painted anything — surface the
-          // error so the user knows something's up.
-          setHomeError(result.error);
+          // Network failed and we never painted anything. Only the
+          // primary shelf escalates that to a whole-screen error; a
+          // secondary rail just stays empty and the rest of Discover
+          // keeps working.
+          if (ownsErrorState) setHomeError(result.error);
           setLoading(false);
         }
       } catch (err) {
         if (cancelled) return;
         if (displayed.length === 0) {
-          setHomeError(err instanceof Error ? err.message : String(err));
+          if (ownsErrorState) {
+            setHomeError(err instanceof Error ? err.message : String(err));
+          }
           setLoading(false);
         }
       }
@@ -587,6 +602,8 @@ export function DiscoverScreen({
       setPopularLoading,
       // Cold-start seed — first-time users see content instantly.
       DISCOVER_SEED,
+      // The one shelf allowed to report a whole-screen failure.
+      true,
     );
     // Fiction + short-reads rails both fall back to the same seed list
     // when their cache misses. They'll be replaced with topic-filtered
