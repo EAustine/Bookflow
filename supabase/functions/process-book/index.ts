@@ -119,6 +119,8 @@ type ProgressReporter = (message: string | null) => void;
 type ParsedPage = {
   index: number;
   pdf_page_number: number | null;
+  /** Printed label from the PDF ("xii"). Display only — see 0029. */
+  page_label?: string | null;
   title: string | null;
   content: string;
   html_content: string | null;
@@ -154,6 +156,8 @@ type ParsedBook = {
   cover: { bytes: Uint8Array; contentType: string } | null;
   meta: { title: string | null; author: string | null };
   images: PendingImage[];
+  /** PDF only. Empty for EPUB, whose navigation comes from its spine. */
+  chapters?: ParsedChapter[];
 };
 
 const IMAGE_MARKER_PREFIX = '[[BOOKFLOW_IMG:';
@@ -360,10 +364,71 @@ Deno.serve(async (req) => {
     // EPUBs stay at 1 — their pagination did not change, and marking them
     // 2 would make the column claim a guarantee they do not have.
     const extractionVersion = ext === 'pdf' ? 2 : 1;
+
+    // Chapters first: `pages.chapter_id` points at them, so they need
+    // ids before the pages go in. Deleted and rebuilt alongside pages
+    // for the same reason — a shorter re-parse would otherwise leave
+    // chapters pointing past the end of the book.
+    await supabase.from('chapters').delete().eq('book_id', book_id);
+    const chapterIdByOrdinal = new Map<number, string>();
+    const parsedChapters = parsed.chapters ?? [];
+    if (parsedChapters.length > 0) {
+      // Two passes, because `parent_id` is a self-reference: insert
+      // without parents, then set them once every row has an id.
+      const chapterRows = parsedChapters.map((c) => ({
+        book_id,
+        ordinal: c.ordinal,
+        level: c.level,
+        title: c.title,
+        start_page_index: c.start_page_index,
+        end_page_index: c.end_page_index,
+        source: c.source,
+      }));
+      const { data: insertedChapters, error: chErr } = await supabase
+        .from('chapters')
+        .insert(chapterRows)
+        .select('id, ordinal');
+      if (chErr) {
+        // Non-fatal. A book with no chapter rows still reads fine —
+        // the navigator falls back to "Page N" — and failing the whole
+        // import over navigation metadata would be the wrong trade.
+        console.warn(`[process-book] chapters_insert_failed: ${chErr.message}`);
+      } else {
+        for (const row of insertedChapters ?? []) {
+          chapterIdByOrdinal.set(row.ordinal as number, row.id as string);
+        }
+        const withParents = parsedChapters
+          .filter((c) => c.parentOrdinal !== null)
+          .map((c) => ({
+            id: chapterIdByOrdinal.get(c.ordinal)!,
+            parent_id: chapterIdByOrdinal.get(c.parentOrdinal!) ?? null,
+          }))
+          .filter((r) => r.id && r.parent_id);
+        for (const r of withParents) {
+          await supabase
+            .from('chapters')
+            .update({ parent_id: r.parent_id })
+            .eq('id', r.id);
+        }
+      }
+    }
+
+    /** The deepest chapter containing a page — the most specific label. */
+    const chapterIdForPage = (pageIndex: number): string | null => {
+      let best: { level: number; ordinal: number } | null = null;
+      for (const c of parsedChapters) {
+        if (pageIndex < c.start_page_index || pageIndex > c.end_page_index) continue;
+        if (!best || c.level > best.level) best = { level: c.level, ordinal: c.ordinal };
+      }
+      return best ? (chapterIdByOrdinal.get(best.ordinal) ?? null) : null;
+    };
+
     const rows = rewrittenPages.map((p) => ({
       book_id,
       page_index: p.index,
       pdf_page_number: p.pdf_page_number,
+      page_label: p.page_label ?? null,
+      chapter_id: chapterIdForPage(p.index),
       title: p.title,
       content: p.content,
       html_content: p.html_content,
@@ -927,6 +992,212 @@ type PdfResult =
   | { scanned: true; parsed?: never }
   | { scanned: false; parsed: ParsedBook };
 
+// ─── PDF outline → chapters ──────────────────────────────────────────────────
+
+/**
+ * A chapter as extracted, before it has a database id.
+ *
+ * `start_page_index` is 0-based to match `pages.page_index`. `end_page_index`
+ * is filled in a second pass, because a chapter's end is defined by where the
+ * next one starts.
+ */
+type ParsedChapter = {
+  ordinal: number;
+  level: number;
+  /** Index into the same array, not a uuid — resolved to one on insert. */
+  parentOrdinal: number | null;
+  title: string;
+  start_page_index: number;
+  end_page_index: number;
+  source: 'outline' | 'heading' | 'fallback';
+};
+
+/** One node of pdf.js's outline tree. */
+type OutlineNode = {
+  title?: string;
+  // deno-lint-ignore no-explicit-any
+  dest?: any;
+  items?: OutlineNode[];
+};
+
+/**
+ * Resolve an outline destination to a 0-based page index.
+ *
+ * Three shapes have to be handled, which is the whole reason this is a
+ * function rather than a line:
+ *   - `dest` is a string naming a destination → look it up first.
+ *   - `dest` is an array whose first element is a page *reference* →
+ *     `getPageIndex` resolves it.
+ *   - `dest` is an array whose first element is already a page number.
+ *
+ * Returns null rather than guessing. An outline entry pointing nowhere is
+ * a documented failure mode, and inventing a page for it would put a
+ * chapter heading on text that is not in that chapter.
+ */
+async function resolveDestPageIndex(
+  // deno-lint-ignore no-explicit-any
+  proxy: any,
+  // deno-lint-ignore no-explicit-any
+  dest: any,
+): Promise<number | null> {
+  try {
+    let resolved = dest;
+    if (typeof dest === 'string') {
+      resolved = await proxy.getDestination(dest);
+    }
+    if (!Array.isArray(resolved) || resolved.length === 0) return null;
+    const ref = resolved[0];
+    if (ref && typeof ref === 'object') {
+      const idx = await proxy.getPageIndex(ref);
+      return typeof idx === 'number' && idx >= 0 ? idx : null;
+    }
+    // Some generators write a bare page number here.
+    if (typeof ref === 'number' && ref >= 0) return ref;
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Chapters from the PDF's own outline.
+ *
+ * Returns an empty array when there is no outline — pdf.js returns `null`,
+ * not `[]`, for that case, which is easy to mishandle.
+ *
+ * The tree is walked depth-first so `ordinal` follows reading order while
+ * `level` and `parentOrdinal` preserve the nesting a publisher encoded
+ * (Part I containing Chapters 1–3). Flattening would throw away the only
+ * structure the PDF actually asserts.
+ */
+async function chaptersFromOutline(
+  // deno-lint-ignore no-explicit-any
+  proxy: any,
+  pageCount: number,
+): Promise<ParsedChapter[]> {
+  let outline: OutlineNode[] | null = null;
+  try {
+    outline = await proxy.getOutline();
+  } catch {
+    return [];
+  }
+  if (!Array.isArray(outline) || outline.length === 0) return [];
+
+  const out: ParsedChapter[] = [];
+
+  const walk = async (
+    nodes: OutlineNode[],
+    level: number,
+    parentOrdinal: number | null,
+  ): Promise<void> => {
+    for (const node of nodes) {
+      const title = typeof node.title === 'string' ? node.title.trim() : '';
+      const pageIndex =
+        node.dest != null ? await resolveDestPageIndex(proxy, node.dest) : null;
+
+      let ordinal: number | null = null;
+      // An entry with no title or no resolvable destination is skipped,
+      // but its CHILDREN are still walked — a titleless wrapper node is
+      // common and dropping its subtree would lose real chapters.
+      if (title && pageIndex !== null && pageIndex < pageCount) {
+        ordinal = out.length;
+        out.push({
+          ordinal,
+          level,
+          parentOrdinal,
+          title,
+          start_page_index: pageIndex,
+          end_page_index: pageIndex, // second pass fixes this
+          source: 'outline',
+        });
+      }
+      if (Array.isArray(node.items) && node.items.length) {
+        await walk(node.items, level + 1, ordinal ?? parentOrdinal);
+      }
+    }
+  };
+
+  await walk(outline, 0, null);
+  return closeChapterRanges(out, pageCount);
+}
+
+/**
+ * Fill in `end_page_index`.
+ *
+ * A chapter runs to the page before the next chapter that starts later.
+ * "Later" rather than "next in the array" matters for nested outlines:
+ * Part I's range has to cover its children, so it ends where Part II
+ * begins, not where Chapter 1 does.
+ */
+function closeChapterRanges(
+  chapters: ParsedChapter[],
+  pageCount: number,
+): ParsedChapter[] {
+  return chapters.map((c) => {
+    let next = pageCount; // default: runs to the end of the book
+    for (const other of chapters) {
+      if (other.start_page_index <= c.start_page_index) continue;
+      if (other.level > c.level) continue; // a child does not end its parent
+      if (other.start_page_index < next) next = other.start_page_index;
+    }
+    return { ...c, end_page_index: Math.max(c.start_page_index, next - 1) };
+  });
+}
+
+/**
+ * Chapters from the per-page heading detection already in this file.
+ *
+ * The fallback when a PDF has no outline, which is most PDFs that were
+ * not produced by a publisher. Lower confidence, so `source = 'heading'`
+ * and the UI can say so.
+ */
+function chaptersFromPageTitles(
+  pages: ParsedPage[],
+  pageCount: number,
+): ParsedChapter[] {
+  const out: ParsedChapter[] = [];
+  for (const p of pages) {
+    if (!p.title) continue;
+    out.push({
+      ordinal: out.length,
+      level: 0,
+      parentOrdinal: null,
+      title: p.title,
+      start_page_index: p.index,
+      end_page_index: p.index,
+      source: 'heading',
+    });
+  }
+  return closeChapterRanges(out, pageCount);
+}
+
+/**
+ * Last resort: page-range groups.
+ *
+ * Explicitly NOT chapter titles. "Pages 1–10" is navigation, and naming
+ * it that way is the honest option — inventing "Chapter 1" for a PDF
+ * that never said so would be a lie the reader cannot detect.
+ */
+function chaptersFromPageRanges(
+  pageCount: number,
+  groupSize = 10,
+): ParsedChapter[] {
+  const out: ParsedChapter[] = [];
+  for (let start = 0; start < pageCount; start += groupSize) {
+    const end = Math.min(pageCount - 1, start + groupSize - 1);
+    out.push({
+      ordinal: out.length,
+      level: 0,
+      parentOrdinal: null,
+      title: `Pages ${start + 1}\u2013${end + 1}`,
+      start_page_index: start,
+      end_page_index: end,
+      source: 'fallback',
+    });
+  }
+  return out;
+}
+
 async function parsePdf(
   buffer: Uint8Array,
   reportProgress: ProgressReporter = () => {},
@@ -1104,14 +1375,48 @@ async function parsePdf(
 
   const cover = await extractPdfCover(buffer);
 
-  const detectedChapters = pages.filter((p) => p.title).length;
+  // Printed page labels ("xii", "A-3"). Display only — see 0029. pdf.js
+  // returns null when the PDF declares none, which is the common case.
+  try {
+    // deno-lint-ignore no-explicit-any
+    const labels = (await (proxy as any).getPageLabels()) as string[] | null;
+    if (Array.isArray(labels)) {
+      for (const page of pages) {
+        const label = labels[(page.pdf_page_number ?? 0) - 1];
+        // Only store a label that says something the index does not.
+        // Storing "15" for page 15 would mean the reader shows
+        // "p. 15 · printed 15", which is noise.
+        if (label && label !== String(page.pdf_page_number)) {
+          page.page_label = label;
+        }
+      }
+    }
+  } catch {
+    // A PDF with a malformed label tree should still import.
+  }
+
+  // Chapters, best source first. Each level down is less trustworthy,
+  // which is why `source` is stored rather than discarded: the UI can
+  // tell the user "this PDF has no chapter information" instead of
+  // presenting page-range groups as if they were chapters.
+  let chapters = await chaptersFromOutline(proxy, perPageText.length);
+  let chapterSource = 'outline';
+  if (chapters.length === 0) {
+    chapters = chaptersFromPageTitles(pages, perPageText.length);
+    chapterSource = 'heading';
+  }
+  if (chapters.length === 0) {
+    chapters = chaptersFromPageRanges(perPageText.length);
+    chapterSource = 'fallback';
+  }
+
   console.log(
-    `[process-book] pdf parsed in ${Date.now() - t0}ms: pdf_pages=${perPageText.length} extracted_pages=${pages.length} chapters=${detectedChapters} cover=${cover ? 'yes' : 'no'}`,
+    `[process-book] pdf parsed in ${Date.now() - t0}ms: pdf_pages=${perPageText.length} extracted_pages=${pages.length} chapters=${chapters.length} (${chapterSource}) labels=${pages.filter((p) => p.page_label).length} cover=${cover ? 'yes' : 'no'}`,
   );
 
   return {
     scanned: false,
-    parsed: { pages, cover, meta, images: [] },
+    parsed: { pages, cover, meta, images: [], chapters },
   };
 }
 
