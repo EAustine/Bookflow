@@ -563,18 +563,35 @@ export function PdfReaderScreen({
   // than closing the reader entirely, so the user can flip back and
   // forth between original-layout and text-interaction views.
   if (textMode) {
+    // Full -> Text: open the text page for the sheet on screen.
+    //
+    // Since migration 0028 a PDF yields exactly one `pages` row per PDF
+    // page, so the mapping is `page_index === currentPage - 1` — exact,
+    // no arithmetic. `pageLabels` is indexed by `page_index`, so its
+    // length IS the row count: when that equals the PDF's page count the
+    // book is page-faithful and the direct mapping holds.
+    //
+    // The proportional estimate below is kept only for books processed
+    // BEFORE 0028, which have several ~200-word slice rows per PDF page
+    // and for which no exact mapping exists. It used to run for every
+    // book, including page-faithful ones, where it depended on
+    // `book.totalPages` being in step with the row count — and a stale
+    // or zero value silently sent the reader to page 1.
     const totalDbPages = book.totalPages ?? 0;
-    const estimatedChapterIdx =
-      totalPages > 0 && totalDbPages > 0
-        ? Math.min(
-            totalDbPages - 1,
-            Math.floor(((currentPage - 1) / Math.max(1, totalPages)) * totalDbPages),
-          )
-        : 0;
+    const pageRowCount = pageLabels.length;
+    const pageFaithful = pageRowCount > 0 && pageRowCount === totalPages;
+    const targetPageIndex = pageFaithful
+      ? Math.max(0, currentPage - 1)
+      : totalPages > 0 && totalDbPages > 0
+      ? Math.min(
+          totalDbPages - 1,
+          Math.floor(((currentPage - 1) / Math.max(1, totalPages)) * totalDbPages),
+        )
+      : 0;
     return (
       <ReaderScreen
         book={book}
-        initialPageIndex={estimatedChapterIdx}
+        initialPageIndex={targetPageIndex}
         // Back from the text view goes all the way back to the
         // library, not just to the PDF intermediate. The user pressed
         // back to leave the book; making them tap twice (text → PDF →
@@ -583,7 +600,15 @@ export function PdfReaderScreen({
         // The Full/Text pill is how the user toggles between the two
         // renderers without leaving the book. Tapping "Full" flips
         // back to native PDF rendering.
-        onRequestFullMode={() => setTextMode(false)}
+        // Text -> Full: navigate the native view to the page the text
+        // reader was on, rather than leaving it wherever it last was.
+        // `jumpToPdfPage` is what moves <Pdf> (bumping `pdfNavTarget`'s
+        // nonce); setting `textMode` alone would just re-reveal the old
+        // position. +1 because the PDF renderer is 1-indexed.
+        onRequestFullMode={(pageIndex) => {
+          jumpToPdfPage(Math.max(1, pageIndex + 1));
+          setTextMode(false);
+        }}
         onListen={onListen}
       />
     );

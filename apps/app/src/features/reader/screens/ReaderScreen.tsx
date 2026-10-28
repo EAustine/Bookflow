@@ -292,7 +292,15 @@ export type ReaderScreenProps = {
    * and lets the parent swap to it. Omit on platforms where full mode
    * isn't applicable (the toggle is hidden in that case).
    */
-  onRequestFullMode?: () => void;
+  /**
+   * Switch to Full view, at `pageIndex` (0-based) — the page the reader
+   * is actually looking at. The brief: "The Full/Text toggle keeps your
+   * place: Text to Full opens the page of the topmost block." Before
+   * this carried an argument, Full view opened wherever it had last
+   * been left, so a reader on page 23 in Text landed on page 1 in Full
+   * and the two modes disagreed about where they were.
+   */
+  onRequestFullMode?: (pageIndex: number) => void;
 };
 
 /**
@@ -1229,7 +1237,7 @@ export function ReaderScreen({
             <Pressable
               accessibilityRole="button"
               accessibilityLabel="Switch to full mode"
-              onPress={onRequestFullMode}
+              onPress={() => onRequestFullMode(pageIndex)}
               style={({ pressed }) => [
                 styles.notFoundSecondaryCta,
                 pressed && { opacity: 0.7 },
@@ -1355,7 +1363,9 @@ export function ReaderScreen({
             // to swap to the EPUB-full WebView renderer. If no handler
             // is wired (e.g. embedded as text-mode-of-PDF), we no-op so
             // the user doesn't get a dead button.
-            if (m === 'full' && onRequestFullMode) onRequestFullMode();
+            // Hand over the page currently on screen, not the one the
+            // other renderer happens to remember.
+            if (m === 'full' && onRequestFullMode) onRequestFullMode(pageIndex);
           }}
           pointerEvents={autoHide && !chromeVisible ? 'none' : 'auto'}
         />
