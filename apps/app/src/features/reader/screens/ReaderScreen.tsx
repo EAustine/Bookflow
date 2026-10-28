@@ -135,6 +135,13 @@ type DerivedChapter = {
  *     engine starts dropping frames around ~3000 spans in a single Text.
  */
 /**
+ * How many times a saved-page restore may re-scroll before it gives up
+ * and hands the list back to the reader. Convergence takes a handful of
+ * passes; anything beyond that is the loop fighting a scroll.
+ */
+const RESTORE_MAX_PASSES = 12;
+
+/**
  * Split prose into sentences WITHOUT losing any characters.
  *
  * Both call sites previously used
@@ -590,6 +597,9 @@ export function ReaderScreen({
   // recommended approach for restoring scroll position with
   // variable-height items (which is exactly our case, and which
   // initialScrollIndex / scrollToIndex are not reliable for).
+  /** Re-scroll passes used by the current restore. See
+   * `onContentSizeChange`. */
+  const restorePassesRef = useRef(0);
   const restoreTargetRef = useRef<number | null>(
     pageIndex > 0 ? pageIndex : null,
   );
@@ -638,6 +648,21 @@ export function ReaderScreen({
   const onContentSizeChange = useCallback(() => {
     const target = restoreTargetRef.current;
     if (target === null) return;
+    // The loop is what makes a jump to an unmeasured page work: the
+    // offset is a guess from averaged heights and only becomes right as
+    // rows mount. What it lacked was an end.
+    //
+    // Scrolling mounts rows and mounting changes content size, so
+    // without a cap the handler re-armed itself and fought the reader.
+    // Measured on the search-jump path: a forward swipe moved 0px while
+    // a backward swipe worked, because only `onScrollBeginDrag` cleared
+    // the target. A dozen passes is far more than convergence needs and
+    // still guarantees the list is handed back.
+    if (restorePassesRef.current >= RESTORE_MAX_PASSES) {
+      restoreTargetRef.current = null;
+      return;
+    }
+    restorePassesRef.current += 1;
     const offset = computeOffsetForPage(target);
     listRef.current?.scrollToOffset({ offset, animated: false });
   }, [computeOffsetForPage]);
@@ -909,6 +934,7 @@ export function ReaderScreen({
     anchorReadyRef.current = false; // re-lock on the next scrollBegin
     savedPageMeasuredRef.current = false;
     restoreTargetRef.current = idx;
+    restorePassesRef.current = 0;
     const offset = computeOffsetForPage(idx);
     listRef.current?.scrollToOffset({ offset, animated: true });
   }, [computeOffsetForPage]);
