@@ -18,5 +18,6 @@ export * from './offline-queue';
 export * from './pageDisplay';
 export * from './readerPosition';
 export * from './popoverPlacement';
+export * from './gridLayout';
 export * from './pdfPageText';
 export type * from './database';
