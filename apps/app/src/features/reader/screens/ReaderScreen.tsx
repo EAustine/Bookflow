@@ -519,6 +519,23 @@ export function ReaderScreen({
    * one frame and removes the whole failure mode.
    */
   const [pageHeight, setPageHeight] = useState(0);
+  /**
+   * Page WIDTH — pages advance horizontally.
+   *
+   * A vertical outer list with a vertical ScrollView inside each page
+   * cannot be made to work: whichever one takes the gesture, the other
+   * stands still, so the outer regularly rests between two sections and
+   * the tail of the previous page sits frozen at the top of the screen
+   * while the current one scrolls underneath. Measured with
+   * reading-sized scrolls, that happened on 2 of 9 swipes.
+   *
+   * Horizontal paging removes the conflict rather than tuning it: the
+   * outer list owns the horizontal axis, each page owns the vertical
+   * one, and neither can steal from the other. One page is always
+   * exactly one screen, which is also what "never split a page's text
+   * across screens" asks for.
+   */
+  const [pageWidth, setPageWidth] = useState(0);
   const pageHeightsRef = useRef<Map<number, number>>(new Map());
   // Signals when the SAVED page's section has reported its real
   // layout (height > 100). FlatList walks through intermediate
@@ -1377,8 +1394,11 @@ export function ReaderScreen({
       <View
         style={styles.pagerWrap}
         onLayout={(e) => {
-          const h = Math.round(e.nativeEvent.layout.height);
+          const { width, height } = e.nativeEvent.layout;
+          const h = Math.round(height);
+          const w = Math.round(width);
           if (h > 0) setPageHeight((prev: number) => (prev === h ? prev : h));
+          if (w > 0) setPageWidth((prev: number) => (prev === w ? prev : w));
         }}
       >
         {/* Loading overlay shown while we walk through the
@@ -1412,7 +1432,7 @@ export function ReaderScreen({
           three strings cannot disagree. That agreement is the point:
           it is what the reader checks against the paper page.
         */}
-        {pageHeight > 0 && (
+        {pageHeight > 0 && pageWidth > 0 && (
         <FlatList<PageListItem>
           ref={listRef}
           data={pageList}
@@ -1436,9 +1456,13 @@ export function ReaderScreen({
               take the gesture on Android and hand back to the outer
               list at its ends.
             */
-            <View style={{ height: pageHeight }}>
+            <View style={{ width: pageWidth, height: pageHeight }}>
               <ScrollView
-                nestedScrollEnabled
+                // No `nestedScrollEnabled`: that flag is for a scroll
+                // view nested inside another on the SAME axis, and with
+                // it set this view held the gesture so horizontal page
+                // turns never reached the list underneath. The axes
+                // differ now, so the platform routes by direction.
                 showsVerticalScrollIndicator={false}
                 contentContainerStyle={styles.pageScrollContent}
               >
@@ -1469,22 +1493,17 @@ export function ReaderScreen({
           // Every row is exactly `pageHeight`, so offsets are arithmetic
           // rather than measurement. This is the property the old list
           // lacked.
+          horizontal
+          showsHorizontalScrollIndicator={false}
           getItemLayout={(_, index) => ({
-            length: pageHeight,
-            offset: pageHeight * index,
+            length: pageWidth,
+            offset: pageWidth * index,
             index,
           })}
-          // One page per swipe, so a page boundary is never half on
-          // screen and "page N" always means the whole sheet.
-          //
-          // `snapToInterval`, not `pagingEnabled`: paging snaps by the
-          // scroll view's own height, which is not necessarily the row
-          // height, and the mismatch leaves the list resting across a
-          // page boundary.
-          snapToInterval={pageHeight}
-          snapToAlignment="start"
-          disableIntervalMomentum
-          decelerationRate="fast"
+          // Exactly one page per swipe. On the horizontal axis the row
+          // size and the viewport size are the same number, so paging
+          // lands on a page boundary every time.
+          pagingEnabled
           // Virtualisation tuning. Mount a small initial window
           // (4 sections) and let FlatList stream more sections as
           // the user (or the saved-page restore loop) scrolls
@@ -1569,13 +1588,14 @@ export function ReaderScreen({
             const { contentOffset, contentSize, layoutMeasurement } =
               e.nativeEvent;
 
+            // Pages advance on the X axis now.
             const scrollable = Math.max(
               1,
-              contentSize.height - layoutMeasurement.height,
+              contentSize.width - layoutMeasurement.width,
             );
             progressFractionRef.current = Math.max(
               0,
-              Math.min(1, contentOffset.y / scrollable),
+              Math.min(1, contentOffset.x / scrollable),
             );
             schedulePersist();
 
@@ -1587,12 +1607,12 @@ export function ReaderScreen({
             // old estimate could not run until the user dragged and
             // then extrapolated, which is why it disagreed with the
             // in-content dividers.
-            if (pageHeight > 0 && pageList.length > 0) {
+            if (pageWidth > 0 && pageList.length > 0) {
               const idx = Math.max(
                 0,
                 Math.min(
                   pageList.length - 1,
-                  Math.round(contentOffset.y / pageHeight),
+                  Math.round(contentOffset.x / pageWidth),
                 ),
               );
               const row = pageList[idx];
