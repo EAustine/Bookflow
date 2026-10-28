@@ -11,10 +11,10 @@ Target: `docs/ARCHITECTURE.md` · Distance to it: `docs/ARCHITECTURE_GAPS.md`
 
 | | |
 |---|---|
-| **Current step** | **M3 on `arch/m3-features`, not merged.** Offline write queue (22 tests) and the eight-feature decomposition are in. Remaining: convert the bespoke Supabase hooks to TanStack Query, the persisted cache, and the 7 routes deferred from M2 |
-| **Branch** | `arch/m3-features` at `9a53564`, 6 commits ahead of `main`, local only |
-| **`main`** | `f2ea7c7`. Carries M1, M2, and the PDF page-fidelity work |
-| **Next** | TanStack Query conversion. Still blocked on the test account for anything post-auth |
+| **Current step** | **M3 merged to `main` 2026-10-28** (fast-forward, 26 commits). Offline queue, the eight-feature decomposition, PDF page fidelity, `pageDisplay`, and the page-fidelity test are in |
+| **Branch** | None in flight. `main` at `41c0add`, **26 commits ahead of `origin/main` — not pushed** |
+| **`main`** | Carries M1, M2 and M3. tsc 0, eslint 0, deno check clean, 68 tests |
+| **Next** | TanStack Query conversion (M3's remaining scope), the 7 routes deferred from M2, and the reader items under "Known, carried past the merge" below |
 
 ---
 
@@ -38,7 +38,43 @@ Target: `docs/ARCHITECTURE.md` · Distance to it: `docs/ARCHITECTURE_GAPS.md`
 
 ## Progress
 
-### M3 — features and data · ◑ in progress on `arch/m3-features`
+### M3 — features and data · ✅ merged to `main` 2026-10-28
+
+Merged at Austine's call with these reader issues open and understood,
+not forgotten:
+
+**Known, carried past the merge**
+
+- **A search jump does not land on the exact page it names.** It leaves
+  the saved position and lands in the right region; a "page 20" hit put
+  the reader near page 5. Row heights vary and there is no
+  `getItemLayout`, so the saved-page restore converges on an averaged
+  guess rather than an exact offset.
+- **Exact jumps and vertical nested scrolling pull against each other.**
+  Precise jumps want fixed row heights; fixed row heights want a
+  per-page scroller; a vertical per-page scroller fights the vertical
+  list it sits in — measured as the tail of one page frozen at the top
+  of the screen while the next scrolled underneath, on 2 of 9
+  reading-sized swipes. Horizontal paging is the one arrangement where
+  all three hold; it was built, tried and reverted because it changes
+  how a page is turned. That is a product decision, still open.
+- **No sticky page indicator.** It was built and removed for naming
+  pages that were not on screen. It becomes feasible the moment page
+  offsets are exact.
+- **Go to page** exists as tested logic in `@bookflow/shared`
+  (`resolvePageQuery`) with no UI; its first home was wrong and it was
+  pulled rather than left somewhere arbitrary.
+- **EPUB Full↔Text keeps its place only approximately** — scroll
+  fraction, so an image-heavy book can be a page or two out.
+
+**What the freeze taught**, worth keeping because it cost most of a
+day: whole-frame screenshot hashes prove that *something* changed, not
+that the page moved as one. They passed while the screen showed two
+pages with the top one frozen. Comparing a top strip against a bottom
+strip per frame found it in one run, and a screen recording from
+Austine found it before either.
+
+### M3 — features and data · original scope
 
 `src/screens` is gone; eight features own their own screens and api. The
 offline write queue is in `packages/shared` with 22 tests, wired through the
