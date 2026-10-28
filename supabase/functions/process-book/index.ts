@@ -356,6 +356,10 @@ Deno.serve(async (req) => {
     // rebuild.
     reportProgress(`Saving ${pages.length} pages…`);
     await supabase.from('pages').delete().eq('book_id', book_id);
+    // PDFs are page-faithful from version 2: one row per original page.
+    // EPUBs stay at 1 — their pagination did not change, and marking them
+    // 2 would make the column claim a guarantee they do not have.
+    const extractionVersion = ext === 'pdf' ? 2 : 1;
     const rows = rewrittenPages.map((p) => ({
       book_id,
       page_index: p.index,
@@ -364,9 +368,19 @@ Deno.serve(async (req) => {
       content: p.content,
       html_content: p.html_content,
       word_count: p.word_count,
+      extraction_version: extractionVersion,
     }));
     const { error: insErr } = await supabase.from('pages').insert(rows);
     if (insErr) throw new Error(`pages_insert_failed: ${insErr.message}`);
+
+    // Mirror the version onto the book so the app can tell, without
+    // reading a page, whether this book predates page-faithful PDFs.
+    // `reprocessBook` is what moves an old book forward, which is a
+    // per-book choice because it changes that book's page ids.
+    await supabase
+      .from('books')
+      .update({ extraction_version: extractionVersion })
+      .eq('id', book_id);
 
     // 5. Upload extracted cover (EPUB only today). Best-effort: if the
     // upload fails we log and continue — a missing cover is a much better
@@ -997,18 +1011,19 @@ async function parsePdf(
     return { scanned: true };
   }
 
-  // Slice each PDF page's text into ~200-word "pages". Most prose PDFs
-  // give 1–3 slices per real page (a typical paperback page is ~250
-  // words; a denser academic page might be ~500). We track
-  // `pdf_page_number` on each slice so the navigation can jump back
-  // and forth between the data unit and the original page.
+  // One `pages` row per original PDF page. `page_index + 1` equals
+  // `pdf_page_number`, so "page 15" in text mode IS page 15 in the Full
+  // view, and an AI citation of p. 15 points at the same text the user
+  // can open.
+  //
+  // This used to slice each page into ~200-word rows, which is what
+  // turned a 20-page PDF into ~130 "pages". See 0028_pdf_page_fidelity.
   //
   // Chapter detection: if the top of a real PDF page looks like a
   // chapter heading ("Chapter 5", "Part II: The Voyage", "Prologue"),
-  // we strip the heading out of the slice body and attach it as the
-  // `title` on the first slice. The reader's ChapterSheet falls back
-  // to "Page N" when title is null, so anything we successfully
-  // detect just upgrades the navigator label.
+  // we strip the heading out of the body and attach it as the page's
+  // `title`. The reader's ChapterSheet falls back to "Page N" when
+  // title is null, so anything we detect just upgrades the label.
   const pages: ParsedPage[] = [];
   let pageIndex = 0;
   // Track the last emitted title so we can suppress immediate
@@ -1017,11 +1032,14 @@ async function parsePdf(
   let lastEmittedTitle: string | null = null;
   for (let i = 0; i < perPageText.length; i++) {
     const cleaned = normalizePdfText(perPageText[i] ?? '');
-    if (!cleaned || countWords(cleaned) < 5) continue; // mostly-empty pages
-    const detected = detectChapterTitle(cleaned);
+    // NOTE: near-empty pages are emitted, not skipped. Section
+    // dividers, plate pages and blanks are real pages in the Full
+    // view, and skipping them made the text page count smaller than
+    // `numPages` — breaking the 1:1 mapping on its own, before the
+    // slicing below even came into it.
+    const detected = cleaned ? detectChapterTitle(cleaned) : null;
     // Heading-only page (no real body). Emit one chapter marker so
-    // the heading isn't lost; subsequent body pages stay as normal
-    // un-titled slices.
+    // the heading isn't lost.
     if (detected && countWords(detected.body) < 5) {
       const nextTitle =
         lastEmittedTitle === detected.title ? null : detected.title;
@@ -1037,30 +1055,33 @@ async function parsePdf(
       continue;
     }
     const bodyText = detected ? detected.body : cleaned;
-    const slices = sliceIntoPagesByWordCount(bodyText, WORDS_PER_PAGE);
-    for (let s = 0; s < slices.length; s++) {
-      // Only the first slice of a detected chapter gets the title;
-      // continuation slices stay un-titled so the navigator doesn't
-      // show repeated "Chapter 5 / Chapter 5 (cont.) / …" rows.
-      // We also suppress the title if it matches the most recently
-      // emitted one (heading repeats across consecutive PDF pages).
-      let sliceTitle: string | null = null;
-      if (s === 0 && detected) {
-        sliceTitle =
-          lastEmittedTitle === detected.title ? null : detected.title;
-        if (sliceTitle) lastEmittedTitle = sliceTitle;
-      }
-      pages.push({
-        index: pageIndex++,
-        pdf_page_number: i + 1,
-        title: sliceTitle,
-        content: slices[s],
-        // PDFs don't get full-mode HTML — the native PDF reader already
-        // renders the original file with full fidelity.
-        html_content: null,
-        word_count: countWords(slices[s]),
-      });
+    // ONE ROW PER PDF PAGE.
+    //
+    // This used to call `sliceIntoPagesByWordCount(bodyText, 200)` and
+    // emit a row per ~200 words, which is what turned a 20-page PDF
+    // into ~130 "pages". The word-count rule is a deliberate product
+    // decision and it is still correct for EPUB, which has no inherent
+    // pages — see the EPUB path, which is unchanged. A PDF does have
+    // pages, and they are the unit the Full view, the page labels, the
+    // outline and every AI citation already agree on.
+    //
+    // Screen size, font size and line height now decide how this text
+    // is DRAWN. They no longer decide what counts as a page.
+    let pageTitle: string | null = null;
+    if (detected) {
+      pageTitle = lastEmittedTitle === detected.title ? null : detected.title;
+      if (pageTitle) lastEmittedTitle = pageTitle;
     }
+    pages.push({
+      index: pageIndex++,
+      pdf_page_number: i + 1,
+      title: pageTitle,
+      content: bodyText,
+      // PDFs don't get full-mode HTML — the native PDF reader already
+      // renders the original file with full fidelity.
+      html_content: null,
+      word_count: countWords(bodyText),
+    });
   }
 
   if (pages.length === 0) {
@@ -1328,8 +1349,8 @@ async function ocrPdfChunk(
       let lastEmittedTitle: string | null = initialLastTitle;
       for (let i = 0; i < matches.length; i++) {
         const cleaned = normalizePdfText(matches[i] ?? '');
-        if (!cleaned || countWords(cleaned) < 5) continue;
-        const detected = detectChapterTitle(cleaned);
+        // Emitted, not skipped — see the note on the main PDF path.
+        const detected = cleaned ? detectChapterTitle(cleaned) : null;
         if (detected && countWords(detected.body) < 5) {
           // Heading-only page (chapter cover).
           const nextTitle =
@@ -1346,23 +1367,23 @@ async function ocrPdfChunk(
           continue;
         }
         const bodyText = detected ? detected.body : cleaned;
-        const slices = sliceIntoPagesByWordCount(bodyText, WORDS_PER_PAGE);
-        for (let s = 0; s < slices.length; s++) {
-          let sliceTitle: string | null = null;
-          if (s === 0 && detected) {
-            sliceTitle =
-              lastEmittedTitle === detected.title ? null : detected.title;
-            if (sliceTitle) lastEmittedTitle = sliceTitle;
-          }
-          pages.push({
-            index: pageIndex++,
-            pdf_page_number: pageOffset + i + 1,
-            title: sliceTitle,
-            content: slices[s],
-            html_content: null,
-            word_count: countWords(slices[s]),
-          });
+        // One row per PDF page, same rule as the main path. This is the
+        // OCR/chunked route for books past the single-pass size limit;
+        // `pageOffset` keeps the page numbers absolute across chunks,
+        // so the 1:1 mapping holds for a 600-page book too.
+        let pageTitle: string | null = null;
+        if (detected) {
+          pageTitle = lastEmittedTitle === detected.title ? null : detected.title;
+          if (pageTitle) lastEmittedTitle = pageTitle;
         }
+        pages.push({
+          index: pageIndex++,
+          pdf_page_number: pageOffset + i + 1,
+          title: pageTitle,
+          content: bodyText,
+          html_content: null,
+          word_count: countWords(bodyText),
+        });
       }
       return { pages, lastTitle: lastEmittedTitle };
     } catch (err) {
