@@ -1,4 +1,4 @@
-import type { DiscoverBook } from '../index';
+import type { DiscoverBook } from './discoverApi';
 
 /**
  * Baked-in seed list of popular Gutenberg books. Used as the

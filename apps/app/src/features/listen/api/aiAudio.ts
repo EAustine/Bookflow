@@ -7,7 +7,12 @@ import {
 } from 'expo-audio';
 import { formatNetworkError } from '~/lib/networkErrors';
 import { supabase } from '~/lib/supabase';
-import { getLocalAudio } from '../index';
+// Deliberate and safe: see the cycle note in audioDownloads.ts. Both sides
+// are hoisted function declarations called only at runtime, so neither is
+// read at module-eval time. Contrast the feature-barrel cycle, where
+// `export *` IS evaluated on load and resolved to undefined.
+// eslint-disable-next-line import/no-cycle
+import { getLocalAudio } from './audioDownloads';
 import { presentPaywall, ENTITLEMENT_PRO } from '~/features/billing';
 
 /**

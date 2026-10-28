@@ -1,10 +1,6 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '~/lib/supabase';
-import {
-  isCreditLimitError,
-  presentCreditLimitPaywall,
-  CREDIT_LIMIT_MESSAGE,
-} from '../index';
+import { isCreditLimitError, presentCreditLimitPaywall, CREDIT_LIMIT_MESSAGE } from './aiUsage';
 
 /**
  * Practice questions client. Calls the `generate-practice` edge

@@ -12,13 +12,7 @@ import type { PurchasesPackage } from 'react-native-purchases';
 import { BottomSheet, type BottomSheetRef, Icon, Text } from '~/components';
 import { tokens } from '~/design/tokens';
 import { toast } from '~/lib/toast';
-import {
-  getTopupPackages,
-  purchaseTopup,
-  topupMetaFor,
-  type TopupKind,
-  type TopupMeta,
-} from '../index';
+import { getTopupPackages, purchaseTopup, topupMetaFor, type TopupKind, type TopupMeta } from '../api/revenuecat';
 
 /**
  * "Buy credits" bottom sheet — lists the consumable top-up packs from the

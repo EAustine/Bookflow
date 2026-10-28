@@ -1,6 +1,11 @@
 import { File, Directory, Paths } from 'expo-file-system';
 import { supabase } from '~/lib/supabase';
-import { fetchPageAudio, type AudioVoice } from '../index';
+// Deliberate and safe: see the cycle note in audioDownloads.ts. Both sides
+// are hoisted function declarations called only at runtime, so neither is
+// read at module-eval time. Contrast the feature-barrel cycle, where
+// `export *` IS evaluated on load and resolved to undefined.
+// eslint-disable-next-line import/no-cycle
+import { fetchPageAudio, type AudioVoice } from './aiAudio';
 import { useDownloadsStore } from '~/stores/downloadsStore';
 import { fireDownloadCompleteNotification } from '~/lib/notifications';
 import type { Book } from '~/types/book';

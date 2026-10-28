@@ -22,10 +22,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Icon, TabBar, type TabKey, Text } from '~/components';
 import { tokens } from '~/design/tokens';
 import type { Book } from '~/types/book';
-import {
-  ListenNowPlayingScreen,
-  type ListenNowPlayingScreenProps,
-} from '../index';
+import { ListenNowPlayingScreen, type ListenNowPlayingScreenProps } from './ListenNowPlayingScreen';
 
 // ─── Props ────────────────────────────────────────────────────────────────────
 

@@ -15,18 +15,13 @@ import { VoiceAvatar } from '~/components/VoiceAvatar';
 import { tokens } from '~/design/tokens';
 import { PLAYBACK_SPEEDS } from '~/stores/readerStore';
 import type { Book } from '~/types/book';
-import { type AudioVoice, DEFAULT_VOICE } from '../index';
-import { useAudioSession } from '../index';
+import { type AudioVoice, DEFAULT_VOICE } from '../api/aiAudio';
+import { useAudioSession } from '../api/audioSession';
 import { useBackHandler } from '~/lib/useBackHandler';
 import { presentPaywall, ENTITLEMENT_PRO, useIsPro } from '~/features/billing';
 import { usePage, usePageList } from '~/features/reader';
 import { BookSearchScreen } from '~/features/library';
-import {
-  getActivePreviewVoiceId,
-  playVoicePreview,
-  stopVoicePreview,
-  subscribeVoicePreview,
-} from '../index';
+import { getActivePreviewVoiceId, playVoicePreview, stopVoicePreview, subscribeVoicePreview } from '../api/voicePreview';
 
 // The speed pill cycles the same set the store accepts and the speed
 // sheet lists. Was a separate 5-value literal (0.75–2, no 0.5/1.75),
@@ -663,7 +658,7 @@ function BimodalText({
   currentCharIndex,
 }: {
   content: string;
-  alignment: import('../index').AudioAlignment | null;
+  alignment: import('../api/aiAudio').AudioAlignment | null;
   currentCharIndex: number;
 }) {
   const layout = useMemo(() => buildLayout(content), [content]);

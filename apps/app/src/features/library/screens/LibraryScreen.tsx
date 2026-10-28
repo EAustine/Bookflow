@@ -34,24 +34,19 @@ import {
 } from '~/components';
 import { tokens } from '~/design/tokens';
 import { useBooks } from '~/hooks/useBooks';
-import { peekCachedCoverUrl, resolveCoverUrl } from '../index';
+import { peekCachedCoverUrl, resolveCoverUrl } from '~/core/bookCovers';
 import { formatNetworkError } from '~/lib/networkErrors';
 import { supabase } from '~/lib/supabase';
 import type { Book } from '~/types/book';
 import { ReaderScreen } from '~/features/reader';
-import {
-  AddBookSheet,
-  ProcessingScreen,
-  type ProcessingStep,
-  ScannedPdfErrorScreen,
-} from '../index';
-import { useBookUpload } from '../index';
+import { AddBookSheet, ProcessingScreen, type ProcessingStep, ScannedPdfErrorScreen } from './UploadFlowScreen';
+import { useBookUpload } from '../api/uploadBook';
 import type * as DocumentPicker from 'expo-document-picker';
 import { useFreePlanUsage, FREE_PLAN_LIMITS } from '~/features/billing';
 import { useMonthlyListenStats } from '~/features/reader';
 import { useReaderStore } from '~/stores/readerStore';
 import { presentPaywall, ENTITLEMENT_PRO, useIsPro } from '~/features/billing';
-import { reprocessBook } from '../index';
+import { reprocessBook } from '../api/reprocessBook';
 import { DEFAULT_VOICE, estimateDownload, type AudioVoice } from '~/features/listen';
 import { toast } from '~/lib/toast';
 import { useDownloadsStore, type BookDownload } from '~/stores/downloadsStore';
@@ -2097,12 +2092,15 @@ function RemoveBookSheetContent({
 
 // ─── Shared primitives ───────────────────────────────────────────────────────
 
-// Signed-URL resolution + cache lives in `~/lib/bookCovers` so that
+// Signed-URL resolution + cache lives in `~/core/bookCovers` so that
 // any screen rendering a cover (Library, Listen history, Now Playing,
 // etc.) shares one cache and we don't re-sign the same path across
-// surfaces. Re-exported under the legacy name for App.tsx — the
-// next-user-sign-in purge calls it from there.
-export { clearBookCoverCache as clearLibrarySignedUrlCache } from '../index';
+// surfaces.
+//
+// It sits in core/, not in this feature, because `ui/RecentListenRow`
+// renders covers too and §4 forbids ui importing a feature. M3 moved it
+// under features/library/api by mistake, which made that import a lint
+// error; it is infrastructure over Supabase Storage, not library UI.
 
 function BookCover({
   book,

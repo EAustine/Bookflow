@@ -33,17 +33,11 @@ import {
   View,
 } from 'react-native';
 import { pollBalanceAfterPurchase, type PurchasedBalances } from '~/features/ai';
-import { AccountScreen } from '../index';
+import { AccountScreen } from './AccountScreen';
 import { TopupBalanceBlock } from '~/features/billing';
-import { HelpFAQScreen } from '../index';
-import { SettingsScreen } from '../index';
-import {
-  DefaultVoiceScreen,
-  NotificationsScreen,
-  ReadingDisplayScreen,
-  SendFeedbackScreen,
-  TranslationLanguageScreen,
-} from '../index';
+import { HelpFAQScreen } from './HelpFAQScreen';
+import { SettingsScreen } from './SettingsScreen';
+import { DefaultVoiceScreen, NotificationsScreen, ReadingDisplayScreen, SendFeedbackScreen, TranslationLanguageScreen } from './YouDrillScreens';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   TRANSLATION_LANGUAGE_LABELS,

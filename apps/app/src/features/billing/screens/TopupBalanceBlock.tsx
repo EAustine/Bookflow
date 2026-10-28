@@ -7,8 +7,8 @@ import {
   type PurchasedBalances,
   type TopupLine,
 } from '~/features/ai';
-import type { TopupKind } from '../index';
-import { BuyCreditsSheet, type BuyCreditsSheetRef } from '../index';
+import type { TopupKind } from '../api/revenuecat';
+import { BuyCreditsSheet, type BuyCreditsSheetRef } from './BuyCreditsSheet';
 
 /**
  * Purchased top-up balance, shown on the plan card below the monthly-allowance

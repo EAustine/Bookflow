@@ -12,7 +12,7 @@ import { tokens } from '~/design/tokens';
 import { formatNetworkError } from '~/lib/networkErrors';
 import { useBackHandler } from '~/lib/useBackHandler';
 import type { Book } from '~/types/book';
-import { generatePractice } from '../index';
+import { generatePractice } from '../api/aiPractice';
 
 // ─── Semantic colors not in token set ─────────────────────────────────────────
 

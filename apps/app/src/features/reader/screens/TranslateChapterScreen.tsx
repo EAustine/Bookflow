@@ -25,12 +25,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Icon, Text } from '~/components';
 import { tokens } from '~/design/tokens';
 import type { Book } from '~/types/book';
-import {
-  COMMON_LANGUAGES,
-  STORE_LANG_TO_TRANSLATE,
-  useTranslation,
-  type TranslationLanguage,
-} from '../index';
+import { COMMON_LANGUAGES, STORE_LANG_TO_TRANSLATE, useTranslation, type TranslationLanguage } from '../api/aiTranslate';
 import { formatNetworkError } from '~/lib/networkErrors';
 import { useBackHandler } from '~/lib/useBackHandler';
 import { useReaderStore } from '~/stores/readerStore';

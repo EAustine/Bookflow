@@ -29,26 +29,10 @@ import { formatNetworkError } from '~/lib/networkErrors';
 import { useBackHandler } from '~/lib/useBackHandler';
 import { useSlowOp } from '~/hooks/useSlowOp';
 import { SlowNetworkBanner } from '~/components/SlowNetworkBanner';
-import {
-  fetchOpenLibrary,
-  fetchWikisource,
-  fetchDoabRest,
-  popularGutenberg,
-  searchGutenberg,
-  topicGutenberg,
-  type DiscoverBook as ApiBook,
-} from '../index';
-import {
-  getCachedShelf,
-  hydrateShelfCache,
-  peekCachedShelf,
-  setCachedShelf,
-} from '../index';
-import {
-  importDiscoverBook,
-  importErrorMessage,
-} from '../index';
-import { DISCOVER_SEED, BIBLE_VERSIONS } from '../index';
+import { fetchOpenLibrary, fetchWikisource, fetchDoabRest, popularGutenberg, searchGutenberg, topicGutenberg, type DiscoverBook as ApiBook } from '../api/discoverApi';
+import { getCachedShelf, hydrateShelfCache, peekCachedShelf, setCachedShelf } from '../api/discoverCache';
+import { importDiscoverBook, importErrorMessage } from '../api/discoverImport';
+import { DISCOVER_SEED, BIBLE_VERSIONS } from '../api/discoverSeed';
 import { useBooks } from '~/hooks/useBooks';
 import { useFreePlanUsage } from '~/features/billing';
 import { presentPaywall, ENTITLEMENT_PRO } from '~/features/billing';

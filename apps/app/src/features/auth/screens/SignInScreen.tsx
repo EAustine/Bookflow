@@ -28,7 +28,7 @@ import { Icon } from '~/components/Icon';
 import { Input } from '~/components/Input';
 import { Text } from '~/components/Text';
 import { tokens } from '~/design/tokens';
-import { sendMagicLink, type SendMagicLinkResult } from '../index';
+import { sendMagicLink, type SendMagicLinkResult } from '../api/auth';
 import { PRIVACY_POLICY_URL, TERMS_OF_SERVICE_URL } from '~/lib/legalUrls';
 
 const RESEND_COOLDOWN_S = 30;

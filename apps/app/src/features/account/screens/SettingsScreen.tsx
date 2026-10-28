@@ -23,12 +23,7 @@ import {
   totalDownloadBytes,
   formatBytes,
 } from '~/features/listen';
-import {
-  DefaultVoiceScreen,
-  PlaybackSpeedScreen,
-  ReadingDisplayScreen,
-  TranslationLanguageScreen,
-} from '../index';
+import { DefaultVoiceScreen, PlaybackSpeedScreen, ReadingDisplayScreen, TranslationLanguageScreen } from './YouDrillScreens';
 import {
   fireReminderSetConfirmation,
   formatReminderTime,

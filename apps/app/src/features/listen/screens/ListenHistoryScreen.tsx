@@ -25,7 +25,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Icon, RecentListenRow, Text } from '~/components';
 import { tokens } from '~/design/tokens';
 import { useBooks } from '~/hooks/useBooks';
-import { useAudioSession } from '../index';
+import { useAudioSession } from '../api/audioSession';
 import { useBackHandler } from '~/lib/useBackHandler';
 import type { Book } from '~/types/book';
 

@@ -24,7 +24,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Icon, Text } from '~/components';
 import { tokens } from '~/design/tokens';
 import type { Book } from '~/types/book';
-import { useBookSearch, type SearchHit } from '../index';
+import { useBookSearch, type SearchHit } from '../api/bookSearch';
 import { useBackHandler } from '~/lib/useBackHandler';
 
 export type BookSearchScreenProps = {

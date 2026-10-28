@@ -23,11 +23,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Icon, Text } from '~/components';
 import { tokens } from '~/design/tokens';
 import { useBackHandler } from '~/lib/useBackHandler';
-import {
-  deleteHighlight,
-  type Highlight,
-  useBookHighlights,
-} from '../index';
+import { deleteHighlight, type Highlight, useBookHighlights } from '../api/highlights';
 import type { Book } from '~/types/book';
 
 export type HighlightsScreenProps = {

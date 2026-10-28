@@ -46,16 +46,16 @@ import { SlowNetworkBanner } from '~/components/SlowNetworkBanner';
 import type { Book } from '~/types/book';
 import { formatNetworkError } from '~/lib/networkErrors';
 import { supabase } from '~/lib/supabase';
-import { persistReadingPosition, touchLastReadAt } from '../index';
-import { useReadingSession } from '../index';
+import { persistReadingPosition, touchLastReadAt } from '../api/useBookChapters';
+import { useReadingSession } from '../api/readingSessions';
 import {
   AIToolsSheet,
   ChatScreen,
   SummaryScreen,
 } from '~/features/ai';
 import { PracticeQuestionsScreen } from '~/features/ai';
-import { TranslateChapterScreen } from '../index';
-import { HighlightsScreen } from '../index';
+import { TranslateChapterScreen } from './TranslateChapterScreen';
+import { HighlightsScreen } from './HighlightsScreen';
 import { BookSearchScreen } from '~/features/library';
 
 export type EpubFullReaderScreenProps = {

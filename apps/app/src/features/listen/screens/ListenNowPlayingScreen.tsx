@@ -34,8 +34,8 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { EqBars, Icon, RecentListenRow, Text } from '~/components';
 import { tokens } from '~/design/tokens';
-import { peekCachedCoverUrl, resolveCoverUrl } from '~/features/library';
-import type { Speed } from '../index';
+import { peekCachedCoverUrl, resolveCoverUrl } from '~/core/bookCovers';
+import type { Speed } from './PlaybackSpeedSheet';
 
 // ─── Props ────────────────────────────────────────────────────────────────────
 

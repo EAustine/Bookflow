@@ -33,11 +33,11 @@ import { formatNetworkError } from '~/lib/networkErrors';
 import { useBackHandler } from '~/lib/useBackHandler';
 import type { Book } from '~/types/book';
 import type { BottomSheetRef } from '~/components/BottomSheet';
-import { useSummary } from '../index';
-import { useChat, type ChatRecord } from '../index';
-import { FALLBACK_STARTERS, useStarterQuestions } from '../index';
+import { useSummary } from '../api/aiSummary';
+import { useChat, type ChatRecord } from '../api/aiChat';
+import { FALLBACK_STARTERS, useStarterQuestions } from '../api/aiStarters';
 import { presentPaywall, ENTITLEMENT_PRO, useIsPro } from '~/features/billing';
-import { useMonthlyAiUsage, aiCreditLimit } from '../index';
+import { useMonthlyAiUsage, aiCreditLimit } from '../api/aiUsage';
 
 // Offline colour aliases — defer to tokens so the slate palette
 // stays consistent with LibraryScreen's offline banner.
@@ -1196,7 +1196,7 @@ function StarterQuestions({
   state,
   onPick,
 }: {
-  state: import('../index').StarterQuestionsState;
+  state: import('../api/aiStarters').StarterQuestionsState;
   onPick: (q: string) => void;
 }) {
   // Surface the underlying failure to the dev console — silent error

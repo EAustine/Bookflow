@@ -27,7 +27,7 @@ import {
 import { AIToolsSheet, SummaryScreen, ChatScreen } from '~/features/ai';
 import { ReaderSkeleton } from '~/ui/SkeletonScreens';
 import { PracticeQuestionsScreen } from '~/features/ai';
-import { TranslateChapterScreen } from '../index';
+import { TranslateChapterScreen } from './TranslateChapterScreen';
 import { formatNetworkError } from '~/lib/networkErrors';
 import { reprocessBook } from '~/features/library';
 import { tokens } from '~/design/tokens';
@@ -35,19 +35,12 @@ import { useBackHandler } from '~/lib/useBackHandler';
 import { useSlowOp } from '~/hooks/useSlowOp';
 import { SlowNetworkBanner } from '~/components/SlowNetworkBanner';
 import type { Book } from '~/types/book';
-import {
-  persistReadingPosition,
-  useAllPagesContent,
-  usePage,
-  usePageList,
-  type PageListItem,
-  type PageRow,
-} from '../index';
-import { lookupWord, type WordLookup } from '../index';
+import { persistReadingPosition, useAllPagesContent, usePage, usePageList, type PageListItem, type PageRow } from '../api/useBookChapters';
+import { lookupWord, type WordLookup } from '../api/dictionary';
 import { supabase } from '~/lib/supabase';
-import { useReadingSession } from '../index';
-import { saveHighlight, useBookHighlights, type Highlight } from '../index';
-import { HighlightsScreen } from '../index';
+import { useReadingSession } from '../api/readingSessions';
+import { saveHighlight, useBookHighlights, type Highlight } from '../api/highlights';
+import { HighlightsScreen } from './HighlightsScreen';
 import { BookSearchScreen } from '~/features/library';
 import {
   TRANSLATION_LANGUAGE_LABELS,
@@ -63,10 +56,7 @@ import {
   BottomSheetView,
 } from '@gorhom/bottom-sheet';
 import * as Speech from 'expo-speech';
-import {
-  translateSnippet,
-  translateSnippetErrorMessage,
-} from '../index';
+import { translateSnippet, translateSnippetErrorMessage } from '../api/translateSnippet';
 
 // ─── Theme palette ────────────────────────────────────────────────────────────
 

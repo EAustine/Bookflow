@@ -9,16 +9,10 @@ import {
   type ReactNode,
 } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import {
-  DEFAULT_VOICE,
-  VOICE_OPTIONS,
-  useAudio,
-  type AudioAlignment,
-  type AudioVoice,
-} from '../index';
+import { DEFAULT_VOICE, VOICE_OPTIONS, useAudio, type AudioAlignment, type AudioVoice } from './aiAudio';
 import { persistReadingPosition } from '~/features/reader';
-import { peekCachedCoverUrl, resolveCoverUrl } from '~/features/library';
-import { readJsonFile } from '../index';
+import { peekCachedCoverUrl, resolveCoverUrl } from '~/core/bookCovers';
+import { readJsonFile } from './audioDownloads';
 import type { Book } from '~/types/book';
 import { useReaderStore } from '~/stores/readerStore';
 import { useIsPro } from '~/features/billing';

@@ -110,16 +110,59 @@ module.exports = [
   },
 
   // ── Rules 1-3 — feature and layer boundaries ────────────────────────
+  //
+  // The relative patterns are depth-sensitive, and every source file in a
+  // feature sits at features/<name>/<api|screens>/<file>. From there
+  // `../<dir>/<file>` is the SAME feature and `../../<name>/<dir>` is a
+  // different one.
+  //
+  // `../*/!(index)` was in this group until 2026-10-28, which made a
+  // feature's own screens/ -> api/ import a lint error and pushed every
+  // one of them onto `../index`. Since index.ts re-exports those same
+  // files, that is a cycle, and a cycle evaluates to `undefined` on one
+  // side at module load: the app died at launch with "Cannot read
+  // property 'map' of undefined" inside metroRequire. tsc cannot see it
+  // — types resolve through a cycle — so the decomposition typechecked
+  // clean and still shipped a crash. The barrel is a feature's public
+  // face, not its internal switchboard.
   {
     files: ['apps/app/src/features/*/**/*.{ts,tsx}'],
     rules: {
       'no-restricted-imports': ['error', {
-        patterns: [{
-          group: ['~/features/*/*', '../*/!(index)', '../../*/!(index)'],
-          message:
-            'Import another feature through its public index.ts, not its internals (§4 rule 1).',
-        }],
+        patterns: [
+          {
+            group: ['~/features/*/*', '../../*/!(index)'],
+            message:
+              'Import another feature through its public index.ts, not its internals (§4 rule 1).',
+          },
+          {
+            // A file inside a feature must never import that feature's
+            // own barrel. See the note above.
+            group: ['../index', '../../index'],
+            message:
+              "Don't import your own feature's index.ts — it re-exports this file, and the " +
+              'cycle resolves to undefined at module load. Import the defining module directly.',
+          },
+        ],
       }],
+    },
+  },
+
+  // ── Cycles ──────────────────────────────────────────────────────────
+  //
+  // The guard the barrel crash needed and did not have. `no-restricted-
+  // imports` above bans the one shape that caused it; this catches the
+  // shape nobody has thought of yet.
+  //
+  // Scoped to relative specifiers only: `import/no-unresolved` is off
+  // because the resolver cannot follow `~/*` or the workspace exports
+  // maps, so no-cycle cannot trace a cycle that runs through an alias
+  // either. Relative edges are what barrels are built from, which is
+  // where this class of bug actually lives.
+  {
+    files: ['apps/app/src/**/*.{ts,tsx}', 'packages/shared/src/**/*.ts'],
+    rules: {
+      'import/no-cycle': ['error', { maxDepth: 6, ignoreExternal: true }],
     },
   },
   {

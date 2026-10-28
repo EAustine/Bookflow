@@ -96,10 +96,10 @@ import type { Book } from '~/types/book';
 // now use RevenueCat's hosted paywall via presentPaywall(). The custom
 // screen never wired its CTA to a purchase; the hosted paywall handles
 // purchase / restore / localized pricing / store-compliance copy.
-import {
-  LibraryScreen,
-  clearLibrarySignedUrlCache,
-} from '~/features/library';
+import { LibraryScreen } from '~/features/library';
+// Covers moved to core/ in M3 — ui/ renders them too, so they cannot
+// live inside a feature (§4).
+import { clearBookCoverCache as clearLibrarySignedUrlCache } from '~/core/bookCovers';
 import { clearReaderImageSignedUrlCache } from '~/features/reader';
 import {
   OnboardingFirstBookScreen,

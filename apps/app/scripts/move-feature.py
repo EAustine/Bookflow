@@ -95,10 +95,21 @@ def main() -> int:
                 # stale import that only tsc caught.
                 s = s.replace(f"'{old}'", f"'{new}'")
                 s = s.replace(f'"{old}"', f'"{new}"')
-            # Inside the feature itself, point at the barrel relatively.
-            if f'/features/{name}/' in p:
-                s = s.replace(f"'~/features/{name}'", "'../index'")
-                s = s.replace(f'"~/features/{name}"', "'../index'")
+            # A file inside the feature must NOT be repointed at the
+            # feature's own barrel.
+            #
+            # This block used to rewrite `~/features/<name>` to
+            # `../index` for files inside that same feature. index.ts
+            # re-exports those very files, so the result is a cycle, and
+            # a cycle resolves to `undefined` on one side at module-eval
+            # time: the app died on launch with "Cannot read property
+            # 'map' of undefined" inside metroRequire. tsc cannot see it,
+            # because types resolve through a cycle — the whole M3
+            # decomposition typechecked clean and still shipped a crash.
+            #
+            # An intra-feature import belongs on the defining module
+            # (`../api/foo`), which `fix-barrel-cycles.py` resolves.
+            # `import/no-cycle` in eslint.config.js is the standing guard.
             if s != orig:
                 io.open(p, 'w', encoding='utf-8').write(s)
                 changed += 1

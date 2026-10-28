@@ -28,7 +28,7 @@
 
 import { useMemo } from 'react';
 import { useBooks } from '~/hooks/useBooks';
-import { useIsPro } from '../index';
+import { useIsPro } from './revenuecat';
 
 /** Free-tier caps. Mirrors the constant in App.tsx — kept duplicated
  * for now so this module doesn't depend on App.tsx (which would be a

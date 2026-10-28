@@ -17,7 +17,7 @@ import { useShareIntent } from 'expo-share-intent';
 import { useRouter } from 'expo-router';
 import { supabase } from '~/lib/supabase';
 import { reset as resetOfflineQueue } from '~/core/offline-queue';
-import { clearBookCoverCache as clearLibrarySignedUrlCache } from '~/features/library';
+import { clearBookCoverCache as clearLibrarySignedUrlCache } from '~/core/bookCovers';
 import { clearLastListenedBookId } from '~/features/listen';
 import { clearReaderImageSignedUrlCache } from '~/features/reader';
 import { presentPaywall, ENTITLEMENT_PRO } from '~/features/billing';

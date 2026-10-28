@@ -28,7 +28,7 @@ import { EqBars } from './EqBars';
 import { Icon } from './Icon';
 import { Text } from './Text';
 import { tokens } from '~/design/tokens';
-import { peekCachedCoverUrl, resolveCoverUrl } from '~/features/library';
+import { peekCachedCoverUrl, resolveCoverUrl } from '~/core/bookCovers';
 
 export type RecentListenRowSize = 'compact' | 'regular';
 

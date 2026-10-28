@@ -33,7 +33,7 @@ import {
   restorePurchases,
   useProSubscriptionDetails,
 } from '~/features/billing';
-import type { YouPlan, YouProfile } from '../index';
+import type { YouPlan, YouProfile } from './YouScreen';
 
 // External URLs for the Privacy & data rows live in a shared
 // constants module so a marketing change is a one-line edit.

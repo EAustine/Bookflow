@@ -9,7 +9,7 @@
  * Per /Users/completefarmer/Downloads/03b_signup.html.
  */
 
-import { SignInScreen } from '../index';
+import { SignInScreen } from './SignInScreen';
 
 export type SignUpScreenProps = {
   onBack: () => void;
