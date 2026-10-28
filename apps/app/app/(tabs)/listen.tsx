@@ -1,13 +1,17 @@
 /**
- * The listen tab.
+ * The listen tab — a route stub, not a screen.
  *
- * A placeholder while M2 lands. The screen it will host still renders
- * through `App.tsx`'s tab switch; moving each one across is the next
- * step, and each is its own reviewable change rather than one commit
- * that moves four screens at once.
+ * `ListenTab` exists so Expo Router registers `/listen` as a real URL. The
+ * screen itself is drawn by `SignedInShell`, which the `(tabs)` layout
+ * renders as a SIBLING of this route's `<Slot />`.
+ *
+ * It must render `null`, not a view. Until 2026-10-28 this returned
+ * `<View style={{ flex: 1 }} />` with a comment calling it "nothing" —
+ * but `flex: 1` is a claim on the layout, and two flex-1 siblings in a
+ * column each take half. The entire signed-in app rendered in the top
+ * half of the screen, tab bar and all, with the bottom half empty. A
+ * stub that occupies no space is what the layout above assumes.
  */
-import { View } from 'react-native';
-
 export default function ListenTab() {
-  return <View style={{ flex: 1 }} />;
+  return null;
 }

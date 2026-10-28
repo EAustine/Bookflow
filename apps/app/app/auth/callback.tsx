@@ -27,7 +27,7 @@ import {
   AuthCallbackScreen,
   type AuthCallbackError,
 } from '~/features/auth';
-import { completeAuthCallback, parseAuthCallback } from '~/features/auth';
+import { completeAuthCallback, parseAuthCallback, describeAuthCallback } from '~/features/auth';
 import { supabase } from '~/lib/supabase';
 
 export default function Callback() {
@@ -43,10 +43,21 @@ export default function Callback() {
   const inFlight = useRef(false);
 
   const handleUrl = useCallback(
-    async (url: string | null | undefined) => {
-      if (!url) return;
+    async (url: string | null | undefined, source: string) => {
+      if (!url) {
+        console.log('[auth] callback: no URL from', source);
+        return;
+      }
+      console.log('[auth] callback via', source, '::', describeAuthCallback(url));
       const payload = parseAuthCallback(url);
-      if (!payload) return;
+      if (!payload) {
+        // Not a silent return. A callback URL that parses to nothing is
+        // the shape of bug that leaves the user staring at "Verifying
+        // your sign-in link…" with no way to tell why.
+        console.warn('[auth] callback URL carried no auth material:', describeAuthCallback(url));
+        return;
+      }
+      console.log('[auth] callback payload kind:', payload.kind);
 
       // An error callback carries nothing to exchange, so it skips the
       // in-flight guard entirely — there is no request to duplicate.
@@ -99,8 +110,10 @@ export default function Callback() {
     // Expo Router has already parsed the URL that opened this route, but
     // the exchange needs the raw one — the token can arrive in the
     // fragment, which the router does not surface as a param.
-    void Linking.getInitialURL().then(handleUrl).catch(() => {});
-    const sub = Linking.addEventListener('url', ({ url }) => void handleUrl(url));
+    void Linking.getInitialURL()
+      .then((u) => handleUrl(u, 'getInitialURL'))
+      .catch(() => {});
+    const sub = Linking.addEventListener('url', ({ url }) => void handleUrl(url, 'urlEvent'));
     return () => sub.remove();
   }, [handleUrl]);
 
@@ -120,7 +133,7 @@ export default function Callback() {
     if (typeof errParam === 'string' && errParam) qp.error = errParam;
     if (typeof errCode === 'string' && errCode) qp.error_code = errCode;
     if (Object.keys(qp).length === 0) return;
-    void handleUrl(Linking.createURL('/auth/callback', { queryParams: qp }));
+    void handleUrl(Linking.createURL('/auth/callback', { queryParams: qp }), 'routerParams');
   }, [code, errParam, errCode, handleUrl]);
 
   return (

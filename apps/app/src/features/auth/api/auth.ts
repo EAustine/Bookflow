@@ -274,6 +274,33 @@ function categorizeCallbackError(
  * query string (PKCE: `…/auth/callback?code=…`). Returns null if the URL
  * isn't an auth callback or carries neither.
  */
+/**
+ * One-line description of a callback URL for logs.
+ *
+ * Parameter NAMES only — never values. A magic-link callback carries a
+ * PKCE code or a pair of JWTs, none of which belongs in device logs or
+ * crash reports. Knowing *which* params arrived (and whether they came
+ * in the query or the fragment) is what distinguishes the failure modes
+ * here, and that is all this reveals.
+ */
+export function describeAuthCallback(url: string): string {
+  try {
+    const hash = url.indexOf('#');
+    const qs = url.indexOf('?');
+    const query = qs >= 0 ? url.slice(qs + 1, hash >= 0 && hash > qs ? hash : undefined) : '';
+    const fragment = hash >= 0 ? url.slice(hash + 1) : '';
+    const names = (part: string) => {
+      if (!part) return 'none';
+      const keys = [...new URLSearchParams(part).keys()];
+      return keys.length ? keys.join(',') : 'none';
+    };
+    const path = url.split('#')[0].split('?')[0];
+    return `path=${path} query=[${names(query)}] fragment=[${names(fragment)}]`;
+  } catch {
+    return 'unparseable';
+  }
+}
+
 export function parseAuthCallback(url: string): AuthCallbackPayload | null {
   try {
     const parsed = Linking.parse(url);
