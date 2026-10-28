@@ -11,10 +11,10 @@ Target: `docs/ARCHITECTURE.md` · Distance to it: `docs/ARCHITECTURE_GAPS.md`
 
 | | |
 |---|---|
-| **Current step** | **M2 on `arch/m2-routing`, not merged.** Expo Router is the entry, 8 of 15 drill-ins done, 7 deferred to M3. Cannot be signed off without the test account — nothing post-auth is verified |
-| **Branch** | Phase 0 merged to `main` via [#2](https://github.com/EAustine/Bookflow/pull/2), rebased. Nothing in flight |
-| **`main`** | `28250be`, pushed. Carries `v11-batch`, the UI cleanup round, and Phase 0 |
-| **Next** | M0 spikes, on `arch/m0-spikes`. Throwaway code; nothing merges to `main` |
+| **Current step** | **M3 on `arch/m3-features`, not merged.** Offline write queue (22 tests) and the eight-feature decomposition are in. Remaining: convert the bespoke Supabase hooks to TanStack Query, the persisted cache, and the 7 routes deferred from M2 |
+| **Branch** | `arch/m3-features` at `9a53564`, 6 commits ahead of `main`, local only |
+| **`main`** | `f2ea7c7`. Carries M1, M2, and the PDF page-fidelity work |
+| **Next** | TanStack Query conversion. Still blocked on the test account for anything post-auth |
 
 ---
 
@@ -38,7 +38,45 @@ Target: `docs/ARCHITECTURE.md` · Distance to it: `docs/ARCHITECTURE_GAPS.md`
 
 ## Progress
 
-### M2 — routing · ◑ in progress on `arch/m2-routing`
+### M3 — features and data · ◑ in progress on `arch/m3-features`
+
+`src/screens` is gone; eight features own their own screens and api. The
+offline write queue is in `packages/shared` with 22 tests, wired through the
+write call sites, draining on reconnect and foreground.
+
+**2026-10-28 — the decomposition shipped a crash, and running the app found
+it in seconds.** The move script repointed every intra-feature import at the
+feature's own barrel (`../index`), which re-exports those same files. A cycle
+resolves to `undefined` on one side at module-eval time, and the app died on
+launch:
+
+    FATAL EXCEPTION: mqt_v_native
+    TypeError: Cannot read property 'map' of undefined  (metroRequire)
+
+59 imports, 29 files, all 8 features. **tsc, the bundler and the test suite
+were all green** — types resolve through a cycle, so nothing in CI could see
+it. It surfaced the first time anything executed the app since the M2
+cutover, which is the real lesson: this branch had been verified by reading
+and typechecking, never by running.
+
+The script was not the root cause on its own. `eslint.config.js` restricted
+`../*/!(index)`, which from `features/<name>/screens/` also matches
+`../api/<file>` — a *same-feature* import. The rule meant to stop a feature
+reaching into another feature and instead pushed intra-feature imports onto
+the barrel; the script implemented the rule as written. Both are fixed, and
+`import/no-cycle` now guards relative edges — verified by reintroducing a
+cycle and watching both rules fire. It immediately found a second,
+pre-existing cycle (`aiAudio` ↔ `audioDownloads`) that is genuinely safe and
+is now annotated rather than silently tolerated.
+
+The same commit also corrected a §4 layering mistake from the decomposition:
+`bookCovers.ts` was moved into `features/library/api/`, but `ui/
+RecentListenRow` renders covers too and ui must not import a feature. It is
+signed-URL infrastructure over Supabase Storage, so it now lives in `core/`.
+That had been an ESLint error on the branch since `9bdf6ee`, meaning **lint
+was red and reported green** — corrected here.
+
+### M2 — routing · ✅ merged to `main`
 
 Expo Router is the entry point; the `stage` machine no longer drives
 navigation. Auth, onboarding and the four tabs are routes. 8 of 15 drill-ins
