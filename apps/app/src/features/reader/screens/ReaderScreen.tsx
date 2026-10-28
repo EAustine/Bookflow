@@ -1,6 +1,5 @@
 import { forwardRef, memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Dimensions,
   ScrollView,
   Alert,
   Animated,
@@ -507,9 +506,19 @@ export function ReaderScreen({
    * Seeded from the window so the first render is close; corrected by
    * onLayout before the user can scroll.
    */
-  const [pageHeight, setPageHeight] = useState(
-    () => Dimensions.get('window').height,
-  );
+  /**
+   * 0 until the list viewport has been measured, and the list does not
+   * render until then.
+   *
+   * It used to seed from the window height. Rows were then laid out at
+   * ~800dp, the restore scrolled to `index * 800`, and onLayout
+   * afterwards corrected the height to the real ~590dp — leaving the
+   * offset stranded between two rows. The result on screen was two
+   * pages at once: the tail of one section frozen at the top while the
+   * next scrolled independently underneath it. Measuring first costs
+   * one frame and removes the whole failure mode.
+   */
+  const [pageHeight, setPageHeight] = useState(0);
   const pageHeightsRef = useRef<Map<number, number>>(new Map());
   // Signals when the SAVED page's section has reported its real
   // layout (height > 100). FlatList walks through intermediate
@@ -1365,7 +1374,13 @@ export function ReaderScreen({
           content when it enters the window — keeps memory bounded
           even on 500-page books. Visual page-break dividers separate
           sections so the user still feels page boundaries. */}
-      <View style={styles.pagerWrap}>
+      <View
+        style={styles.pagerWrap}
+        onLayout={(e) => {
+          const h = Math.round(e.nativeEvent.layout.height);
+          if (h > 0) setPageHeight((prev: number) => (prev === h ? prev : h));
+        }}
+      >
         {/* Loading overlay shown while we walk through the
             scroll-to-saved-page retries. Sits absolutely above
             the FlatList so the user sees a clean loading state
@@ -1397,16 +1412,9 @@ export function ReaderScreen({
           three strings cannot disagree. That agreement is the point:
           it is what the reader checks against the paper page.
         */}
+        {pageHeight > 0 && (
         <FlatList<PageListItem>
           ref={listRef}
-          // Measured on the LIST, not its wrapper: the snap interval and
-          // the row height have to be the same number or the list rests
-          // between two pages and a page's text is split across screens
-          // after all.
-          onLayout={(e) => {
-            const h = Math.round(e.nativeEvent.layout.height);
-            if (h > 0) setPageHeight((prev: number) => (prev === h ? prev : h));
-          }}
           data={pageList}
           keyExtractor={(item) => String(item.page_index)}
           renderItem={({ item, index }) => (
@@ -1592,6 +1600,7 @@ export function ReaderScreen({
             }
           }}
         />
+        )}
       </View>
 
       {/*
