@@ -23,6 +23,13 @@ export type PageRow = {
   book_id: string;
   page_index: number;
   pdf_page_number: number | null;
+  /**
+   * The printed page number as the publisher set it ("22", "xii"), when
+   * the PDF declares one. Display only — front matter commonly restarts
+   * numbering, so labels are neither unique nor ordered and must never
+   * be used as a key. `pdf_page_number` stays canonical.
+   */
+  page_label: string | null;
   title: string | null;
   content: string | null;
   html_content: string | null;
@@ -157,7 +164,7 @@ export function usePage(bookId: string, pageIndex: number) {
         const { data: row, error: queryError } = await supabase
           .from('pages')
           .select(
-            'id, book_id, page_index, pdf_page_number, title, content, html_content, word_count',
+            'id, book_id, page_index, pdf_page_number, page_label, title, content, html_content, word_count',
           )
           .eq('book_id', bookId)
           .eq('page_index', pageIndex)
@@ -263,7 +270,7 @@ export function useAllPagesContent(bookId: string) {
         const { data, error: queryError } = await supabase
           .from('pages')
           .select(
-            'id, book_id, page_index, pdf_page_number, title, content, html_content, word_count',
+            'id, book_id, page_index, pdf_page_number, page_label, title, content, html_content, word_count',
           )
           .eq('book_id', bookId)
           .order('page_index', { ascending: true })

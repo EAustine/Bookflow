@@ -131,6 +131,44 @@ type DerivedChapter = {
  *     the per-paragraph nested Text-span count bounded — Android's text
  *     engine starts dropping frames around ~3000 spans in a single Text.
  */
+/**
+ * Split prose into sentences WITHOUT losing any characters.
+ *
+ * Both call sites previously used
+ * `text.match(/[^.!?]+[.!?]+(?:\s|$)|[^.!?]+$/g)`. `String.match` with
+ * /g returns ONLY the matched runs — whatever falls between two matches
+ * is silently discarded. That pattern required a terminator to be
+ * followed by whitespace or end-of-string, so a sentence closing with
+ * `!”` or `?”` (terminator, then a closing quote) could not match, and
+ * the regex resumed AFTER it. The sentence was dropped from the page.
+ *
+ * Measured on a real page: `“It was meet to make merry and be glad!”`
+ * rendered as `” ` — 40 characters gone — while the full text sat
+ * correctly in `pages.content`, where the book search still found it.
+ * `He asked, “Why not?” Then he left.` lost its first 19 characters.
+ * Any dialogue-heavy book was quietly losing prose.
+ *
+ * This version is lossless by construction: it emits `[start, end)`
+ * slices that tile the whole string, then the remainder. A boundary it
+ * does not recognise means one longer sentence, never missing text.
+ */
+function splitSentences(text: string): string[] {
+  const out: string[] = [];
+  let start = 0;
+  // A run of terminators, any closing quotes/brackets belonging to it,
+  // and only where the next character is whitespace or the end — so
+  // "p. 3)" or "15:32" mid-sentence do not split.
+  const boundary = /[.!?]+["'\u201D\u2019)\]]*(?=\s|$)/g;
+  let m: RegExpExecArray | null;
+  while ((m = boundary.exec(text))) {
+    const end = m.index + m[0].length;
+    out.push(text.slice(start, end));
+    start = end;
+  }
+  if (start < text.length) out.push(text.slice(start));
+  return out;
+}
+
 function deriveChapter(dbPage: PageRow): DerivedChapter {
   // Plain text is the canonical source for the paginated reader.
   // Some books (older imports, EPUBs whose pipeline only produced
@@ -179,10 +217,9 @@ function deriveChapter(dbPage: PageRow): DerivedChapter {
       paragraphs.push(p);
       continue;
     }
-    const sentences =
-      p.match(/[^.!?]+[.!?]+(?:\s|$)|[^.!?]+$/g)
-        ?.map((s) => s.trim())
-        .filter(Boolean) ?? [p];
+    const sentences = splitSentences(p)
+      .map((s) => s.trim())
+      .filter(Boolean);
     let buf: string[] = [];
     let bufWords = 0;
     for (const s of sentences) {
@@ -1939,8 +1976,21 @@ const PageSection = memo(function PageSection({
               pipeline produced it. EPUBs have no original pages and
               keep the bare index.
             */}
+            {/*
+              When the publisher's printed number differs from the
+              physical page, show both. A reader comparing Text mode
+              against Full mode sees "22" printed on the page while the
+              app counts it as page 20 — both are right, they are just
+              different numbering systems, and showing only one makes
+              the app look wrong. `pdf_page_number` stays the primary
+              figure because it is the one that is unique, ordered, and
+              used by AI citations; the label is a reconciliation hint.
+            */}
             {dbPage?.pdf_page_number && pdfTotalPages
-              ? `Page ${dbPage.pdf_page_number} of ${pdfTotalPages}`
+              ? dbPage.page_label &&
+                dbPage.page_label !== String(dbPage.pdf_page_number)
+                ? `Page ${dbPage.pdf_page_number} of ${pdfTotalPages} · printed ${dbPage.page_label}`
+                : `Page ${dbPage.pdf_page_number} of ${pdfTotalPages}`
               : `Page ${pageIndex + 1}`}
           </Text>
           <View
@@ -2165,7 +2215,7 @@ function TappableParagraphImpl({
   // savedWords). Memoized on text so the regex passes only run
   // when text actually changes.
   const tokenized = useMemo(() => {
-    const raw = text.match(/[^.!?]+[.!?]+(?:\s|$)|[^.!?]+$/g) ?? [text];
+    const raw = splitSentences(text);
     let charCursor = 0;
     return raw
       .map((s) => s.trim())

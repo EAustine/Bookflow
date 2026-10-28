@@ -39,6 +39,63 @@ export type Database = {
   }
   public: {
     Tables: {
+      ai_usage_events: {
+        Row: {
+          book_id: string | null
+          cache_creation_tokens: number
+          cache_read_tokens: number
+          created_at: string
+          credits: number
+          id: string
+          input_tokens: number
+          model: string | null
+          output_tokens: number
+          tool: string
+          user_id: string
+        }
+        Insert: {
+          book_id?: string | null
+          cache_creation_tokens?: number
+          cache_read_tokens?: number
+          created_at?: string
+          credits?: number
+          id?: string
+          input_tokens?: number
+          model?: string | null
+          output_tokens?: number
+          tool: string
+          user_id: string
+        }
+        Update: {
+          book_id?: string | null
+          cache_creation_tokens?: number
+          cache_read_tokens?: number
+          created_at?: string
+          credits?: number
+          id?: string
+          input_tokens?: number
+          model?: string | null
+          output_tokens?: number
+          tool?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_usage_events_book_id_fkey"
+            columns: ["book_id"]
+            isOneToOne: false
+            referencedRelation: "books"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ai_usage_events_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       audio_cache: {
         Row: {
           alignment_path: string | null
@@ -74,11 +131,39 @@ export type Database = {
           },
         ]
       }
+      audio_content_cache: {
+        Row: {
+          alignment_path: string | null
+          content_hash: string
+          created_at: string
+          duration_seconds: number | null
+          storage_path: string
+          voice_id: string
+        }
+        Insert: {
+          alignment_path?: string | null
+          content_hash: string
+          created_at?: string
+          duration_seconds?: number | null
+          storage_path: string
+          voice_id: string
+        }
+        Update: {
+          alignment_path?: string | null
+          content_hash?: string
+          created_at?: string
+          duration_seconds?: number | null
+          storage_path?: string
+          voice_id?: string
+        }
+        Relationships: []
+      }
       books: {
         Row: {
           author: string | null
           cover_storage_path: string | null
           created_at: string | null
+          extraction_version: number
           file_storage_path: string | null
           file_type: string | null
           id: string
@@ -99,6 +184,7 @@ export type Database = {
           author?: string | null
           cover_storage_path?: string | null
           created_at?: string | null
+          extraction_version?: number
           file_storage_path?: string | null
           file_type?: string | null
           id?: string
@@ -119,6 +205,7 @@ export type Database = {
           author?: string | null
           cover_storage_path?: string | null
           created_at?: string | null
+          extraction_version?: number
           file_storage_path?: string | null
           file_type?: string | null
           id?: string
@@ -141,6 +228,60 @@ export type Database = {
             columns: ["user_id"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      chapters: {
+        Row: {
+          book_id: string
+          created_at: string
+          end_page_index: number
+          id: string
+          level: number
+          ordinal: number
+          parent_id: string | null
+          source: string
+          start_page_index: number
+          title: string
+        }
+        Insert: {
+          book_id: string
+          created_at?: string
+          end_page_index: number
+          id?: string
+          level?: number
+          ordinal: number
+          parent_id?: string | null
+          source: string
+          start_page_index: number
+          title: string
+        }
+        Update: {
+          book_id?: string
+          created_at?: string
+          end_page_index?: number
+          id?: string
+          level?: number
+          ordinal?: number
+          parent_id?: string | null
+          source?: string
+          start_page_index?: number
+          title?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "chapters_book_id_fkey1"
+            columns: ["book_id"]
+            isOneToOne: false
+            referencedRelation: "books"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "chapters_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: false
+            referencedRelation: "chapters"
             referencedColumns: ["id"]
           },
         ]
@@ -216,6 +357,41 @@ export type Database = {
           },
           {
             foreignKeyName: "conversations_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      credit_grants: {
+        Row: {
+          amount: number
+          created_at: string
+          kind: string
+          product_id: string | null
+          transaction_id: string
+          user_id: string
+        }
+        Insert: {
+          amount: number
+          created_at?: string
+          kind: string
+          product_id?: string | null
+          transaction_id: string
+          user_id: string
+        }
+        Update: {
+          amount?: number
+          created_at?: string
+          kind?: string
+          product_id?: string | null
+          transaction_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "credit_grants_user_id_fkey"
             columns: ["user_id"]
             isOneToOne: false
             referencedRelation: "profiles"
@@ -374,36 +550,45 @@ export type Database = {
       pages: {
         Row: {
           book_id: string | null
+          chapter_id: string | null
           content: string | null
           content_tsv: unknown
           created_at: string | null
+          extraction_version: number
           html_content: string | null
           id: string
           page_index: number
+          page_label: string | null
           pdf_page_number: number | null
           title: string | null
           word_count: number | null
         }
         Insert: {
           book_id?: string | null
+          chapter_id?: string | null
           content?: string | null
           content_tsv?: unknown
           created_at?: string | null
+          extraction_version?: number
           html_content?: string | null
           id?: string
           page_index: number
+          page_label?: string | null
           pdf_page_number?: number | null
           title?: string | null
           word_count?: number | null
         }
         Update: {
           book_id?: string | null
+          chapter_id?: string | null
           content?: string | null
           content_tsv?: unknown
           created_at?: string | null
+          extraction_version?: number
           html_content?: string | null
           id?: string
           page_index?: number
+          page_label?: string | null
           pdf_page_number?: number | null
           title?: string | null
           word_count?: number | null
@@ -414,6 +599,13 @@ export type Database = {
             columns: ["book_id"]
             isOneToOne: false
             referencedRelation: "books"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pages_chapter_id_fkey"
+            columns: ["chapter_id"]
+            isOneToOne: false
+            referencedRelation: "chapters"
             referencedColumns: ["id"]
           },
         ]
@@ -449,9 +641,17 @@ export type Database = {
       }
       profiles: {
         Row: {
+          ai_credits_balance: number
+          ai_credits_balance_expires_at: string | null
+          ai_credits_balance_total: number
           ai_credits_limit: number | null
+          ai_credits_period_start: string
           ai_credits_used: number | null
+          audio_seconds_balance: number
+          audio_seconds_balance_expires_at: string | null
+          audio_seconds_balance_total: number
           audio_seconds_limit: number | null
+          audio_seconds_period_start: string
           audio_seconds_used: number | null
           avatar_storage_path: string | null
           created_at: string | null
@@ -466,9 +666,17 @@ export type Database = {
           updated_at: string | null
         }
         Insert: {
+          ai_credits_balance?: number
+          ai_credits_balance_expires_at?: string | null
+          ai_credits_balance_total?: number
           ai_credits_limit?: number | null
+          ai_credits_period_start?: string
           ai_credits_used?: number | null
+          audio_seconds_balance?: number
+          audio_seconds_balance_expires_at?: string | null
+          audio_seconds_balance_total?: number
           audio_seconds_limit?: number | null
+          audio_seconds_period_start?: string
           audio_seconds_used?: number | null
           avatar_storage_path?: string | null
           created_at?: string | null
@@ -483,9 +691,17 @@ export type Database = {
           updated_at?: string | null
         }
         Update: {
+          ai_credits_balance?: number
+          ai_credits_balance_expires_at?: string | null
+          ai_credits_balance_total?: number
           ai_credits_limit?: number | null
+          ai_credits_period_start?: string
           ai_credits_used?: number | null
+          audio_seconds_balance?: number
+          audio_seconds_balance_expires_at?: string | null
+          audio_seconds_balance_total?: number
           audio_seconds_limit?: number | null
+          audio_seconds_period_start?: string
           audio_seconds_used?: number | null
           avatar_storage_path?: string | null
           created_at?: string | null
@@ -562,6 +778,51 @@ export type Database = {
           },
         ]
       }
+      site_contact_messages: {
+        Row: {
+          created_at: string
+          email: string
+          id: string
+          message: string
+          name: string
+        }
+        Insert: {
+          created_at?: string
+          email: string
+          id?: string
+          message: string
+          name: string
+        }
+        Update: {
+          created_at?: string
+          email?: string
+          id?: string
+          message?: string
+          name?: string
+        }
+        Relationships: []
+      }
+      site_waitlist: {
+        Row: {
+          created_at: string
+          email: string
+          id: string
+          source: string | null
+        }
+        Insert: {
+          created_at?: string
+          email: string
+          id?: string
+          source?: string | null
+        }
+        Update: {
+          created_at?: string
+          email?: string
+          id?: string
+          source?: string | null
+        }
+        Relationships: []
+      }
       summaries: {
         Row: {
           content: string | null
@@ -631,7 +892,34 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      grant_credits: {
+        Args: {
+          p_amount: number
+          p_kind: string
+          p_product: string
+          p_txn: string
+          p_user: string
+        }
+        Returns: boolean
+      }
+      record_ai_usage: {
+        Args: {
+          p_book: string
+          p_cache_create: number
+          p_cache_read: number
+          p_credits: number
+          p_input: number
+          p_model: string
+          p_output: number
+          p_tool: string
+          p_user: string
+        }
+        Returns: number
+      }
+      record_audio_usage: {
+        Args: { p_seconds: number; p_user: string }
+        Returns: number
+      }
     }
     Enums: {
       [_ in never]: never
@@ -650,12 +938,12 @@ export type Tables<
   DefaultSchemaTableNameOrOptions extends
     | keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
         DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -679,11 +967,11 @@ export type TablesInsert<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -704,11 +992,11 @@ export type TablesUpdate<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -729,11 +1017,11 @@ export type Enums<
   DefaultSchemaEnumNameOrOptions extends
     | keyof DefaultSchema["Enums"]
     | { schema: keyof DatabaseWithoutInternals },
-  EnumName extends DefaultSchemaEnumNameOrOptions extends {
+  EnumName extends (DefaultSchemaEnumNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaEnumNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -746,11 +1034,11 @@ export type CompositeTypes<
   PublicCompositeTypeNameOrOptions extends
     | keyof DefaultSchema["CompositeTypes"]
     | { schema: keyof DatabaseWithoutInternals },
-  CompositeTypeName extends PublicCompositeTypeNameOrOptions extends {
+  CompositeTypeName extends (PublicCompositeTypeNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
-    : never = never,
+    : never) = never,
 > = PublicCompositeTypeNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
