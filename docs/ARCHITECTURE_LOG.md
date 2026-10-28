@@ -69,6 +69,20 @@ cycle and watching both rules fire. It immediately found a second,
 pre-existing cycle (`aiAudio` ↔ `audioDownloads`) that is genuinely safe and
 is now annotated rather than silently tolerated.
 
+**2026-10-28 — a second M1 regression, found the same way.** With the crash
+fixed, the app launched but sign-in failed with "Couldn't reach our servers".
+Not the network: `.env` has lived at the repo root since June, and Expo reads
+it from the *project* root, which M1 moved to `apps/app/`. Every
+`EXPO_PUBLIC_*` var had been undefined in local builds since then, so the app
+fell back to `https://invalid.bookflow.local`. The app logs this loudly at
+startup; nobody had read the log because nobody had run the app. Fixed with
+`apps/app/.env -> ../../.env` (both paths gitignored) and documented in
+`.env.example`. EAS builds were never affected — they use `eas env`.
+
+Worth noting what did *not* find either bug: tsc, the bundler, the test suite,
+and a static grep of the built bundle, which gave a false negative on Hermes
+bytecode. Both were found by running the app and reading logcat.
+
 The same commit also corrected a §4 layering mistake from the decomposition:
 `bookCovers.ts` was moved into `features/library/api/`, but `ui/
 RecentListenRow` renders covers too and ui must not import a feature. It is
