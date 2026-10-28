@@ -250,8 +250,13 @@ Deno.serve(async (req) => {
         {
           type: 'text',
           text: SYSTEM_PROMPT_PREFIX + bookText + SYSTEM_PROMPT_SUFFIX,
+          // Prompt caching. Real API feature; the pinned SDK (0.30.0)
+          // predates its types, so the cast is a types gap rather than
+          // a runtime one. Remove it when the SDK is bumped — tracked
+          // as a follow-up, not done here because none of these
+          // functions can be run in this environment.
           cache_control: { type: 'ephemeral' },
-        },
+        } as unknown as { type: 'text'; text: string },
       ],
       messages: [
         ...priorMessages.map((m) => ({ role: m.role, content: m.content })),

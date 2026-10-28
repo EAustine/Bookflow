@@ -27,6 +27,7 @@
 
 import Anthropic from 'npm:@anthropic-ai/sdk@0.30.0';
 import { createClient } from 'npm:@supabase/supabase-js@2.45.0';
+import type { EdgeSupabaseClient } from '../_shared/supabaseTypes.ts';
 // epubjs is browser-oriented and was painful in Deno (DOM shims, factory
 // vs constructor confusion, slow per-item reads). We now parse EPUBs
 // directly with JSZip + a small OPF parser — no DOM, no factory dance,
@@ -1312,7 +1313,10 @@ async function parsePdf(
     // Heading-only page (no real body). Emit one chapter marker so
     // the heading isn't lost.
     if (detected && countWords(detected.body) < 5) {
-      const nextTitle =
+      // Annotated rather than inferred: without it TS walks
+      // nextTitle -> lastEmittedTitle -> (assigned nextTitle below) and
+      // gives up with an implicit any.
+      const nextTitle: string | null =
         lastEmittedTitle === detected.title ? null : detected.title;
       pages.push({
         index: pageIndex++,
@@ -1593,7 +1597,11 @@ async function ocrPdfChunk(
         messages: [
           {
             role: 'user',
-            content: [
+            // deno-lint-ignore no-explicit-any
+            content: ([
+              // PDF document input. Same story as cache_control above:
+              // a real API feature the pinned SDK's types predate.
+              // deno-lint-ignore no-explicit-any
               {
                 type: 'document',
                 source: {
@@ -1606,14 +1614,14 @@ async function ocrPdfChunk(
                 type: 'text',
                 text: `Transcribe this PDF page by page. Wrap each page's text exactly with ${PAGE_OPEN} and ${PAGE_CLOSE}. Output one pair per page, in order. No other text outside the markers.`,
               },
-            ],
+            ] as unknown as any[]),
           },
         ],
       });
 
       const fullText = response.content
-        .filter((b: { type: string }) => b.type === 'text')
-        .map((b: { type: string; text: string }) => b.text)
+        .filter((b): b is { type: 'text'; text: string } => b.type === 'text')
+        .map((b) => b.text)
         .join('');
 
       // Parse <bf-page>…</bf-page> blocks. We deliberately accept
@@ -1758,7 +1766,12 @@ async function extractPdfCover(buffer: Uint8Array): Promise<ParsedBook['cover']>
     // breaking the cover display). We now sniff every image's magic
     // bytes and only consider valid JPEG/PNG candidates — pick the
     // largest among those, which is overwhelmingly the cover artwork.
-    const images = (await extractImages(doc, 1)) as Array<
+    // unpdf declares extractImages as returning Uint8ClampedArray[];
+    // at runtime the entries are the Uint8Array / {data} shapes handled
+    // below. `as unknown` first, because the two array types genuinely
+    // do not overlap and a direct assertion is the kind TypeScript is
+    // right to refuse.
+    const images = (await extractImages(doc, 1)) as unknown as Array<
       Uint8Array | { data: Uint8Array; key?: string }
     >;
     if (!images || images.length === 0) {
@@ -2364,7 +2377,7 @@ function json(payload: unknown, status: number) {
 }
 
 async function markFailed(
-  supabase: ReturnType<typeof createClient>,
+  supabase: EdgeSupabaseClient,
   bookId: string,
   reason: string,
 ): Promise<void> {
@@ -2398,7 +2411,7 @@ async function markFailed(
  * the phase-derived default ("Reading the file…").
  */
 function makeProgressReporter(
-  supabase: ReturnType<typeof createClient>,
+  supabase: EdgeSupabaseClient,
   bookId: string,
 ): ProgressReporter {
   return (message) => {

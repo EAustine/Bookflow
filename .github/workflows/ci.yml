@@ -60,5 +60,22 @@ jobs:
       # Welcome screen renders is the cheapest guard that would have
       # caught it.
 
+      # The 21 Supabase edge functions had NO type checking of any kind:
+      # ESLint excludes them (Deno `npm:` specifiers are unresolvable
+      # under Node resolution) and tsc never saw them. That is ~6,000
+      # lines including the whole book-processing pipeline.
+      #
+      # Adding this found 22 errors, among them a PostgREST embedded
+      # resource typed as an object when it returns an array — which
+      # would have made a chapter name silently vanish from every AI
+      # page citation.
+      - name: Set up Deno
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
+      - name: Typecheck edge functions
+        run: deno check --config supabase/functions/deno.json supabase/functions/*/index.ts
+
       - name: Native bundle still builds
         run: cd apps/app && npx expo export --platform android --output-dir /tmp/android-ci --clear

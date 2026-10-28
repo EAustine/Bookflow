@@ -248,7 +248,15 @@ Deno.serve(async (req) => {
     word_count: number | null;
     pdf_page_number: number | null;
     page_label: string | null;
-    chapters: { title: string } | null;
+    /**
+     * PostgREST returns an embedded resource as an ARRAY unless it can
+     * prove the relationship is to-one, and it cannot here until the
+     * generated types know about `pages.chapter_id`. Typed as both
+     * shapes and normalised below — asserting the object shape would
+     * have made `chapters?.title` silently undefined at runtime, so the
+     * chapter would never have appeared in a page marker.
+     */
+    chapters: { title: string }[] | { title: string } | null;
   }>;
   if (pages.length === 0) {
     return json({ error: 'page_not_found' }, 404);
@@ -281,7 +289,9 @@ Deno.serve(async (req) => {
   const pageMarker = (p: typeof pages[number]) => {
     const parts = [`Page ${citePage(p)}`];
     if (p.page_label) parts.push(`printed ${p.page_label}`);
-    const chapter = p.chapters?.title;
+    const chapter = Array.isArray(p.chapters)
+      ? p.chapters[0]?.title
+      : p.chapters?.title;
     if (chapter) parts.push(chapter);
     return `[${parts.join(' | ')}]`;
   };
