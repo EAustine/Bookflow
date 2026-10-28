@@ -70,6 +70,7 @@ walk('font', t.fonts, (v) => `"${v}"`);
 walk('font-size', t.fontSizes, px);
 walk('icon-size', t.iconSize, px);
 walk('breakpoint', t.breakpoints, px);
+walk('layout', t.layout, px);
 emit('reading-measure', px(t.readingMeasure));
 
 // Elevation: RN shadow model -> CSS box-shadow. Lossy; see the header.

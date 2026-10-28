@@ -10,6 +10,7 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useSizeClass } from '~/hooks/useSizeClass';
 import { BottomSheet, ChapterSheet, type BottomSheetRef, Icon, Text } from '~/components';
 import { VoiceAvatar } from '~/components/VoiceAvatar';
 import { tokens } from '~/design/tokens';
@@ -1183,6 +1184,7 @@ export type MiniPlayerProps = {
 export function MiniPlayer({ onExpand }: MiniPlayerProps) {
   const audio = useAudioSession();
   const insets = useSafeAreaInsets();
+  const { isWide } = useSizeClass();
   // Swipe-to-dismiss state. translateX drives the bar's horizontal
   // offset; opacity fades it as it leaves the screen. Both are
   // Animated.Values so the gesture stays on the UI thread via
@@ -1301,11 +1303,15 @@ export function MiniPlayer({ onExpand }: MiniPlayerProps) {
   // just hide the floating preview strip on other tabs.
   if (audio.miniPlayerHidden) return null;
 
-  // The mini bar floats absolutely from App.tsx and needs to sit above
-  // the TabBar. TabBar = paddingTop(8) + content(~40) + paddingBottom
-  // (max(safeInset, 8)). 56 covers the inner content; safeInset covers
-  // the home-indicator area on notched devices.
-  const tabBarOffset = 56 + Math.max(insets.bottom, 8);
+  // The mini bar floats absolutely and needs to clear whatever sits
+  // below it. On a phone that is the TabBar: paddingTop(8) +
+  // content(~40) + paddingBottom(max(safeInset, 8)) — 56 covers the
+  // inner content and safeInset covers the home-indicator area.
+  //
+  // Above Compact there is no TabBar to clear; the rail is beside the
+  // content, not under it. Keeping the 56 there would hang the bar in
+  // the air over an empty strip of its own making.
+  const tabBarOffset = isWide ? 0 : 56 + Math.max(insets.bottom, 8);
 
   const isPlaying = audio.isPlaying;
   const pageIndex = audio.pageIndex;

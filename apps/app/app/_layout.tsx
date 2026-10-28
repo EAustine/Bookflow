@@ -29,6 +29,7 @@ import { QueryProvider } from "~/core/query";
 import { StatusBar } from "expo-status-bar";
 import { supabase } from "~/lib/supabase";
 import { useAppFonts } from "~/lib/useAppFonts";
+import { applyOrientationPolicy } from "~/platform/orientation";
 
 /**
  * Last-resort ceiling on the splash. Every branch of session restore
@@ -71,6 +72,13 @@ export default function RootLayout() {
   const [destination, setDestination] = useState<Destination | null>(null);
   const [splashDone, setSplashDone] = useState(false);
   const onSplashComplete = useCallback(() => setSplashDone(true), []);
+
+  // Orientation policy: phones portrait, tablets and web free (§1 of
+  // the responsive brief). Runs once, before anything has laid out, and
+  // never again — the device does not change category mid-session.
+  useEffect(() => {
+    void applyOrientationPolicy();
+  }, []);
 
   // The hand-off. Both conditions must hold: a destination to go to, and
   // a splash that has finished saying what it had to say.

@@ -31,6 +31,8 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { BottomSheetModalProvider } from '@gorhom/bottom-sheet';
 import { ToastHost } from '~/components/ToastHost';
+import { SideRail } from '~/components/SideRail';
+import { useSizeClass } from '~/hooks/useSizeClass';
 import { useFonts } from 'expo-font';
 import * as Linking from 'expo-linking';
 import * as DocumentPicker from 'expo-document-picker';
@@ -457,6 +459,23 @@ export function SignedInShell({
   // user taps Listen ("Rendered fewer hooks than expected" crash).
   const [discoverSubViewOpen, setDiscoverSubViewOpen] = useState(false);
 
+  // Same rule as the useState calls above: a hook, so it has to sit
+  // above the listenForeground early return.
+  const { isWide, sizeClass } = useSizeClass();
+
+  /**
+   * A screen is covering the shell, so neither the rail nor the mini
+   * player should be drawn over it.
+   *
+   * These four are the full-screen takeovers: all three readers (§2 —
+   * "no rail at any size"), the foreground Listen overlay, and the You
+   * and Discover drill-ins. The mini player adds two more conditions of
+   * its own below, because it also hides on the Listen and You tabs —
+   * the rail does not, since that is where the user navigates from.
+   */
+  const chromeHidden =
+    listenForeground || readerOpen || youSubViewOpen || discoverSubViewOpen;
+
   const handleStartListening = useCallback(
     (book: Book) => {
       // No client-side audio gate: playing already-narrated audio (cached or
@@ -509,7 +528,20 @@ export function SignedInShell({
   }
 
   return (
-    <View style={styles.stageRoot}>
+    <View style={[styles.stageRoot, isWide && styles.stageRootWide]}>
+      {/* Primary nav above Compact (§2). Suppressed by exactly the same
+          four conditions that already hide the mini player below: the
+          reader has no rail at any size, and neither do the foreground
+          Listen overlay or the You / Discover drill-ins, all of which
+          take over the whole screen. */}
+      {isWide && !chromeHidden && (
+        <SideRail
+          activeTab={activeTab}
+          onChange={setActiveTab}
+          expanded={sizeClass === 'desktop'}
+        />
+      )}
+      <View style={styles.contentColumn}>
       {activeTab === 'library' && (
         <LibraryScreen
           onTabChange={setActiveTab}
@@ -582,17 +614,14 @@ export function SignedInShell({
           - Any drill-in inside the Discover tab (category list, book
             detail) — same focus reasoning. */}
       {audio.book &&
-        !listenForeground &&
-        !readerOpen &&
-        !youSubViewOpen &&
-        !discoverSubViewOpen &&
+        !chromeHidden &&
         activeTab !== 'listen' &&
         activeTab !== 'you' && (
           <View style={styles.miniPlayerOverlay} pointerEvents="box-none">
             <MiniPlayer onExpand={() => setListenForeground(true)} />
           </View>
         )}
-
+      </View>
     </View>
   );
 }
@@ -801,6 +830,19 @@ const styles = StyleSheet.create({
   stageRoot: {
     flex: 1,
   },
+  /** Rail beside content, rather than content alone. */
+  stageRootWide: {
+    flexDirection: 'row',
+  },
+  contentColumn: {
+    flex: 1,
+  },
+  /**
+   * Absolute within the content column, not the whole shell. On a phone
+   * the two are the same box; above Compact this is what keeps the bar
+   * out from under the rail and puts it "along the bottom of the
+   * content", which is what §2 asks for on Medium and Expanded.
+   */
   miniPlayerOverlay: {
     position: 'absolute',
     left: 0,
