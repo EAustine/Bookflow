@@ -32,12 +32,7 @@ import { PracticeQuestionsScreen } from '~/features/ai';
 import { TranslateChapterScreen } from './TranslateChapterScreen';
 import { formatNetworkError } from '~/lib/networkErrors';
 import { reprocessBook } from '~/features/library';
-import {
-  pageDisplayText,
-  pdfIndexOf,
-  resolvePageQuery,
-  type PageMatch,
-} from '@bookflow/shared';
+import { pageDisplayText, pdfIndexOf } from '@bookflow/shared';
 import { tokens } from '~/design/tokens';
 import { useBackHandler } from '~/lib/useBackHandler';
 import { useSlowOp } from '~/hooks/useSlowOp';
@@ -421,11 +416,6 @@ export function ReaderScreen({
   // navigated by swipe and the page counter at top right; per the
   // chapters→pages refactor, chapters no longer have a list UI.
   const aiSheetRef = useRef<BottomSheetRef>(null);
-  // Go to page. `goToMatches` is null until a query has been resolved;
-  // an empty array means "resolved, nothing matched".
-  const goToSheetRef = useRef<BottomSheetRef>(null);
-  const [goToQuery, setGoToQuery] = useState('');
-  const [goToMatches, setGoToMatches] = useState<PageMatch[] | null>(null);
   const sentenceSheetRef = useRef<BottomSheetModal>(null);
 
   // Auto-hide chrome. State, not ref: pointerEvents below reads
@@ -987,18 +977,6 @@ export function ReaderScreen({
    * starts, so a page in the middle of chapter 3 carries no title of
    * its own and has to look backwards.
    */
-  /**
-   * Labels positioned by `page_index`, which is what `resolvePageQuery`
-   * expects — the array position IS the lookup key, so a label is never
-   * used as one.
-   */
-  const pageLabelList = useMemo(() => {
-    const out: (string | null)[] = [];
-    for (const row of pageList) out[row.page_index] = row.page_label;
-    for (let i = 0; i < out.length; i++) if (out[i] === undefined) out[i] = null;
-    return out;
-  }, [pageList]);
-
   const handleWordPress = useCallback((word: string) => {
     const cleaned = word.replace(/[^a-zA-Z'-]/g, '').toLowerCase();
     if (cleaned.length <= 1) return;
@@ -1498,6 +1476,7 @@ export function ReaderScreen({
           onScroll={(e: NativeSyntheticEvent<NativeScrollEvent>) => {
             const { contentOffset, contentSize, layoutMeasurement } =
               e.nativeEvent;
+
             const scrollable = Math.max(
               1,
               contentSize.height - layoutMeasurement.height,
@@ -1634,72 +1613,9 @@ export function ReaderScreen({
         onTranslate={() => setAIMode('translate')}
       />
 
-      {/*
-        Go to page — brief: "uses PDF page numbers and accepts printed
-        labels like 'xii'". Resolution lives in `resolvePageQuery`, which
-        tries a label match first and then a PDF number, and returns BOTH
-        when they point at different sheets. In a book with roman front
-        matter "12" is genuinely ambiguous: printed 12 and PDF 12 are
-        different pages, and only the reader knows which they meant.
-      */}
-      <BottomSheet ref={goToSheetRef} title="Go to page">
-        <View style={styles.goToBody}>
-          <Input
-            value={goToQuery}
-            onChangeText={(text: string) => {
-              setGoToQuery(text);
-              setGoToMatches(null);
-            }}
-            placeholder="Page number or label, e.g. 15 or xii"
-            autoFocus
-            returnKeyType="go"
-            onSubmitEditing={() => setGoToMatches(resolvePageQuery(goToQuery, pageLabelList))}
-          />
-          {goToMatches && goToMatches.length === 0 && (
-            <Text style={[styles.goToEmpty, { color: palette.muted }]}>
-              No page matches "{goToQuery.trim()}" in this book.
-            </Text>
-          )}
-          {goToMatches && goToMatches.length > 0 && (
-            <View style={styles.goToResults}>
-              {goToMatches.map((match) => (
-                <ListRow
-                  key={`${match.via}-${match.pageIndex}`}
-                  label={pageDisplayText(
-                    pdfIndexOf(
-                      match.pageIndex,
-                      pageList.find((r) => r.page_index === match.pageIndex)
-                        ?.pdf_page_number ?? null,
-                    ),
-                    pageLabelList[match.pageIndex] ?? null,
-                  )}
-                  sublabel={
-                    match.via === 'label'
-                      ? 'Printed page number'
-                      : 'PDF page number'
-                  }
-                  onPress={() => {
-                    goToSheetRef.current?.dismiss();
-                    jumpToPage(match.pageIndex);
-                  }}
-                />
-              ))}
-            </View>
-          )}
-        </View>
-      </BottomSheet>
-
       {/* Typography sheet */}
       <BottomSheet ref={typoSheetRef}>
         <TypographySheet
-          onGoToPage={() => {
-            typoSheetRef.current?.dismiss();
-            setGoToQuery('');
-            setGoToMatches(null);
-            // Let the first sheet finish dismissing before presenting
-            // the second; presenting into a closing sheet drops it.
-            setTimeout(() => goToSheetRef.current?.present(), 250);
-          }}
           preset={preset}
           fontSize={fontSize}
           fontFamily={fontFamily}
@@ -2133,6 +2049,19 @@ const PageSection = memo(function PageSection({
                 </Text>
               ) : null}
             </View>
+          )}
+          {/*
+            A PDF page with no extractable text is still a page — a
+            plate, a section divider, a blank. `process-book` emits a
+            row for it so the text page count equals numPages; the
+            reader has to account for it visibly, or the page silently
+            collapses to nothing and the reader believes a page is
+            missing.
+          */}
+          {ch.paragraphs.length === 0 && (
+            <Text style={[styles.emptyPageNote, { color: palette.subtle }]}>
+              This page has no text
+            </Text>
           )}
           {ch.paragraphs.map((para, i) => {
             const imgPath = parseImageMarker(para);
@@ -3014,7 +2943,6 @@ function TypographySheet({
   onTheme,
   onAutoHide,
   onReset,
-  onGoToPage,
 }: {
   preset: ReaderPreset;
   fontSize: number;
@@ -3027,13 +2955,6 @@ function TypographySheet({
   onTheme: (t: ReaderTheme) => void;
   onAutoHide: (v: boolean) => void;
   onReset: () => void;
-  /**
-   * Opens Go to page. It lived on the sticky page indicator until that
-   * was removed for naming pages that were not on screen; this sheet is
-   * the reader's utility surface and the only other place it is
-   * reachable from without adding a sixth item to the action bar.
-   */
-  onGoToPage: () => void;
 }) {
   return (
     <View>
@@ -3043,14 +2964,6 @@ function TypographySheet({
           <Text style={styles.sheetReset}>Reset</Text>
         </Pressable>
       </View>
-
-      <ListRow
-        label="Go to page"
-        sublabel="Jump by page number, or a printed label like xii"
-        onPress={onGoToPage}
-      />
-
-      <View style={styles.sheetDivider} />
 
       {/* Presets */}
       <Text style={styles.sheetSectionLabel}>Presets</Text>
@@ -3364,15 +3277,11 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     marginBottom: tokens.space.md,
   },
-  goToBody: {
-    gap: tokens.space.md,
-    paddingBottom: tokens.space.md,
-  },
-  goToEmpty: {
+  emptyPageNote: {
     ...tokens.textStyles['body-sm'],
-  },
-  goToResults: {
-    gap: tokens.space.xs,
+    fontStyle: 'italic',
+    textAlign: 'center',
+    paddingVertical: tokens.space.xl,
   },
   chapterTitle: {
     fontFamily: tokens.fonts.display,

@@ -17,4 +17,5 @@ export * from './playback';
 export * from './offline-queue';
 export * from './pageDisplay';
 export * from './readerPosition';
+export * from './pdfPageText';
 export type * from './database';

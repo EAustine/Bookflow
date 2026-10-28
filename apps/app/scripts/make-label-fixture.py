@@ -26,6 +26,13 @@ PAGES = 30
 FRONT_MATTER = 12       # i .. xii
 BODY_START_LABEL = 5    # so printed 15 lands on PDF 23
 
+# The "plain" variant: no /PageLabels, no running head, and two pages
+# with no text at all (a plate and a section divider). It is the other
+# half of the fidelity test — a book where the page count can only hold
+# if text-free pages still emit a row.
+PLAIN_PAGES = 12
+PLAIN_BLANK_PAGES = {4, 9}   # 1-based
+
 ROMAN = ['i', 'ii', 'iii', 'iv', 'v', 'vi', 'vii', 'viii', 'ix', 'x', 'xi', 'xii']
 
 
@@ -38,6 +45,23 @@ def printed_label(page_number: int) -> str:
 
 def esc(s: str) -> str:
     return s.replace('\\', r'\\').replace('(', r'\(').replace(')', r'\)')
+
+
+def plain_content_stream(page_number: int) -> bytes:
+    if page_number in PLAIN_BLANK_PAGES:
+        return b'BT\nET'   # a page with no text at all
+    body = [
+        f'Plain page {page_number} opens with these words exactly.',
+        'A middle line that is unremarkable and differs per page.',
+        f'And it closes on line three of page {page_number}.',
+    ]
+    out = []
+    y = 760
+    for line in body:
+        out += [b'BT', b'/F1 11 Tf', f'72 {y} Td'.encode(),
+                f'({esc(line)}) Tj'.encode(), b'ET']
+        y -= 18
+    return b'\n'.join(out)
 
 
 def content_stream(page_number: int) -> bytes:
@@ -66,7 +90,9 @@ def content_stream(page_number: int) -> bytes:
     return b'\n'.join(lines)
 
 
-def build() -> bytes:
+def build(plain: bool = False) -> bytes:
+    page_count = PLAIN_PAGES if plain else PAGES
+    make_stream = plain_content_stream if plain else content_stream
     objects: list[bytes] = []
 
     def add(body: bytes) -> int:
@@ -79,8 +105,8 @@ def build() -> bytes:
     font_num = add(b'<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>')
 
     page_nums: list[int] = []
-    for i in range(1, PAGES + 1):
-        stream = content_stream(i)
+    for i in range(1, page_count + 1):
+        stream = make_stream(i)
         content_num = add(
             b'<< /Length ' + str(len(stream)).encode() + b' >>\nstream\n'
             + stream + b'\nendstream'
@@ -94,7 +120,7 @@ def build() -> bytes:
 
     kids = b' '.join(str(n).encode() + b' 0 R' for n in page_nums)
     objects[1] = (
-        b'<< /Type /Pages /Count ' + str(PAGES).encode()
+        b'<< /Type /Pages /Count ' + str(page_count).encode()
         + b' /Kids [' + kids + b'] >>'
     )
 
@@ -107,7 +133,8 @@ def build() -> bytes:
         + b' << /S /D /St ' + str(BODY_START_LABEL).encode() + b' >>] >>'
     )
     objects[0] = (
-        b'<< /Type /Catalog /Pages 2 0 R /PageLabels ' + page_labels + b' >>'
+        b'<< /Type /Catalog /Pages 2 0 R >>' if plain
+        else b'<< /Type /Catalog /Pages 2 0 R /PageLabels ' + page_labels + b' >>'
     )
 
     out = io.BytesIO()
@@ -130,7 +157,8 @@ def build() -> bytes:
 
 if __name__ == '__main__':
     dest = sys.argv[1] if len(sys.argv) > 1 else 'roman-novel.pdf'
-    data = build()
+    plain = '--plain' in sys.argv
+    data = build(plain=plain)
     io.open(dest, 'wb').write(data)
     print(f'wrote {dest}: {len(data)} bytes, {PAGES} pages')
     print(f'  PDF 12 prints {printed_label(12)!r}  (Go to page "xii")')
