@@ -1,6 +1,5 @@
 import { forwardRef, memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ScrollView,
   Alert,
   Animated,
   ActivityIndicator,
@@ -497,45 +496,6 @@ export function ReaderScreen({
   // once — re-measurement (e.g. after dbPage arrives and the
   // section re-lays-out) just updates the entry instead of
   // double-counting.
-  /**
-   * The height of one page section — the list viewport, measured once
-   * on layout.
-   *
-   * Every row is exactly this tall regardless of font size, which is
-   * what makes `getItemLayout` possible and page offsets arithmetic.
-   * Seeded from the window so the first render is close; corrected by
-   * onLayout before the user can scroll.
-   */
-  /**
-   * 0 until the list viewport has been measured, and the list does not
-   * render until then.
-   *
-   * It used to seed from the window height. Rows were then laid out at
-   * ~800dp, the restore scrolled to `index * 800`, and onLayout
-   * afterwards corrected the height to the real ~590dp — leaving the
-   * offset stranded between two rows. The result on screen was two
-   * pages at once: the tail of one section frozen at the top while the
-   * next scrolled independently underneath it. Measuring first costs
-   * one frame and removes the whole failure mode.
-   */
-  const [pageHeight, setPageHeight] = useState(0);
-  /**
-   * Page WIDTH — pages advance horizontally.
-   *
-   * A vertical outer list with a vertical ScrollView inside each page
-   * cannot be made to work: whichever one takes the gesture, the other
-   * stands still, so the outer regularly rests between two sections and
-   * the tail of the previous page sits frozen at the top of the screen
-   * while the current one scrolls underneath. Measured with
-   * reading-sized scrolls, that happened on 2 of 9 swipes.
-   *
-   * Horizontal paging removes the conflict rather than tuning it: the
-   * outer list owns the horizontal axis, each page owns the vertical
-   * one, and neither can steal from the other. One page is always
-   * exactly one screen, which is also what "never split a page's text
-   * across screens" asks for.
-   */
-  const [pageWidth, setPageWidth] = useState(0);
   const pageHeightsRef = useRef<Map<number, number>>(new Map());
   // Signals when the SAVED page's section has reported its real
   // layout (height > 100). FlatList walks through intermediate
@@ -675,26 +635,12 @@ export function ReaderScreen({
    *   fails — it just sets the scroll position — so this loop
    *   is deterministic.
    */
-  /**
-   * Restore is a single exact scroll now.
-   *
-   * This used to re-scroll to `restoreTargetRef` on EVERY content-size
-   * change, because offsets were guessed from measured heights and had
-   * to converge. Scrolling mounts rows, mounting changes content size,
-   * so the loop re-armed itself and fought the user: after a search
-   * jump a forward swipe moved 0px while a backward swipe worked.
-   * With `getItemLayout` the offset is known up front, so there is
-   * nothing to converge on and nothing to fight.
-   */
   const onContentSizeChange = useCallback(() => {
     const target = restoreTargetRef.current;
     if (target === null) return;
-    restoreTargetRef.current = null;
-    const idx = pageList.findIndex((p) => p.page_index === target);
-    if (idx >= 0) {
-      listRef.current?.scrollToIndex({ index: idx, animated: false });
-    }
-  }, [pageList]);
+    const offset = computeOffsetForPage(target);
+    listRef.current?.scrollToOffset({ offset, animated: false });
+  }, [computeOffsetForPage]);
 
   // Visible-FlatList gate. The FlatList does its scroll-to-saved-
   // page dance by calling scrollToIndex repeatedly with intermediate
@@ -962,13 +908,10 @@ export function ReaderScreen({
     anchorPageRef.current = idx;
     anchorReadyRef.current = false; // re-lock on the next scrollBegin
     savedPageMeasuredRef.current = false;
-    // Exact: `getItemLayout` means scrollToIndex lands first time, so
-    // no restore target has to be armed and no loop has to chase it.
-    const listIdx = pageList.findIndex((p) => p.page_index === idx);
-    if (listIdx >= 0) {
-      listRef.current?.scrollToIndex({ index: listIdx, animated: true });
-    }
-  }, [pageList]);
+    restoreTargetRef.current = idx;
+    const offset = computeOffsetForPage(idx);
+    listRef.current?.scrollToOffset({ offset, animated: true });
+  }, [computeOffsetForPage]);
 
   // Persist the page-change immediately so reopening lands on the
   // right page even if the user closes the reader before scrolling
@@ -1391,16 +1334,7 @@ export function ReaderScreen({
           content when it enters the window — keeps memory bounded
           even on 500-page books. Visual page-break dividers separate
           sections so the user still feels page boundaries. */}
-      <View
-        style={styles.pagerWrap}
-        onLayout={(e) => {
-          const { width, height } = e.nativeEvent.layout;
-          const h = Math.round(height);
-          const w = Math.round(width);
-          if (h > 0) setPageHeight((prev: number) => (prev === h ? prev : h));
-          if (w > 0) setPageWidth((prev: number) => (prev === w ? prev : w));
-        }}
-      >
+      <View style={styles.pagerWrap}>
         {/* Loading overlay shown while we walk through the
             scroll-to-saved-page retries. Sits absolutely above
             the FlatList so the user sees a clean loading state
@@ -1432,41 +1366,12 @@ export function ReaderScreen({
           three strings cannot disagree. That agreement is the point:
           it is what the reader checks against the paper page.
         */}
-        {pageHeight > 0 && pageWidth > 0 && (
         <FlatList<PageListItem>
           ref={listRef}
           data={pageList}
           keyExtractor={(item) => String(item.page_index)}
           renderItem={({ item, index }) => (
-            /*
-              ONE PDF PAGE = ONE FIXED-HEIGHT SECTION.
-              The section is always exactly the viewport height,
-              whatever the font size, and the page's own text scrolls
-              INSIDE it. Nothing re-paginates: a page never becomes two
-              pages because the type got bigger.
-
-              The fixed height is also what fixes the scroll freeze. It
-              makes `getItemLayout` possible, so FlatList knows every
-              offset without measuring, `scrollToIndex` is exact, and
-              the convergence loop that used to re-scroll on every
-              content-size change — and fought the user's forward
-              swipes — is gone entirely.
-
-              `nestedScrollEnabled` is what lets the inner ScrollView
-              take the gesture on Android and hand back to the outer
-              list at its ends.
-            */
-            <View style={{ width: pageWidth, height: pageHeight }}>
-              <ScrollView
-                // No `nestedScrollEnabled`: that flag is for a scroll
-                // view nested inside another on the SAME axis, and with
-                // it set this view held the gesture so horizontal page
-                // turns never reached the list underneath. The axes
-                // differ now, so the platform routes by direction.
-                showsVerticalScrollIndicator={false}
-                contentContainerStyle={styles.pageScrollContent}
-              >
-                <PageSection
+            <PageSection
               pageIndex={item.page_index}
               dbPage={pageContentMap.get(item.page_index) ?? null}
               isFirst={index === 0}
@@ -1483,27 +1388,11 @@ export function ReaderScreen({
               savedWords={
                 savedWordsByPage.get(item.page_index) ?? EMPTY_STRING_SET
               }
-                  savedSentences={
-                    savedSentencesByPage.get(item.page_index) ?? EMPTY_STRING_SET
-                  }
-                />
-              </ScrollView>
-            </View>
+              savedSentences={
+                savedSentencesByPage.get(item.page_index) ?? EMPTY_STRING_SET
+              }
+            />
           )}
-          // Every row is exactly `pageHeight`, so offsets are arithmetic
-          // rather than measurement. This is the property the old list
-          // lacked.
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          getItemLayout={(_, index) => ({
-            length: pageWidth,
-            offset: pageWidth * index,
-            index,
-          })}
-          // Exactly one page per swipe. On the horizontal axis the row
-          // size and the viewport size are the same number, so paging
-          // lands on a page boundary every time.
-          pagingEnabled
           // Virtualisation tuning. Mount a small initial window
           // (4 sections) and let FlatList stream more sections as
           // the user (or the saved-page restore loop) scrolls
@@ -1588,39 +1477,56 @@ export function ReaderScreen({
             const { contentOffset, contentSize, layoutMeasurement } =
               e.nativeEvent;
 
-            // Pages advance on the X axis now.
             const scrollable = Math.max(
               1,
-              contentSize.width - layoutMeasurement.width,
+              contentSize.height - layoutMeasurement.height,
             );
             progressFractionRef.current = Math.max(
               0,
-              Math.min(1, contentOffset.x / scrollable),
+              Math.min(1, contentOffset.y / scrollable),
             );
             schedulePersist();
 
-            // Page tracker — arithmetic.
+            // Page tracker — anchor-relative scroll estimate.
             //
-            // Every row is exactly `pageHeight` tall, so the page under
-            // the viewport top is a division. No anchor, no averaging
-            // of measured heights, and no gate on the first drag: the
-            // old estimate could not run until the user dragged and
-            // then extrapolated, which is why it disagreed with the
-            // in-content dividers.
-            if (pageWidth > 0 && pageList.length > 0) {
-              const idx = Math.max(
-                0,
-                Math.min(
-                  pageList.length - 1,
-                  Math.round(contentOffset.x / pageWidth),
-                ),
-              );
-              const row = pageList[idx];
-              if (row) setPageIndexFromScrollRef.current(row.page_index);
+            // We only run the estimate after the user starts
+            // their first drag (anchorReadyRef gets flipped in
+            // onScrollBeginDrag below). Until then, FlatList
+            // fires many onScroll events of its own as the
+            // saved-page restore loop walks scrollToOffset
+            // toward the target — letting those through would
+            // tick the anchor before the saved page lands.
+            // Gating on the first drag means tracking only kicks
+            // in once the user is actually reading.
+            //
+            // Once the anchor is set, current page = anchor +
+            // (scrollY - anchorScrollY) / averageHeight. This
+            // keeps accuracy tight because we never extrapolate
+            // from page 0 using unmeasured-page guesses — we
+            // measure deltas from a point we know is correct.
+            if (!anchorReadyRef.current) return;
+
+            const totalPages = pageList.length;
+            const heights = pageHeightsRef.current;
+            if (totalPages > 0 && heights.size > 0) {
+              let sum = 0;
+              for (const h of heights.values()) sum += h;
+              const avgHeight = sum / heights.size;
+              if (avgHeight > 0) {
+                const deltaY = contentOffset.y - anchorScrollYRef.current;
+                const deltaPages = Math.round(deltaY / avgHeight);
+                const estimatedPage = Math.max(
+                  0,
+                  Math.min(
+                    totalPages - 1,
+                    anchorPageRef.current + deltaPages,
+                  ),
+                );
+                setPageIndexFromScrollRef.current(estimatedPage);
+              }
             }
           }}
         />
-        )}
       </View>
 
       {/*
@@ -3376,10 +3282,6 @@ const styles = StyleSheet.create({
     fontStyle: 'italic',
     textAlign: 'center',
     paddingVertical: tokens.space.xl,
-  },
-  pageScrollContent: {
-    flexGrow: 1,
-    paddingBottom: tokens.space.xl,
   },
   chapterTitle: {
     fontFamily: tokens.fonts.display,
