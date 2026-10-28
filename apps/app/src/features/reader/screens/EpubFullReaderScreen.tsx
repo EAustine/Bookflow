@@ -39,6 +39,10 @@ import {
   Icon,
   Text,
 } from '~/components';
+import {
+  pageIndexToScrollFraction,
+  scrollFractionToPageIndex,
+} from '@bookflow/shared';
 import { tokens } from '~/design/tokens';
 import { useBackHandler } from '~/lib/useBackHandler';
 import { useSlowOp } from '~/hooks/useSlowOp';
@@ -73,6 +77,21 @@ export type EpubFullReaderScreenProps = {
    * intent is just rendering-mode, not page navigation.
    */
   onRequestTextMode: (pageIndex?: number) => void;
+  /**
+   * Where to open, as a text-reader page index — the page the user was
+   * on when they tapped "Full".
+   *
+   * EPUB has no inherent pages: this view is one continuous scroll of
+   * the publisher's HTML, and the text reader's pages are ~200-word
+   * slices. So the two are bridged by the SAME scroll-fraction
+   * approximation already used in the other direction
+   * (`handleScrollMessage` maps fraction -> page index). Using one
+   * mapping both ways means a toggle out and back lands where it
+   * started, which is what "keeps your place" has to mean here.
+   *
+   * Overrides the persisted `last_read_position` when present.
+   */
+  initialPageIndex?: number;
 };
 
 const IMAGE_MARKER_RE = /\[\[BOOKFLOW_IMG:([^\]]+)\]\]/g;
@@ -126,6 +145,7 @@ export function EpubFullReaderScreen({
   onBack,
   onListen,
   onRequestTextMode,
+  initialPageIndex,
 }: EpubFullReaderScreenProps) {
   // Android hardware-back routes through the header chevron's onBack
   // so testers land on Library instead of seeing the root "Press back
@@ -222,10 +242,20 @@ export function EpubFullReaderScreen({
   // We don't track changes to last_read_position after this — the user
   // is the source of truth from the moment they enter full mode.
   const initialScrollFraction = useMemo(() => {
+    // A page handed over by the text reader wins: it is where the user
+    // just was, which is fresher than anything persisted. Converted
+    // with the inverse of `handleScrollMessage`'s mapping, so the round
+    // trip is symmetric. Aim at the MIDDLE of the page's band
+    // (+0.5) — landing on its leading edge reads as a page early once
+    // the fraction is floored back on the way out.
+    if (typeof initialPageIndex === 'number' && initialPageIndex >= 0) {
+      const f = pageIndexToScrollFraction(initialPageIndex, book.totalPages ?? 0);
+      if (f > 0) return f;
+    }
     const raw = (book as { last_read_position?: number }).last_read_position;
     if (typeof raw !== 'number') return 0;
     return Math.max(0, Math.min(1, raw / 100));
-  }, [book]);
+  }, [book, initialPageIndex]);
 
   // Debounced persistence. The injected script posts on every scroll
   // event; we throttle the round-trip to Supabase so a fast scroll
@@ -245,15 +275,12 @@ export function EpubFullReaderScreen({
     (fraction: number) => {
       progressFractionRef.current = fraction;
       const total = book.totalPages ?? 0;
-      let computedIdx = 0;
+      // Inverse of `pageIndexToScrollFraction`, which is what the other
+      // direction uses — the pair is round-trip tested in
+      // packages/shared so a toggle out and back cannot drift a page.
+      const computedIdx = scrollFractionToPageIndex(fraction, total);
       if (total > 0) {
-        computedIdx = Math.min(
-          total - 1,
-          Math.max(0, Math.floor(fraction * total)),
-        );
-        setLivePageIndex((prev) =>
-          prev === computedIdx ? prev : computedIdx,
-        );
+        setLivePageIndex((prev) => (prev === computedIdx ? prev : computedIdx));
       }
       if (persistTimerRef.current) clearTimeout(persistTimerRef.current);
       // Use the computed page index, NOT a hardcoded 0. The
@@ -631,7 +658,16 @@ export function EpubFullReaderScreen({
               {book.title}
             </Text>
           </View>
-          <ModeTogglePill mode="full" onChange={(m) => m === 'text' && onRequestTextMode()} />
+          {/*
+            Hand over the page the reader is actually looking at.
+            Calling this with no argument left the text reader to fall
+            back on the persisted position, so a scroll in Full mode
+            was discarded the moment you toggled.
+          */}
+          <ModeTogglePill
+            mode="full"
+            onChange={(m) => m === 'text' && onRequestTextMode(livePageIndex)}
+          />
         </View>
       </Animated.View>
 

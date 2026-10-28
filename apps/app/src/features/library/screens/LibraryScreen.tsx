@@ -211,6 +211,14 @@ export function LibraryScreen({
   const [pendingInitialPageIndex, setPendingInitialPageIndex] = useState<
     number | null
   >(null);
+  // The page the EPUB text reader was on when the user tapped "Full".
+  // The mirror of `pendingInitialPageIndex`: that one carries a page
+  // INTO the text reader, this one carries a page into the full reader.
+  // Without it the toggle discarded the position and Full mode reopened
+  // wherever `last_read_position` happened to point.
+  const [pendingFullPageIndex, setPendingFullPageIndex] = useState<
+    number | null
+  >(null);
 
   // Tell App.tsx whenever we drill INTO a focused surface (reader
   // OR highlights). App.tsx uses this signal to hide the floating
@@ -743,31 +751,34 @@ export function LibraryScreen({
       return (
         <EpubFullReaderScreen
           book={selectedBook}
+          initialPageIndex={pendingFullPageIndex ?? undefined}
           onBack={() => {
             setSelectedBook(null);
             setEpubMode('full');
+            setPendingFullPageIndex(null);
             // See PDF onBack above for the refetch rationale.
             void refetch();
             void refetchStats();
           }}
           onRequestTextMode={(pageIndex) => {
-            // Optional pageIndex carries through highlight-row /
-            // search-result jumps initiated from Full mode. When
-            // present, prime `pendingInitialPageIndex` so the
-            // ReaderScreen mount below picks it up as the
-            // `initialPageIndex` prop and lands on that exact page
-            // rather than the persisted last-read fallback. On a
-            // plain mode toggle (no pageIndex), leave the state
-            // alone so last-read continues to drive the open.
+            // `pageIndex` arrives from a highlight-row / search-result
+            // jump AND, since the toggle began carrying one, from a
+            // plain mode switch. Priming `pendingInitialPageIndex` is
+            // what makes the ReaderScreen mount below open there
+            // instead of falling back on the persisted last-read page.
+            // The `undefined` branch is kept for any caller that still
+            // has no position to offer.
             if (pageIndex !== undefined) {
               setPendingInitialPageIndex(pageIndex);
             }
+            setPendingFullPageIndex(null);
             setEpubMode('text');
           }}
           onListen={() => {
             onStartListening(selectedBook);
             setSelectedBook(null);
             setEpubMode('text');
+            setPendingFullPageIndex(null);
           }}
         />
       );
@@ -786,7 +797,12 @@ export function LibraryScreen({
           void refetch();
           void refetchStats();
         }}
-        onRequestFullMode={() => setEpubMode('full')}
+        onRequestFullMode={(pageIndex) => {
+          // Carry the text reader's page into the WebView so Full mode
+          // opens on the same part of the book.
+          setPendingFullPageIndex(pageIndex);
+          setEpubMode('full');
+        }}
         onListen={() => {
           onStartListening(selectedBook);
           setSelectedBook(null);
