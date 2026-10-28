@@ -142,6 +142,25 @@ type DerivedChapter = {
 const RESTORE_MAX_PASSES = 12;
 
 /**
+ * Jumping to a page in a list whose rows are not all measured.
+ *
+ * `scrollToIndex` is exact, but only once the row is mounted; for a far
+ * target FlatList cannot know the offset, so it fails. The way through
+ * is to scroll approximately, let a batch of rows mount, and ask again
+ * — each pass brings the target nearer the render window until
+ * `scrollToIndex` can land it exactly.
+ *
+ * The retry delay has to clear the list's own batching
+ * (`updateCellsBatchingPeriod` 50ms, `maxToRenderPerBatch` 2), which is
+ * why one animation frame is not enough: a rAF retry fires before any
+ * new row has rendered, so every attempt re-reads the same stale
+ * geometry. That is what made an earlier attempt at this land a jump to
+ * page 20 on page 2.
+ */
+const SEEK_RETRY_MS = 140;
+const SEEK_MAX_ATTEMPTS = 14;
+
+/**
  * Split prose into sentences WITHOUT losing any characters.
  *
  * Both call sites previously used
@@ -928,16 +947,67 @@ export function ReaderScreen({
   //   start for the no-remount case (e.g. future call sites
   //   that don't gate behind an overlay); harmless if the ref
   //   is stale because the loop catches us either way.
+  /** Pending seek retry, so a new jump or a user drag can cancel it. */
+  const seekTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const cancelSeek = useCallback(() => {
+    if (seekTimerRef.current) {
+      clearTimeout(seekTimerRef.current);
+      seekTimerRef.current = null;
+    }
+  }, []);
+  useEffect(() => cancelSeek, [cancelSeek]);
+
+  /**
+   * Scroll to a page and keep asking until it is actually there.
+   *
+   * Stops on three conditions, so it can never become the loop it
+   * replaces: the target row has been measured (it is mounted, and the
+   * scrollToIndex that just ran was exact), the attempts run out, or
+   * the reader touches the screen — `onScrollBeginDrag` calls
+   * `cancelSeek`, because a jump must never fight a scroll.
+   */
+  const seekToPage = useCallback(
+    (pageIdx: number) => {
+      cancelSeek();
+      const listIdx = pageList.findIndex((p) => p.page_index === pageIdx);
+      if (listIdx < 0) return;
+      let attempts = 0;
+      const attempt = () => {
+        attempts += 1;
+        try {
+          listRef.current?.scrollToIndex({
+            index: listIdx,
+            viewPosition: 0,
+            animated: false,
+          });
+        } catch {
+          // Out of window — onScrollToIndexFailed approximates, and the
+          // next attempt reads the geometry that produced.
+        }
+        const landed = pageHeightsRef.current.has(pageIdx);
+        if (landed || attempts >= SEEK_MAX_ATTEMPTS) {
+          seekTimerRef.current = null;
+          return;
+        }
+        seekTimerRef.current = setTimeout(attempt, SEEK_RETRY_MS);
+      };
+      attempt();
+    },
+    [pageList, cancelSeek],
+  );
+
   const jumpToPage = useCallback((idx: number) => {
     setPageIndex(idx);
     anchorPageRef.current = idx;
     anchorReadyRef.current = false; // re-lock on the next scrollBegin
     savedPageMeasuredRef.current = false;
-    restoreTargetRef.current = idx;
+    // No restore target: `seekToPage` owns getting there, and arming
+    // one would also hand the job to `onContentSizeChange`, which creeps
+    // toward the page on averaged heights and undershoots a long jump.
+    restoreTargetRef.current = null;
     restorePassesRef.current = 0;
-    const offset = computeOffsetForPage(idx);
-    listRef.current?.scrollToOffset({ offset, animated: true });
-  }, [computeOffsetForPage]);
+    seekToPage(idx);
+  }, [seekToPage]);
 
   // Persist the page-change immediately so reopening lands on the
   // right page even if the user closes the reader before scrolling
@@ -1472,7 +1542,17 @@ export function ReaderScreen({
           // about layout, fall back to a scrollToOffset with the
           // best-available computed offset and swallow the warning.
           onScrollToIndexFailed={(info) => {
-            const offset = computeOffsetForPage(info.index);
+            // This is the step that makes each seek attempt land nearer
+            // than the last. Prefer FlatList's own `averageItemLength`,
+            // which it derives from the rows it has actually rendered,
+            // over `computeOffsetForPage`: that one fills unmeasured
+            // pages with an average taken from whatever is mounted, and
+            // near the start of a book those are the short ones (cover,
+            // title, contents), so it undershoots a long jump badly.
+            const offset =
+              info.averageItemLength > 0
+                ? info.averageItemLength * info.index
+                : computeOffsetForPage(info.index);
             listRef.current?.scrollToOffset({ offset, animated: false });
           }}
           // Track which section is currently most-visible to keep
@@ -1487,6 +1567,7 @@ export function ReaderScreen({
             // intent. Also lock the page-tracker anchor at the
             // current scroll Y.
             restoreTargetRef.current = null;
+            cancelSeek();
             if (!anchorReadyRef.current) {
               anchorScrollYRef.current = e.nativeEvent.contentOffset.y;
               anchorReadyRef.current = true;
