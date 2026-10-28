@@ -60,11 +60,23 @@ export function addUsage(
   };
 }
 
+/**
+ * The narrow slice of the Supabase client this module needs.
+ *
+ * Structural rather than importing `SupabaseClient`, so a caller can
+ * pass any client-shaped thing and tests can pass a stub.
+ *
+ * The return type is `PromiseLike`, not `Promise`. supabase-js returns a
+ * thenable builder — `PostgrestFilterBuilder` — which you can `await`
+ * but which has no `.catch`, `.finally` or `Symbol.toStringTag`.
+ * Declaring `Promise` made every one of the eighteen call sites a type
+ * error, invisible until `deno check` reached them.
+ */
 type RpcClient = {
   rpc: (
     fn: string,
     args: Record<string, unknown>,
-  ) => Promise<{ data: unknown; error: unknown }>;
+  ) => PromiseLike<{ data: unknown; error: unknown }>;
 };
 
 /**

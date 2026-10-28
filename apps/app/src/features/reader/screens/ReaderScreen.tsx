@@ -916,6 +916,22 @@ export function ReaderScreen({
   // for freshly-uploaded books where total_pages hasn't been
   // written yet.
   const totalBookPages = book.totalPages > 0 ? book.totalPages : 1;
+  /**
+   * The book's real PDF page count: the highest `pdf_page_number` in
+   * the page list, or null for EPUB.
+   *
+   * Taken from the data rather than from `pageList.length` so it is
+   * correct whichever pipeline produced the book — a pre-0028 PDF has
+   * several rows per page, and the row count is exactly the "of 1200"
+   * number testers objected to.
+   */
+  const pdfTotalPages = useMemo(() => {
+    let max = 0;
+    for (const p of pageList) {
+      if (p.pdf_page_number && p.pdf_page_number > max) max = p.pdf_page_number;
+    }
+    return max > 0 ? max : null;
+  }, [pageList]);
 
   const handleWordPress = useCallback((word: string) => {
     const cleaned = word.replace(/[^a-zA-Z'-]/g, '').toLowerCase();
@@ -1306,6 +1322,7 @@ export function ReaderScreen({
               dbPage={pageContentMap.get(item.page_index) ?? null}
               isFirst={index === 0}
               totalBookPages={totalBookPages}
+              pdfTotalPages={pdfTotalPages}
               palette={palette}
               readingFont={readingFont}
               fontSize={fontSize}
@@ -1791,6 +1808,15 @@ type PageSectionProps = {
   dbPage: PageRow | null;
   isFirst: boolean;
   totalBookPages: number;
+  /**
+   * Highest `pdf_page_number` in the book, or null for EPUB.
+   *
+   * The denominator for "Page 15 of 20". Derived from the page list
+   * rather than from the row count, so it is right for books processed
+   * before 0028 too — those have several rows per PDF page, and the row
+   * count would give the old, confusing "of 1200".
+   */
+  pdfTotalPages: number | null;
   palette: (typeof THEME)[ReaderTheme];
   readingFont: string;
   fontSize: number;
@@ -1858,6 +1884,7 @@ const PageSection = memo(function PageSection({
   dbPage,
   isFirst,
   totalBookPages,
+  pdfTotalPages,
   palette,
   readingFont,
   fontSize,
@@ -1905,19 +1932,26 @@ const PageSection = memo(function PageSection({
           />
           <Text style={[styles.pageBreakLabel, { color: palette.subtle }]}>
             {/*
-              In-content divider deliberately omits the "of N"
-              denominator. `totalBookPages` here is the count of 200-
-              word slices we generated when processing the book, not
-              the publisher's page count — for a typical novel that's
-              "of 1200" against a real page count of ~160, which
-              testers (rightly) found confusing. Showing just the
-              slice index keeps reading-position context without
-              implying a count that doesn't match the physical book.
-              Highlights screen and the library's last-read label
-              still use the slice index — both already render it
-              without an "of" so they're unaffected.
+              The divider shows the ORIGINAL PDF page when we have one,
+              with the real denominator: "Page 15 of 20".
+
+              It used to show only a slice index and no "of N", because
+              `totalBookPages` was the count of 200-word slices — "of
+              1200" against a real page count of ~160, which testers
+              (rightly) found confusing. Migration 0028 made a page a
+              page, so the number means something again.
+
+              The denominator is resolved per book rather than per
+              build: a book processed before 0028 still has several
+              rows per PDF page, and its denominator comes from the
+              highest `pdf_page_number` rather than the row count — so
+              it is correct for both without needing to know which
+              pipeline produced it. EPUBs have no original pages and
+              keep the bare index.
             */}
-            Page {pageIndex + 1}
+            {dbPage?.pdf_page_number && pdfTotalPages
+              ? `Page ${dbPage.pdf_page_number} of ${pdfTotalPages}`
+              : `Page ${pageIndex + 1}`}
           </Text>
           <View
             style={[styles.pageBreakLine, { backgroundColor: palette.border }]}

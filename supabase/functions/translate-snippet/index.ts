@@ -117,8 +117,8 @@ Deno.serve(async (req) => {
       ],
     });
     const out = response.content
-      .filter((b: { type: string }) => b.type === 'text')
-      .map((b: { type: string; text: string }) => b.text)
+      .filter((b): b is { type: 'text'; text: string } => b.type === 'text')
+      .map((b) => b.text)
       .join('')
       .trim();
     if (!out) {
