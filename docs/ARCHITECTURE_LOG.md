@@ -38,6 +38,65 @@ Target: `docs/ARCHITECTURE.md` · Distance to it: `docs/ARCHITECTURE_GAPS.md`
 
 ## Progress
 
+### Responsive M7 — Monetisation · 2026-10-29
+
+27 of §4 Monetisation's 30 wide frames. The other three are the
+Paywall, and Figma's own annotation on the page says it is not ours:
+every upgrade path calls `presentPaywall()` →
+`RevenueCatUI.presentPaywallIfNeeded()`, configured in the RevenueCat
+dashboard and rendered by their SDK. The code agrees — F-34 deleted
+both in-app paywalls, 1,622 lines across four files, and
+`SoftWarningBanner` describes itself as the only live paywall surface
+left in the repo.
+
+**Buy credits is a 640 Large modal** through `Presenter kind="task"`,
+the size `Modal`'s own header already named it for. The card row needed
+no size-class branch — `cardBody` is `flex: 1` and `priceCol` does not
+shrink, so at 640 the body takes 454 and the description stops
+wrapping, which is what the frame draws. Its ref keeps its own type,
+because `present(initialKind)` carries the tab to open on and
+`PresenterRef` is `BottomSheetRef`; the existing wrapper sets the tab
+and delegates, so the shared contract did not move.
+
+**One buy modal per tab.** `TopupBalanceBlock` mounted its own at all
+four call sites and `YouScreen` mounted a fifth, so a free You tab held
+five at once with the detail pane adding two more. It takes `onBuy`
+now.
+
+**Top-up balance became a You page.** There was none, and "Buy credits"
+was the only `drillsInto` row in its group that did not drill into
+anything — the chevron promised a page that did not exist. Figma draws
+it at every size, phone included.
+
+**The soft warning banner moved inside the column.**
+`LibraryScreen.tsx` claimed the wide branch rendered its own copy
+inside the column; it did not. One unguarded mount sat outside every
+branch, where `OfflineBanner` on the next line was gated — so on wide
+classes it spanned the shell, and on the phone it sat above the Library
+header where every frame puts it below.
+
+**One addition the frames do not draw:** `Top-up row` carries a Buy
+link only in its empty state, so routing the row to the page would
+strand anyone holding both balances with no way to buy. The page gets a
+"Buy more credits" button, confined to the new surface.
+
+**`Button` has a footgun**, found on device: `ButtonProps` extends
+`PressableProps` and `{...rest}` is spread after `style`, so a caller's
+`style` replaces the whole computed button and it renders as bare text.
+
+**§7's pricing split out of this milestone** and is recorded as its own
+work. The brief's premise was wrong: there is no `$6.99` in the code —
+every price is read from the store through `product.priceString`, and
+`bookflow_engineering_scoping.md:505` shows $6.99 as what $9.99 nets
+after Apple's 30%. Three specs asserting it are corrected here. The
+caps *are* in the code, in six places across client, edge functions and
+SQL, and the book cap has no server authority at all.
+
+Gate: 0 errors / **211** warnings, 98 tests. Verified at 360 / 820 /
+1180 / 1440; the loaded card list needed a throwaway forced build,
+since the `topups` offering is not in the dashboard. No purchase was
+run.
+
 ### Responsive M6 — You & Settings · 2026-10-29
 
 The last of §4: 43 wide frames, which measure out to **two

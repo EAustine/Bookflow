@@ -134,7 +134,7 @@ These components have `Interaction = Default / Hover / Focus-visible`: Book list
 
 | Change | Where |
 |---|---|
-| Free: 2 books, 90 min audio, 50K AI credits a month. Standard $9.99 a month or $79 a year. Student $4.99 a month | The code still uses 60 min, 5 books and $6.99. Update the usage limits, store products and RevenueCat offering |
+| Free: 2 books, 90 min audio, 50K AI credits a month. Standard $9.99 a month or $79 a year. Student $4.99 a month | The code still uses 60 min, 5 books. **Prices are not in the code**: every one is read from the store through `product.priceString`, so they are App Store Connect, Play Console and RevenueCat offering work. The one hardcoded price is a dead `$4.99/mo` hint on the student row, which has no product behind it. Update the usage limits, the store products and the offering |
 | Reader action bar label "Reading options" is now "Display" | Action bar only. The sheet and popover titles stay "Reading options" |
 | Remove book confirm: "Remove {title}?" and "This deletes the file and your reading progress." | Phone sheet and every modal |
 | Book actions: no subtitles, no cover, no author | Sheet and context menu |

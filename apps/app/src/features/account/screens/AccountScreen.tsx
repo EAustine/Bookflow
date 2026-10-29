@@ -24,7 +24,7 @@ import {
   Text,
 } from '~/components';
 import { tokens } from '~/design/tokens';
-import { TopupBalanceBlock } from '~/features/billing';
+import { TopupBalanceBlock, type TopupKind } from '~/features/billing';
 import { refreshCurrentUser } from '~/hooks/useCurrentUser';
 import { supabase } from '~/lib/supabase';
 import {
@@ -46,6 +46,8 @@ export type AccountScreenProps = {
   onBack?: () => void;
   onSignOut: () => Promise<void> | void;
   onUpgrade: () => void;
+  /** Opens the tab's buy modal, so this screen mounts none of its own. */
+  onBuyCredits?: (kind: TopupKind) => void;
   onExportData?: () => void;
 };
 
@@ -57,6 +59,7 @@ export function AccountScreen({
   onBack,
   onSignOut,
   onUpgrade,
+  onBuyCredits,
   onExportData,
 }: AccountScreenProps) {
   const signOutSheetRef = useRef<PresenterRef>(null);
@@ -228,9 +231,13 @@ export function AccountScreen({
           />
 
           {isPro ? (
-            <ProPlanCard plan={plan} />
+            <ProPlanCard plan={plan} onBuy={onBuyCredits} />
           ) : (
-            <FreePlanCard plan={plan} onUpgrade={onUpgrade} />
+            <FreePlanCard
+              plan={plan}
+              onUpgrade={onUpgrade}
+              onBuy={onBuyCredits}
+            />
           )}
 
           <SectionGroup label="Account">
@@ -983,7 +990,15 @@ function getInitials(name: string, email: string): string {
 
 // ─── Free plan card ───────────────────────────────────────────────────────────
 
-function FreePlanCard({ plan, onUpgrade }: { plan: YouPlan; onUpgrade: () => void }) {
+function FreePlanCard({
+  plan,
+  onUpgrade,
+  onBuy,
+}: {
+  plan: YouPlan;
+  onUpgrade: () => void;
+  onBuy?: (kind: TopupKind) => void;
+}) {
   const { audio, aiCredits, books } = plan.meters;
 
   return (
@@ -1021,7 +1036,7 @@ function FreePlanCard({ plan, onUpgrade }: { plan: YouPlan; onUpgrade: () => voi
         />
       </View>
       <View style={styles.topupInset}>
-        <TopupBalanceBlock balances={plan.balances} />
+        <TopupBalanceBlock balances={plan.balances} onBuy={onBuy} />
       </View>
     </View>
   );
@@ -1036,7 +1051,13 @@ const PRO_FEATURES = [
   '5 premium AI voices',
 ];
 
-function ProPlanCard({ plan }: { plan: YouPlan }) {
+function ProPlanCard({
+  plan,
+  onBuy,
+}: {
+  plan: YouPlan;
+  onBuy?: (kind: TopupKind) => void;
+}) {
   // Real subscription details from RevenueCat — period, LOCALIZED price
   // (buyer's real currency), and the actual renewal date. Each field is
   // null until known; we omit rather than show a wrong placeholder.
@@ -1079,7 +1100,7 @@ function ProPlanCard({ plan }: { plan: YouPlan }) {
       </View>
 
       <View style={styles.topupInset}>
-        <TopupBalanceBlock balances={plan.balances} />
+        <TopupBalanceBlock balances={plan.balances} onBuy={onBuy} />
       </View>
 
       <View style={styles.proActions}>

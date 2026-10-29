@@ -61,7 +61,12 @@ import {
   type YouPlan,
   type YouProfile,
 } from '../types';
-import { BuyCreditsSheet, type BuyCreditsSheetRef } from '~/features/billing';
+import {
+  BuyCreditsSheet,
+  type BuyCreditsSheetRef,
+  TopupBalancePage,
+  type TopupKind,
+} from '~/features/billing';
 import { tokens } from '~/design/tokens';
 import {
   presentPaywall,
@@ -181,7 +186,16 @@ export function YouScreen({
   }, []);
 
   const sheetRef = useRef<PresenterRef>(null);
+  /**
+   * The tab's one buy modal. `TopupBalanceBlock` used to mount its own
+   * at each of its four call sites, so a free You tab held five at
+   * once; every host now opens this one instead.
+   */
   const buyCreditsRef = useRef<BuyCreditsSheetRef>(null);
+  const openBuyCredits = useCallback(
+    (kind?: TopupKind) => buyCreditsRef.current?.present(kind),
+    [],
+  );
   const [signingOut, setSigningOut] = useState(false);
 
   const { sizeClass, isWide } = useSizeClass();
@@ -230,6 +244,11 @@ export function YouScreen({
         voice: onDefaultVoice,
         language: onTranslationLanguage,
         notifications: onNotifications,
+        // No route of its own. Figma draws Top-up balance as a page at
+        // every size, phone included, so this falls through to local
+        // state rather than pushing — which is also what the "Buy
+        // credits" row's chevron has always promised.
+        topup: undefined,
         help: onHelp,
         feedback: onSendFeedback,
       }[next];
@@ -330,6 +349,15 @@ export function YouScreen({
     case 'feedback':
       pageNode = <SendFeedbackScreen onBack={back} />;
       break;
+    case 'topup':
+      pageNode = (
+        <TopupBalancePage
+          balances={plan.balances}
+          onBuy={openBuyCredits}
+          onBack={back}
+        />
+      );
+      break;
     case 'account':
       pageNode = (
         <AccountScreen
@@ -338,6 +366,7 @@ export function YouScreen({
           onBack={back}
           onSignOut={onSignOut}
           onUpgrade={handleUpgrade}
+          onBuyCredits={openBuyCredits}
         />
       );
       break;
@@ -364,7 +393,7 @@ export function YouScreen({
         plan={plan}
         openPage={openPage}
         activePage={masterDetail ? page : null}
-        onBuyCredits={() => buyCreditsRef.current?.present()}
+        onBuyCredits={openBuyCredits}
         onSignOut={presentSignOutSheet}
         onUpgrade={handleUpgrade}
         onManagePlan={handleManage}

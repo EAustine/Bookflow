@@ -344,7 +344,7 @@ Placed in the page sections. No new components; every frame is built from existi
 - **Auth and onboarding sit in the 480 lane** (`layout/lane/width`), centred, no rail. Welcome on Expanded and Desktop splits the screen: a surface-coloured brand panel with the hero illustration and a one-line pitch on the left, the phone welcome content on the right.
 - **Paywall is a Modal Large (640) on every class**, over whatever screen triggered it. On Expanded it is taller than the screen, so the modal is capped at screen height minus 48 and scrolls.
 - **One paywall, four triggers.** Only the eyebrow, headline and subline change (copy from the MVP scope, Part 6). CTA label follows the selected plan ("Start with Yearly · $79").
-- **Prices and caps need confirming.** The paywall uses the MVP scope prices ($9.99 / $79 / $4.99) and the app's live caps (60 min, 5 books, 50K credits). The live Plan card shows $6.99/mo and the scope doc says 90 min and 2 books, so one source is out of date.
+- **Prices and caps need confirming.** The paywall uses the MVP scope prices ($9.99 / $79 / $4.99) and the app's live caps (60 min, 5 books, 50K credits). The scope doc says 90 min and 2 books, so one source is out of date. The Plan card's $6.99/mo is not a price the app charges or displays — the app reads every price from the store, and `bookflow_engineering_scoping.md:505` has $6.99 as what $9.99 nets after Apple's 30%.
 - **RevenueCat build sheet**: `REVENUECAT_PAYWALL_BUILD_SHEET.md` maps every paywall layer to a RevenueCat Paywalls component, with per-trigger headers driven by custom variables, the usage block as a Custom component, and hex values.
 - **Crash boundary** has no rail (the app shell failed) and sits in the lane. Toast centres over the content area, not the whole window.
 - Not drawn: the remaining three paywall triggers (they are the same frame with different copy), Callback screens, Returning user restore.
@@ -386,7 +386,7 @@ The Index page now has a "Tablet and desktop" section with this table and the li
 
 ### Pricing and caps follow the MVP scope
 
-Free: 2 books, 90 minutes of audio, 50K AI credits a month. Standard: $9.99 a month or $79 a year. Student: $4.99 a month. Updated in the Plan card (Free meters now 18 / 90 min and 1 / 2 books, Pro renews at $9.99/mo) and in all three Paywall variants (Audio 18 / 90 min, Books 1 / 2). Every screen inherits these. **Code still uses 60 minutes, 5 books and $6.99**: update the usage limits, the store products and the RevenueCat offering. The build sheet copy now says 90 minutes and 2 of 2 books.
+Free: 2 books, 90 minutes of audio, 50K AI credits a month. Standard: $9.99 a month or $79 a year. Student: $4.99 a month. Updated in the Plan card (Free meters now 18 / 90 min and 1 / 2 books, Pro renews at $9.99/mo) and in all three Paywall variants (Audio 18 / 90 min, Books 1 / 2). Every screen inherits these. **Code still uses 60 minutes and 5 books**; the prices are not in the code at all, since the app reads each one from the store. Update the usage limits, the store products and the RevenueCat offering. The build sheet copy now says 90 minutes and 2 of 2 books.
 
 ### Text moved onto the existing type scale
 

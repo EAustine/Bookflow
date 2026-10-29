@@ -835,6 +835,25 @@ export function LibraryScreen({
     />
   );
 
+  /**
+   * The soft warning banner, built once and rendered inside whichever
+   * branch is live — below the header on Compact and Medium, and at the
+   * top of the master above them, which is where the frames draw it.
+   */
+  const softWarningBanner =
+    !isOffline &&
+    !isPro &&
+    usageWarningsOn &&
+    showBanner &&
+    onUpgrade &&
+    audioRemainingMin <= 18 ? (
+      <SoftWarningBanner
+        minutesLeft={audioRemainingMin}
+        onUpgrade={onUpgrade}
+        onDismiss={() => setShowBanner(false)}
+      />
+    ) : null;
+
   const libraryHeader = (
     <Header
       onSearch={openSearch}
@@ -1181,23 +1200,20 @@ export function LibraryScreen({
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
       {/*
-        §4: the banner sits at the top of the content on Medium, and at
-        the top of the master on Expanded and Desktop — where the wide
-        branch renders its own copy, inside the column.
+        §4: the banner sits at the top of the content on Medium and at
+        the top of the master on Expanded and Desktop — inside the
+        column either way, never above the shell.
+
+        The comment here used to claim "the wide branch renders its own
+        copy, inside the column". It did not: there was one unguarded
+        mount, right here, outside every size-class branch, where
+        `OfflineBanner` on the line below was correctly gated. So on
+        every wide class it spanned the whole shell — and on the phone
+        it sat above the Library header, where every frame including
+        the phone's own puts it below. It now renders inside each
+        branch, between the header and the stats card.
       */}
       {isOffline && !isWide && <OfflineBanner onRetry={() => void refreshNetwork()} />}
-      {!isOffline &&
-        !isPro &&
-        usageWarningsOn &&
-        showBanner &&
-        onUpgrade &&
-        audioRemainingMin <= 18 && (
-          <SoftWarningBanner
-            minutesLeft={audioRemainingMin}
-            onUpgrade={onUpgrade}
-            onDismiss={() => setShowBanner(false)}
-          />
-        )}
       {sizeClass === 'compact' ? (
         <ScrollView
           style={styles.scroll}
@@ -1206,6 +1222,7 @@ export function LibraryScreen({
           refreshControl={libraryRefreshControl}
         >
           {libraryHeader}
+          {softWarningBanner}
           <ReadingStatsCard stats={readingStats} weekDays={readingStats.weekDays} />
           {continueBook && (
             <ContinueCard
@@ -1232,6 +1249,7 @@ export function LibraryScreen({
           refreshControl={libraryRefreshControl}
         >
           {libraryHeader}
+          {softWarningBanner}
           <LibraryHero
             book={continueBook}
             stats={readingStats}
@@ -1286,6 +1304,7 @@ export function LibraryScreen({
                 refreshControl={libraryRefreshControl}
               >
                 {libraryHeader}
+                {softWarningBanner}
                 <ReadingStatsCard stats={readingStats} weekDays={readingStats.weekDays} />
                 {librarySectionHeader}
                 <BookList
