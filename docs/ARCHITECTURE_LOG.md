@@ -38,6 +38,77 @@ Target: `docs/ARCHITECTURE.md` · Distance to it: `docs/ARCHITECTURE_GAPS.md`
 
 ## Progress
 
+### Responsive M5a — Book detail · 2026-10-29
+
+§4 Book detail and §4 Discover are 41 wide frames between them, so M5
+splits. M5a is the detail page; M5b is Discover.
+
+**One rule covers all three wide sizes.** The cover is a fixed width —
+192 at Medium, 228 above, keeping the phone's 0.68 ratio — and the info
+column flexes with a **680 cap**. At Medium that lands on 460 without
+being told to; above it the cap bites and the row simply stops short of
+the content edge, which is what the frames draw. Reading the three
+frames as three layouts would have produced three branches for what is
+one behaviour.
+
+**The phone's CTA bar becomes inline actions, and wrapping does the
+rest.** At Medium the three in-library buttons total 521 against a 460
+column, so "Remove from library" drops to a second line — the Medium
+frame draws exactly that, and `flexWrap: 'wrap'` produces it at every
+size with no branch.
+
+**"More like this" keeps its own title honest.** There is no
+related-books endpoint and inventing one would mean a request per
+detail view, so the rail is built from shelves already in memory: the
+category the user drilled in from, then subject-tag matches against
+everything seen this session, then the popular shelf. The title follows
+the content — it says "More like this" only when the books share a
+category or a subject, and "Popular fiction" when it has fallen back.
+Verified both on device: The Great Gatsby gets tag-matched fiction,
+Pride and Prejudice falls back and says so.
+
+**The shell was hiding the rail on a page that is not a takeover.**
+`chromeHidden` grouped Discover's drill-ins with the readers and the
+foreground player, so the wide book detail ran edge to edge with no
+navigation. But §4 says "Book detail is a page in the content area, not
+a sheet or panel", and every wide frame draws the rail beside it —
+including Desktop, with the rail mini player in place. Split into
+`railHidden` (the real takeovers) and `chromeHidden` (those plus the
+drill-ins, which still hide the mini player on a phone for focus).
+
+**The reverse-match bug, fixed at the root.** `libraryIds` mapped
+`books.source_url` back to a Discover id for five sources;
+`handleRemoveFromLibrary` reimplemented the same idea for two. So an
+Open Library, Wikisource or DOAB book offered "Remove from library" and
+dead-ended in the "Already removed" alert — a designed edge state
+reached as the normal outcome for three of five catalogues. Adding
+three branches to the short copy would have left two copies, so both
+now call one `discoverIdFromSourceUrl` in `discoverApi`, beside the id
+construction it inverts.
+
+**Read now needed more than a prop.** `handleStartListening` was
+already on the shell, but the reader is a route owned *inside* the
+Library stage — the shell only learns about it through
+`onReaderOpenChange`. So "Read now" hands a book id across the tab
+switch and `LibraryScreen` consumes it once, mirroring the
+`pendingUploadAssets` pattern already in that file.
+
+Also: the dead `Play` sample button went, its style with it; the share
+button in the header is wired to the system share sheet with the
+book's catalogue page URL (derived per source — never a raw EPUB
+download dressed up as a page); the `Presenter` + `RemoveBookSheetBody`
+block that was copy-pasted into all three view branches is mounted once
+behind a single return; and the rail de-duplicates by title and author,
+because the same work arrives from two catalogues under two ids.
+
+Verified at 360 / 820 / 1180 / 1440. **Not verified:** the 440 remove
+modal's confirm path and the happy path of Read now / Listen — both
+need a Discover book that genuinely matches a library row, and this
+account has none. Adding one would write to production, which is ruled
+out. The remove body and its container are unchanged from M2b and
+shared with Library. Gate held: 0 errors / 222 warnings, 98 tests;
+tokens 197 → 204.
+
 ### Responsive M4b — the Listen player · 2026-10-29
 
 The other half of Listen, and the end of §4 Listen: the foreground

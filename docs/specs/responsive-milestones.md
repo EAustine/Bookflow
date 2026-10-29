@@ -20,8 +20,8 @@ spelled out below.
 | §4 Reader | R-M3a | ✅ 680 measure, inline search, action bar, Reading options popover. PDF spread deferred, see below |
 | §4 AI tools | R-M3b, R-M3c | ✅ Panels in M3b; the practice session takeover and the anchored word pop-over in M3c |
 | §4 Listen | R-M4a, R-M4b | ✅ The tab in M4a; the player in M4b. Split below |
-| §4 Book detail | R-M5 | Planned. Cover left, info right |
-| §4 Discover | R-M5 | Planned. Featured card sizes, two-column results, 640 request form |
+| §4 Book detail | R-M5a | ✅ Cover left, info capped at 680, inline wrapping actions, More like this |
+| §4 Discover | R-M5b | Planned. Featured card sizes, two-column results, 640 request form |
 | §4 You & Settings | R-M6 | Planned. 440 You column as master |
 | §4 Monetisation | R-M7 | Planned. Buy credits Large modal, paywall |
 | §4 System states | R-M8 | Planned. Skeletons per layout, toast over content, crash in the lane |
@@ -45,7 +45,7 @@ with the flow that owns them.
 | Remove book: "Remove {title}?" + one line | R-M2b | ✅ `RemoveBookSheetBody`, both callers |
 | Book actions: no subtitles, cover or author | R-M2b | ✅ |
 | Offline chat banner wording | R-M3b | ✅ |
-| Discover Refreshing spinner | R-M5 | Pending |
+| Discover Refreshing spinner | R-M5b | ✅ already shipped — `onPullToRefresh` holds `refreshing` for 2s so the rail skeletons are perceptible. The row was stale |
 | Progress ring percentage, one rounded value | R-M2b | ✅ `ProgressRing` |
 | No em dashes in any UI copy | R-M2b | ✅ App and marketing site swept |
 
@@ -103,6 +103,41 @@ above and below only. The tab's voice pill still expands to the
 foreground, where the picker lives. Building it means teaching the
 shared module side placement for the one popover in the app that wants
 it.
+
+## R-M5 is two milestones
+
+§4 Book detail and §4 Discover are 41 wide frames between them,
+roughly three times R-M4b, so they split.
+
+**R-M5a — Book detail.** ✅ One rule covers all three wide sizes: the
+cover is a fixed width (192 at Medium, 228 above) and the info column
+flexes with a **680 cap**, which lands on 460 at Medium by itself. The
+row is left-aligned, so above Medium it stops short of the content
+edge — that is what the frames draw. The phone's bottom CTA bar
+becomes inline actions under the meta row, wrapping, so at Medium the
+three in-library buttons put "Remove from library" on a second line
+with no size-class branch. Remove is the 440 `Presenter kind="confirm"`
+that already existed; "Already removed" is the native alert up to
+Expanded and the **400** `modal/alert` dialog at Desktop.
+
+New on wide: the **More like this** rail, built from shelves already in
+memory — the category drilled in from, then subject-tag matches against
+everything seen this session, then the popular shelf. **The title
+follows the content**: it only claims kinship when the books share a
+category or subject, and says "Popular fiction" when it has fallen back.
+
+**R-M5b — Discover.** Planned: home, loading, refreshing, error, slow
+network, search results, no matches (request form capped at 640),
+category list and category empty, at three sizes. Plus the `Featured
+card` Size property — Compact (phone), Medium (684 × 268, `375:30`) and
+Wide (`372:51539`) — including the Reading nook illustration, to be
+hand-converted to a token-bound RN SVG the way `UploadFailedIllustration`
+was in M2b.
+
+Discover's file is the obstacle: `DiscoverScreen.tsx` is 3158 lines and
+owns the home, search, category and detail views with no `components/`
+folder, every card a module-local function, and ~12 literal 20pt
+gutters. M5a added the first `useSizeClass` in the feature.
 
 ## Follow-up: translate word pop-over content
 

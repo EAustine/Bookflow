@@ -789,3 +789,82 @@ export async function fetchDoabRest(
     };
   }
 }
+
+/**
+ * Reverse a stored `books.source_url` back to the Discover id that
+ * produced it, or null when the URL is not one of ours.
+ *
+ * This is the inverse of the id construction each adapter does above,
+ * and every adapter was written to make it possible without an extra
+ * column — `discover-open-library` keys its id on the IA identifier
+ * and the DOAB adapter on the OAPEN bookId for exactly this reason.
+ *
+ * It lives here, next to that construction, because it was previously
+ * written out twice in `DiscoverScreen`: once over five sources to
+ * decide whether a book is already in the library, and once over two
+ * to find the row to delete. The short copy meant an Open Library,
+ * Wikisource or DOAB book offered "Remove from library" and then
+ * dead-ended in the "Already removed" alert — a designed edge state
+ * reached as the normal outcome for three of five catalogues.
+ */
+export function discoverIdFromSourceUrl(url: string | null | undefined): string | null {
+  if (!url) return null;
+
+  // Gutenberg: https://www.gutenberg.org/ebooks/12345.epub.images
+  const gutenberg = url.match(/gutenberg\.org\/.*?\/(\d+)/);
+  if (gutenberg) return `gutenberg:${gutenberg[1]}`;
+
+  // Standard Ebooks: /ebooks/{author}/{title}/downloads/….epub
+  const standardEbooks = url.match(/standardebooks\.org\/ebooks\/([^/]+\/[^/]+)/);
+  if (standardEbooks) return `standard-ebooks:${standardEbooks[1]}`;
+
+  // Open Library: https://archive.org/download/{ia}/{ia}.epub
+  const openLibrary = url.match(/archive\.org\/download\/([^/]+)\//);
+  if (openLibrary) return `open-library:${openLibrary[1]}`;
+
+  // DOAB: /bitstream/handle/{prefix}/{bookId}/{file}.pdf
+  const doab = url.match(/library\.oapen\.org\/bitstream\/handle\/[\w.]+\/(\d+)\//);
+  if (doab) return `doab:${doab[1]}`;
+
+  // Wikisource: ws-export query string → `wikisource:{lang}:{Page_title}`.
+  // Parsed rather than matched because the parameters are unordered.
+  try {
+    const parsed = new URL(url);
+    if (parsed.hostname === 'ws-export.wmcloud.org') {
+      const lang = parsed.searchParams.get('lang');
+      const page = parsed.searchParams.get('page');
+      if (lang && page) return `wikisource:${lang}:${page.replace(/\s+/g, '_')}`;
+    }
+  } catch {
+    // Malformed URL — not matchable, which the callers treat as "not
+    // one of ours" rather than as an error.
+  }
+
+  return null;
+}
+
+/**
+ * The public catalogue page for a book, for sharing. Not every source
+ * has one we can derive, so this returns null rather than handing out
+ * a direct EPUB download link as if it were a page to read.
+ */
+export function discoverPageUrl(book: { id: string; source: string }): string | null {
+  const [, rest] = splitDiscoverId(book.id);
+  if (!rest) return null;
+  switch (book.source) {
+    case 'gutenberg':
+      return `https://www.gutenberg.org/ebooks/${rest}`;
+    case 'standard-ebooks':
+      return `https://standardebooks.org/ebooks/${rest}`;
+    case 'open-library':
+      return `https://archive.org/details/${rest}`;
+    default:
+      return null;
+  }
+}
+
+/** `gutenberg:12345` → `['gutenberg', '12345']`. Only splits once. */
+function splitDiscoverId(id: string): [string, string | null] {
+  const at = id.indexOf(':');
+  return at === -1 ? [id, null] : [id.slice(0, at), id.slice(at + 1)];
+}

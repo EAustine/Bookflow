@@ -1295,6 +1295,9 @@ function LibraryStage({
   // floats over the reader chrome, distracts from the page, and
   // overlaps the bottom action row.
   const [readerOpen, setReaderOpen] = useState(false);
+  // Discover's "Read now" hands a book id across the tab switch; the
+  // Library stage owns the reader route. Mirrors SignedInShell.
+  const [pendingReadBookId, setPendingReadBookId] = useState<string | null>(null);
   // You-sub-view flag — driven by YouScreen so the mini player
   // stays out of focused settings surfaces (Account, Settings,
   // Notifications, etc). Mirrors the readerOpen pattern.
@@ -1368,6 +1371,8 @@ function LibraryStage({
           userName={displayName}
           onUpgrade={onUpgrade}
           onStartListening={handleStartListening}
+          openBookId={pendingReadBookId}
+          onOpenBookConsumed={() => setPendingReadBookId(null)}
           onReaderOpenChange={setReaderOpen}
           pendingUploadAssets={pendingUploadAssets}
           onPendingUploadAssetsConsumed={onPendingUploadAssetsConsumed}
@@ -1392,6 +1397,11 @@ function LibraryStage({
         <DiscoverScreen
           onTabChange={setActiveTab}
           onSubViewOpenChange={setDiscoverSubViewOpen}
+          onReadBook={(book) => {
+            setPendingReadBookId(book.id);
+            setActiveTab('library');
+          }}
+          onListenToBook={handleStartListening}
         />
       )}
       {activeTab === 'listen' && historyOpen && (
