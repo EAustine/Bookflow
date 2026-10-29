@@ -1,0 +1,17 @@
+<svg width="440" height="268" viewBox="0 0 440 268" fill="none" xmlns="http://www.w3.org/2000/svg">
+<!-- Reading nook. Colours: forest-600 #2D5A3F, forest-900 #0E2A21, forest-400 #4A7C59, amber-500 #D4A574, amber-200 #EFD9B5, cream-50 #FAF7F2.
+     Cover slot (render the real book cover here): 92 x 138, top-left at x=186 y=28, rotated 6 degrees around its centre, radius 6, 3px forest-900 stroke,
+     with a forest-900 shadow of the same size offset +6 +6 behind it. Wide variant. -->
+<circle cx="250" cy="150" r="128" fill="#2D5A3F"/>
+<g transform="translate(6 6)" fill="#0E2A21"><rect x="120" y="212" width="230" height="30" rx="5"/><rect x="138" y="184" width="196" height="28" rx="5"/><rect x="128" y="158" width="214" height="26" rx="5"/></g>
+<rect x="120" y="212" width="230" height="30" rx="5" fill="#D4A574" stroke="#0E2A21" stroke-width="3"/>
+<rect x="138" y="184" width="196" height="28" rx="5" fill="#FAF7F2" stroke="#0E2A21" stroke-width="3"/>
+<rect x="128" y="158" width="214" height="26" rx="5" fill="#4A7C59" stroke="#0E2A21" stroke-width="3"/>
+<path d="M140 227 H 330 M156 198 H 318 M146 171 H 322" stroke="#0E2A21" stroke-width="2" stroke-linecap="round" opacity="0.5"/>
+<path d="M358 166 h34 v-34 h-34 z" fill="#0E2A21"/>
+<path d="M352 160 h34 v-34 h-34 z" fill="#EFD9B5" stroke="#0E2A21" stroke-width="3" stroke-linejoin="round"/>
+<path d="M386 134 c12 0 12 18 0 18" stroke="#0E2A21" stroke-width="3" fill="none"/>
+<path d="M362 116 c-4 -8 4 -12 0 -20 M374 116 c-4 -8 4 -12 0 -20" stroke="#FAF7F2" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+<path d="M400 48 C401.4 56.6 401.4 56.6 410 58 C401.4 59.4 401.4 59.4 400 68 C398.6 59.4 398.6 59.4 390 58 C398.6 56.6 398.6 56.6 400 48 Z" fill="#EFD9B5" stroke="#0E2A21" stroke-width="2.5" stroke-linejoin="round"/><path d="M118 42 C120.8 59.2 120.8 59.2 138 62 C120.8 64.8 120.8 64.8 118 82 C115.2 64.8 115.2 64.8 98 62 C115.2 59.2 115.2 59.2 118 42 Z" fill="#D4A574" stroke="#0E2A21" stroke-width="2.5" stroke-linejoin="round"/><path d="M84 133 C84.98 139.02 84.98 139.02 91 140 C84.98 140.98 84.98 140.98 84 147 C83.02 140.98 83.02 140.98 77 140 C83.02 139.02 83.02 139.02 84 133 Z" fill="#FAF7F2" />
+<path d="M60 236 C 76 210, 92 256, 108 230" stroke="#D4A574" stroke-width="3" fill="none" stroke-linecap="round"/>
+</svg>
