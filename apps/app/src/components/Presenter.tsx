@@ -65,6 +65,13 @@ export type PresenterProps = BottomSheetProps & {
    * than for a notional one.
    */
   width?: number;
+  /**
+   * Draw the popover's arrow. Default true. False when the anchor is
+   * too wide to point at usefully — see `Popover`.
+   */
+  arrow?: boolean;
+  /** Gap between the trigger and the card. Defaults to 8. */
+  offset?: number;
 };
 
 export const Presenter = forwardRef<PresenterRef, PresenterProps>(
@@ -73,6 +80,8 @@ export const Presenter = forwardRef<PresenterRef, PresenterProps>(
       kind,
       anchorRef,
       width,
+      arrow,
+      offset,
       title,
       children,
       footer,
@@ -155,6 +164,8 @@ export const Presenter = forwardRef<PresenterRef, PresenterProps>(
           visible={open}
           anchor={anchor}
           width={width}
+          arrow={arrow}
+          offset={offset}
           onDismiss={close}
           title={title}
           footer={footer}

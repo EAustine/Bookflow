@@ -48,6 +48,18 @@ export type PopoverProps = {
    * edge rule answers for the card actually being drawn.
    */
   width?: number;
+  /**
+   * Draw the arrow. Default true; `placePopover` still drops it on its
+   * own when the card is edge-aligned.
+   *
+   * False is for a popover anchored on something too wide to point at
+   * — the Listen player bar is 680, and an arrow aimed at its midpoint
+   * says nothing the centred card does not already say. Figma draws
+   * those arrowless.
+   */
+  arrow?: boolean;
+  /** Gap between the trigger and the card. Defaults to 8. */
+  offset?: number;
 };
 
 const ARROW = 10;
@@ -60,6 +72,8 @@ export function Popover({
   children,
   footer,
   width = tokens.layout.popover.width,
+  arrow = true,
+  offset,
 }: PopoverProps) {
   const { width: winW, height: winH } = useWindowDimensions();
   const { sizeClass } = useSizeClass();
@@ -71,9 +85,11 @@ export function Popover({
   const placement = placePopover(anchor, winW, winH, {
     width,
     gutter,
+    offset,
     arrow: ARROW,
     arrowInset: tokens.space.md,
   });
+  const arrowLeft = arrow ? placement.arrowLeft : null;
 
   return (
     <RNModal
@@ -99,11 +115,11 @@ export function Popover({
         // scrim underneath keeps receiving the dismiss press.
         pointerEvents="box-none"
       >
-        {placement.arrowLeft !== null && (
+        {arrowLeft !== null && (
           <View
             style={[
               styles.arrow,
-              { left: placement.arrowLeft },
+              { left: arrowLeft },
               placement.from === 'top' ? styles.arrowUp : styles.arrowDown,
             ]}
           />

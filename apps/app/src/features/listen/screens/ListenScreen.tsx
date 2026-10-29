@@ -1,20 +1,27 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Animated,
-  Dimensions,
   PanResponder,
   Pressable,
   ScrollView,
   StyleSheet,
   Text as RNText,
   View,
+  useWindowDimensions,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useSizeClass } from '~/hooks/useSizeClass';
-import { BottomSheet, ChapterSheet, type BottomSheetRef, Icon, Text } from '~/components';
+import {
+  ChapterSheet,
+  type BottomSheetRef,
+  Icon,
+  Presenter,
+  Text,
+} from '~/components';
 import { VoiceAvatar } from '~/components/VoiceAvatar';
 import { tokens } from '~/design/tokens';
 import { PLAYBACK_SPEEDS } from '~/stores/readerStore';
+import { PlaybackSpeedPicker } from './PlaybackSpeedPicker';
 import type { Book } from '~/types/book';
 import { type AudioVoice, DEFAULT_VOICE } from '../api/aiAudio';
 import { useAudioSession } from '../api/audioSession';
@@ -27,6 +34,9 @@ import { getActivePreviewVoiceId, playVoicePreview, stopVoicePreview, subscribeV
 // sheet lists. Was a separate 5-value literal (0.75–2, no 0.5/1.75),
 // so the pill could not reach two speeds the sheet offered. See F-7.
 const SPEEDS = PLAYBACK_SPEEDS;
+
+/** Gap between a bar-anchored popover and the player bar. Figma: 12. */
+const POPOVER_BAR_GAP = 12;
 type Speed = (typeof SPEEDS)[number];
 
 // ─── Voices ───────────────────────────────────────────────────────────────────
@@ -73,6 +83,9 @@ export function ListenScreen({ book, onBack, onMinimize, pageIndex }: ListenScre
   // AudioSessionProvider). This screen is a controller/view — it never
   // mounts its own useAudio, so navigating away keeps audio playing.
   const audio = useAudioSession();
+  // Picks the speed picker's density: the one-line list in a popover,
+  // the descriptive sheet on the phone.
+  const { isWide } = useSizeClass();
 
   // Resolve which page index this screen should display. Caller may
   // override (e.g. when invoked from a specific reader page); otherwise
@@ -115,6 +128,17 @@ export function ListenScreen({ book, onBack, onMinimize, pageIndex }: ListenScre
   const voiceSheetRef = useRef<BottomSheetRef>(null);
   const chapterSheetRef = useRef<BottomSheetRef>(null);
   const sleepSheetRef = useRef<BottomSheetRef>(null);
+  const speedSheetRef = useRef<BottomSheetRef>(null);
+  const voiceAnchorRef = useRef<View>(null);
+  /**
+   * Sleep and speed anchor on the **bar**, not on their own buttons.
+   * The frames centre both popovers over the 680 bar and draw no
+   * arrow, and anchoring on the bar is what produces that: the card
+   * centres on a centred anchor and flips above it because there is no
+   * room below. Anchoring on the buttons would throw both cards hard
+   * left, where the controls happen to sit.
+   */
+  const playerBarRef = useRef<View>(null);
   // Top-right of the listen header opens a full-text search of the
   // book. Picking a result jumps the audio session to that page (the
   // user's intent is "skip ahead to where this passage is read").
@@ -151,11 +175,6 @@ export function ListenScreen({ book, onBack, onMinimize, pageIndex }: ListenScre
   // SPEEDS entry to the current rate so the cycle still works if a
   // future picker sets an off-grid value.
   const speed = (SPEEDS.find((s) => Math.abs(s - audio.playbackRate) < 0.01) ?? 1) as Speed;
-  const cycleSpeed = useCallback(() => {
-    const idx = SPEEDS.indexOf(speed);
-    const next = SPEEDS[(idx + 1) % SPEEDS.length];
-    audio.setPlaybackRate(next);
-  }, [audio, speed]);
 
   const togglePlay = useCallback(() => {
     if (status.isPlaying) void pause();
@@ -338,7 +357,7 @@ export function ListenScreen({ book, onBack, onMinimize, pageIndex }: ListenScre
       </ScrollView>
 
       {/* Audio player */}
-      <View style={styles.player}>
+      <View ref={playerBarRef} style={styles.player}>
         {/* Scrub bar — drag the thumb (or tap anywhere on the track)
             to seek. Position math runs in screen coordinates against
             the measured track geometry; padding around the track no
@@ -393,7 +412,12 @@ export function ListenScreen({ book, onBack, onMinimize, pageIndex }: ListenScre
 
         {/* Transport */}
         <View style={styles.transport}>
-          <Pressable style={styles.speedPill} onPress={cycleSpeed}>
+          <Pressable
+            style={styles.speedPill}
+            accessibilityRole="button"
+            accessibilityLabel="Playback speed"
+            onPress={() => speedSheetRef.current?.present()}
+          >
             <Text style={styles.speedLabel}>
               {speed === 1 ? '1×' : `${speed}×`}
             </Text>
@@ -469,6 +493,7 @@ export function ListenScreen({ book, onBack, onMinimize, pageIndex }: ListenScre
         {/* Action pills */}
         <View style={styles.pillsRow}>
           <Pressable
+            ref={voiceAnchorRef}
             style={styles.pill}
             onPress={() => voiceSheetRef.current?.present()}
           >
@@ -499,8 +524,9 @@ export function ListenScreen({ book, onBack, onMinimize, pageIndex }: ListenScre
         }}
       />
 
-      {/* Voice picker sheet */}
-      <BottomSheet ref={voiceSheetRef}>
+      {/* Voice picker — sheet on Compact, 340 popover above, anchored
+          on its own pill because it is a pill-sized trigger. */}
+      <Presenter kind="menu" anchorRef={voiceAnchorRef} ref={voiceSheetRef}>
         <VoiceSheet
           selectedVoiceId={selectedVoiceId}
           onSelect={(id) => {
@@ -509,10 +535,17 @@ export function ListenScreen({ book, onBack, onMinimize, pageIndex }: ListenScre
           }}
           onClose={() => voiceSheetRef.current?.dismiss()}
         />
-      </BottomSheet>
+      </Presenter>
 
-      {/* Sleep timer sheet */}
-      <BottomSheet ref={sleepSheetRef} title="Sleep timer">
+      {/* Sleep timer — centred over the bar, arrowless. */}
+      <Presenter
+        kind="menu"
+        anchorRef={playerBarRef}
+        arrow={false}
+        offset={POPOVER_BAR_GAP}
+        ref={sleepSheetRef}
+        title="Sleep timer"
+      >
         <SleepSheet
           current={audio.sleepTimer}
           onPick={(picked) => {
@@ -520,7 +553,30 @@ export function ListenScreen({ book, onBack, onMinimize, pageIndex }: ListenScre
             sleepSheetRef.current?.dismiss();
           }}
         />
-      </BottomSheet>
+      </Presenter>
+
+      {/* Playback speed — same placement as the sleep timer. The
+          popover takes the compact one-line list; the phone sheet
+          keeps the description and the estimate. */}
+      <Presenter
+        kind="menu"
+        anchorRef={playerBarRef}
+        arrow={false}
+        offset={POPOVER_BAR_GAP}
+        ref={speedSheetRef}
+        title="Playback speed"
+      >
+        <PlaybackSpeedPicker
+          speed={speed}
+          compact={isWide}
+          pageRemainingMinAt1x={Math.max(0, durationSec - elapsedSecs) / 60}
+          pageLabel={`Page ${chNum}`}
+          onChange={(next) => {
+            audio.setPlaybackRate(next);
+            speedSheetRef.current?.dismiss();
+          }}
+        />
+      </Presenter>
     </SafeAreaView>
   );
 }
@@ -1184,6 +1240,13 @@ export function MiniPlayer({ onExpand }: MiniPlayerProps) {
   const audio = useAudioSession();
   const insets = useSafeAreaInsets();
   const { isWide } = useSizeClass();
+  // The PanResponder is built once, so it cannot close over a window
+  // width that changes. A ref kept current by `useWindowDimensions`
+  // lets the 35% dismiss threshold follow a rotation or a resize —
+  // `Dimensions.get` was read once per gesture and never updated.
+  const { width: winWidth } = useWindowDimensions();
+  const winWidthRef = useRef(winWidth);
+  winWidthRef.current = winWidth || 375;
   // Swipe-to-dismiss state. translateX drives the bar's horizontal
   // offset; opacity fades it as it leaves the screen. Both are
   // Animated.Values so the gesture stays on the UI thread via
@@ -1191,9 +1254,9 @@ export function MiniPlayer({ onExpand }: MiniPlayerProps) {
   const translateX = useRef(new Animated.Value(0)).current;
   const opacity = useRef(new Animated.Value(1)).current;
   // Captures the dismiss decision inside the PanResponder closure so
-  // we can call dismissMiniPlayer() after the slide-off animation
-  // finishes. Without this, calling dismissMiniPlayer() unmounts
-  // MiniPlayer mid-anim and the slide-off never plays out.
+  // we can stop the session after the slide-off animation finishes.
+  // Without this, stopping unmounts MiniPlayer mid-anim and the
+  // slide-off never plays out.
   const dismissingRef = useRef(false);
 
   // PanResponder captures clear horizontal drags (right OR left) and
@@ -1215,12 +1278,12 @@ export function MiniPlayer({ onExpand }: MiniPlayerProps) {
         translateX.setValue(g.dx);
         // Fade as the bar exits — starts at 1, hits ~0.3 by the time
         // it's halfway off-screen. Keeps the gesture feeling reactive.
-        const screenW = Dimensions.get('window').width || 375;
+        const screenW = winWidthRef.current;
         const dist = Math.min(1, Math.abs(g.dx) / screenW);
         opacity.setValue(Math.max(0.35, 1 - dist));
       },
       onPanResponderRelease: (_, g) => {
-        const screenW = Dimensions.get('window').width || 375;
+        const screenW = winWidthRef.current;
         // Dismiss if dragged past 35% of screen width OR with enough
         // velocity (matches iOS standard swipe-to-dismiss thresholds).
         const past = Math.abs(g.dx) > screenW * 0.35 || Math.abs(g.vx) > 0.5;
@@ -1240,12 +1303,13 @@ export function MiniPlayer({ onExpand }: MiniPlayerProps) {
             }),
           ]).start(({ finished }) => {
             if (finished && dismissingRef.current) {
-              // Hide the overlay but keep the audio session alive
-              // so the Listen tab still shows the now-playing card.
-              // The user can resume from there or tap a different
-              // book to start a new session (which un-hides the
-              // overlay automatically).
-              audio.dismissMiniPlayer();
+              // Closing means closing. `stop()` tears the session
+              // down rather than hiding the strip, so the cold-start
+              // auto-restore cannot revive it on the next launch and
+              // the Listen tab falls back to its resume state — which
+              // is the honest reading of a swipe that throws the
+              // player off the screen.
+              audio.stop();
             }
           });
         } else {
@@ -1281,26 +1345,16 @@ export function MiniPlayer({ onExpand }: MiniPlayerProps) {
     }),
   ).current;
 
-  // When a new session un-hides the overlay (book change resets
-  // `miniPlayerHidden`), the Animated values still hold the off-screen
-  // state from the previous dismiss. Snap them back to center so the
-  // bar reappears in-place rather than animating in from nowhere.
-  useEffect(() => {
-    if (!audio.miniPlayerHidden) {
-      translateX.setValue(0);
-      opacity.setValue(1);
-      dismissingRef.current = false;
-    }
-  }, [audio.miniPlayerHidden, translateX, opacity]);
-
-  // Early return AFTER hooks (refs + effects above) to keep hook
-  // order stable across mounts.
+  // Early return AFTER hooks (refs above) to keep hook order stable
+  // across mounts.
+  //
+  // There is no "hidden but alive" state any more: a swipe stops the
+  // session, so `book` going null is the only way this unmounts, and
+  // the next `start()` mounts a fresh component with its Animated
+  // values already at rest. The reset effect that used to snap them
+  // back went with it.
   const book = audio.book;
   if (!book) return null;
-  // The user explicitly swiped the overlay away. Audio session is
-  // still alive (Listen tab will render the now-playing card); we
-  // just hide the floating preview strip on other tabs.
-  if (audio.miniPlayerHidden) return null;
 
   // The mini bar floats absolutely and needs to clear whatever sits
   // below it. On a phone that is the TabBar: paddingTop(8) +
@@ -1325,10 +1379,6 @@ export function MiniPlayer({ onExpand }: MiniPlayerProps) {
     else audio.play();
   };
 
-  // The session can still be torn down via swipe-to-dismiss (left or
-  // right). When dismissed we call `audio.stop()` so the cold-start
-  // auto-restore doesn't immediately revive the bar — closing means
-  // closing, not hiding.
 
   return (
     <View style={{ marginBottom: tabBarOffset }} pointerEvents="box-none">
@@ -1446,9 +1496,21 @@ const styles = StyleSheet.create({
 
   // Bimodal scroll
   scroll: { flex: 1 },
+  /**
+   * The 680 goes on the **content container**, not on `scroll`: a
+   * ScrollView sized to 680 would scroll a 680 viewport, so the
+   * gesture would only work over the text. Same call `ReaderScreen`
+   * makes for its pager.
+   *
+   * 16 / 18 are the frames' own insets. The Listen foreground is not
+   * on the reader's 24.
+   */
   scrollContent: {
-    paddingHorizontal: 22,
-    paddingTop: tokens.space.lg,
+    width: '100%',
+    maxWidth: tokens.layout.reading.measure,
+    alignSelf: 'center',
+    paddingHorizontal: tokens.space.lg,
+    paddingTop: 18,
     paddingBottom: tokens.space.lg,
   },
   chapterLabel: {
@@ -1523,8 +1585,17 @@ const styles = StyleSheet.create({
     borderRadius: 2,
   },
 
-  // Player
+  /**
+   * Player bar. The frames cap the **whole bar** at 680 — fill, top
+   * hairline and all — rather than keeping a full-bleed surface with
+   * capped contents. Its fill is the page's own canvas, so what the
+   * cap actually changes is the hairline, which stops at 680 with the
+   * text above it. The header stays full bleed, as its frames do.
+   */
   player: {
+    width: '100%',
+    maxWidth: tokens.layout.reading.measure,
+    alignSelf: 'center',
     backgroundColor: tokens.bgColors.canvas,
     borderTopWidth: 0.5,
     borderTopColor: tokens.borderColors.subtle,

@@ -43,6 +43,7 @@ import {
   useStreakWarningSync,
 } from '~/lib/notifications';
 import { PLAYBACK_SPEEDS, useReaderStore } from '~/stores/readerStore';
+import type { Speed } from '@bookflow/shared/src';
 
 // Install the global unhandled-rejection silencer for network
 // errors. Idempotent and side-effect free unless a rejection fires.
@@ -963,16 +964,11 @@ function buildNowPlayingProps(
       const cap = dur > 0 ? dur : pos + 15;
       void audio.seekTo(Math.min(cap, pos + 15));
     },
-    // Speed pill — cycles through the Listen-screen speed set on tap.
-    // Direct, instant feedback; no sheet roundtrip. Wrapping at 2× →
-    // 0.75× matches the Listen-screen transport's cycleSpeed order.
-    onOpenSpeedSheet: () => {
-      const order: number[] = [...PLAYBACK_SPEEDS];
-      const current = snapSpeed(audio.playbackRate);
-      const idx = order.indexOf(current);
-      const next = order[(idx + 1) % order.length];
-      audio.setPlaybackRate(next);
-    },
+    // Speed pill — opens the picker the screen hosts beside it. It
+    // used to cycle the set on tap, which meant the same control
+    // behaved differently here and on the foreground player, and gave
+    // no way to see or choose a speed.
+    onSpeedChange: (next: Speed) => audio.setPlaybackRate(next),
     // Voice pill — the full picker (with free/Pro split + upsell)
     // lives on the foreground ListenScreen. Expand into that so the
     // user can browse + pick, instead of force-cycling a single

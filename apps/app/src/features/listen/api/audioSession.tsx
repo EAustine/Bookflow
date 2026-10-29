@@ -165,22 +165,6 @@ export type AudioSessionContextValue = {
   ) => void;
   /** Tear down the session entirely. The MiniPlayer disappears. */
   stop: () => void;
-  /**
-   * `true` after the user swipe-dismisses the floating MiniPlayer.
-   * The audio session itself stays alive (book + position + playback
-   * are all preserved) — only the overlay strip gets hidden. The
-   * Listen tab continues to render the now-playing card so the user
-   * can resume from there. Cleared automatically when `start()` is
-   * called for a different book.
-   */
-  miniPlayerHidden: boolean;
-  /**
-   * Hide the floating MiniPlayer without stopping audio. The Listen
-   * tab still shows the active session and the user can tap into it
-   * to keep listening. To un-hide, call `start()` with any book or
-   * change the active book.
-   */
-  dismissMiniPlayer: () => void;
   /** Resume / pause without changing the loaded book. */
   play: () => void;
   pause: () => void;
@@ -217,7 +201,6 @@ export type AudioSessionStableValue = Pick<
   | 'voiceId'
   | 'playbackRate'
   | 'sleepTimer'
-  | 'miniPlayerHidden'
   | 'start'
   | 'stop'
   | 'play'
@@ -227,7 +210,6 @@ export type AudioSessionStableValue = Pick<
   | 'setVoiceId'
   | 'setPlaybackRate'
   | 'setSleepTimer'
-  | 'dismissMiniPlayer'
 >;
 
 const AudioSessionStableContext = createContext<AudioSessionStableValue | null>(
@@ -268,13 +250,6 @@ export function AudioSessionProvider({ children }: { children: ReactNode }) {
   const [sleepTimer, setSleepTimerInternal] = useState<
     AudioSessionContextValue['sleepTimer']
   >(null);
-  // True after the user swipes the MiniPlayer overlay away. The audio
-  // session stays alive so the Listen tab can still render the
-  // now-playing card — we just hide the floating preview strip on
-  // every other tab. Resets to false whenever `start()` runs with a
-  // different book (a new session implies "show me the overlay").
-  const [miniPlayerHidden, setMiniPlayerHidden] = useState(false);
-
   // User intent — "should the next loaded page autoplay?". True when:
   //   - the user just tapped Listen on a book (start)
   //   - the user advanced a page mid-playback (manual or auto)
@@ -642,11 +617,6 @@ export function AudioSessionProvider({ children }: { children: ReactNode }) {
         useReaderStore.getState().defaultVoiceId ??
         DEFAULT_VOICE;
       setVoiceId(preferredVoice);
-      // A fresh start() reveals the MiniPlayer overlay again. If the
-      // user previously dismissed it via swipe, this implicitly resets
-      // that — starting a new book is an explicit "I want to listen"
-      // signal and the overlay shouldn't stay hidden under it.
-      setMiniPlayerHidden(false);
       // Mark this book as touched (last_read_page + last_read_at) so
       // it shows up in the Listen tab's "Last session" resume card
       // even if the user has never opened it in the reader. Without
@@ -678,16 +648,6 @@ export function AudioSessionProvider({ children }: { children: ReactNode }) {
     pageIndexRef.current = 0;
     setBook(null);
     setPageIndexInternal(0);
-    // A real stop clears the dismissed flag too — there's no session
-    // to be dismissed against, so the next start() begins fresh.
-    setMiniPlayerHidden(false);
-  }, []);
-
-  const dismissMiniPlayer = useCallback(() => {
-    // Hide the floating overlay but keep the session intact. The
-    // Listen tab continues to render the now-playing card so the
-    // user can resume from there.
-    setMiniPlayerHidden(true);
   }, []);
 
   // Wrap play/pause so we can mirror user intent. Auto-advance can then
@@ -780,7 +740,6 @@ export function AudioSessionProvider({ children }: { children: ReactNode }) {
       voiceId,
       playbackRate,
       sleepTimer,
-      miniPlayerHidden,
       start,
       stop,
       play: playWithIntent,
@@ -790,7 +749,6 @@ export function AudioSessionProvider({ children }: { children: ReactNode }) {
       setVoiceId: setVoiceIdPreservingPosition,
       setPlaybackRate,
       setSleepTimer,
-      dismissMiniPlayer,
     }),
     [
       book,
@@ -798,7 +756,6 @@ export function AudioSessionProvider({ children }: { children: ReactNode }) {
       voiceId,
       playbackRate,
       sleepTimer,
-      miniPlayerHidden,
       playWithIntent,
       pauseWithIntent,
       seekTo,
@@ -808,7 +765,6 @@ export function AudioSessionProvider({ children }: { children: ReactNode }) {
       setVoiceIdPreservingPosition,
       setPlaybackRate,
       setSleepTimer,
-      dismissMiniPlayer,
     ],
   );
 
