@@ -897,7 +897,7 @@ export function LibraryScreen({
     );
 
   if (MOCK_LIBRARY_LOADING) {
-    return <LibrarySkeleton />;
+    return <LibrarySkeleton tabBar={<TabBar activeTab="library" onChange={onTabChange} />} />;
   }
 
   if (selectedBook) {
@@ -1152,7 +1152,7 @@ export function LibraryScreen({
   // resolved, an empty `books` array means the user genuinely has no
   // library yet — render the empty state.
   if (isLoading) {
-    return <LibrarySkeleton />;
+    return <LibrarySkeleton tabBar={<TabBar activeTab="library" onChange={onTabChange} />} />;
   }
 
   const isEmpty = books.length === 0;
@@ -1249,6 +1249,10 @@ export function LibraryScreen({
           refreshControl={libraryRefreshControl}
         >
           {libraryHeader}
+          {/* Medium had no offline banner at all: the Compact mount is
+              gated `!isWide` and the wide one lives inside the master,
+              so this branch fell between them. */}
+          {isOffline && <OfflineBanner onRetry={() => void refreshNetwork()} />}
           {softWarningBanner}
           <LibraryHero
             book={continueBook}

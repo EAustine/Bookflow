@@ -24,7 +24,7 @@ spelled out below.
 | §4 Discover | R-M5b | ✅ Gutter pass, Featured card sizes with the Reading nook art, two-column results, 640 request form |
 | §4 You & Settings | R-M6 | ✅ 600 centred at Medium; 440 master + 560 detail above; two confirms to 440 modals |
 | §4 Monetisation | R-M7 | ✅ Buy credits as a 640 modal, Top-up balance as a You page, the banner into the column. Paywall is RevenueCat's |
-| §4 System states | R-M8 | Planned. Skeletons per layout, toast over content, crash in the lane |
+| §4 System states | R-M8 | ✅ Skeletons follow the branch, toast over the content area, crash in the 480 lane |
 | §5 Components | with the flow that uses each | Library's are done; the rest land with their flow |
 | §6 Hover and focus | R-M9 | **Blocked on the web bundle.** See below |
 | §7 Copy and product | R-M2b (Library), R-M10 (rest) | Partly done. See the table below |
@@ -250,8 +250,8 @@ for home, the Medium column and the master), `PlanCard`,
 - **`ReminderTimePicker` is still a bottom sheet.** It appears in none
   of the 43 frames, so there is no wide container to match it to.
 - **`BuyCreditsSheet`** stays a sheet until R-M7, which draws it as a
-  Large modal. The five native `Alert`s (clear cache, remove downloads,
-  remove profile photo) are R-M8's.
+  Large modal. The native `Alert`s are R-M8's — see that section: the
+  count is 30, not five, and the brief keeps them native anyway.
 - **`HelpScreen`** in `YouDrillScreens` is implemented, exported and
   imported by nothing; `HelpFAQScreen` replaced it.
 
@@ -333,6 +333,88 @@ Wrapped in a `View` instead. Worth a guard on the component.
   The `topups` offering is not configured in the dashboard, so
   `getTopupPackages()` returns `[]` and the modal shows its unavailable
   state — which did get verified live, at 640. No purchase was run.
+
+## R-M8 — System states
+
+✅ **30 wide frames, but only four surfaces.** Six of the ten rows had
+already shipped with the flow that owned them — offline Library (M2a),
+offline AI chat and the scope banner (M3b), slow-network Discover
+(M5b), and the notification permission dialog, which M7 pulled forward
+to a 440 modal. What was left: the two skeletons, the toast and the
+crash boundary.
+
+**The Library skeleton now follows the branch.** It took no props and
+drew one full-width list at every size, returned *above* the screen's
+own `compact / medium / wide` ladder. So at Medium it drew rows where a
+cover grid was coming, at 20 where the gutter is 32; above Medium it
+drew one bleed column where a 440 master and a book pane were coming;
+and even on the phone it was stale, missing the stats card entirely and
+rendering no tab bar, so the bottom nav vanished for the length of the
+load. It reads the size class itself now, so the call sites did not
+move:
+
+- **Medium** — a 684 × 194 hero block, the "All books" bar, then the
+  4-column tile grid at 153 wide with a 24 gap. Measured on device.
+- **Expanded and Desktop** — the 440 master (113 stats block, label,
+  76-tall row skeletons) beside a **pane skeleton**: a 240 × 360 cover,
+  the 80 / 280 / 140 / 220 bars, two buttons at 160 and 110, and three
+  588 × 56 rows. The pane is a skeleton, not its "Pick a book" empty
+  state — nothing failed to be selected, the library has not arrived.
+
+**The Reader skeleton got the measure and a back button.** Its body was
+`paddingHorizontal: 22` with no cap, so at 1440 the paragraphs ran
+about 1400 wide and snapped to 680 when real text landed. And `onBack`
+was destructured and never used: the comment claimed "back button is
+real", the code drew a bare 32 × 32 `Skeleton` in a non-pressable
+`View`, so a cold reader open had no way out. Both fixed.
+
+**The toast moved off the window.** It is mounted at the window root
+and that is deliberate — the comment above the mount records that it
+sits outside `BottomSheetModalProvider` so toasts paint above bottom
+sheets — so it stayed there and offsets instead. Two things followed
+from the frames:
+
+- Horizontally it centres on the **content area**. It reads a new
+  `railVisible` flag the shell publishes, not the size class, because
+  the reader and the foreground player are wide surfaces with no rail;
+  verified both ways on device.
+- Vertically it is **top on Compact, bottom above it** — 30 above the
+  bottom safe area. The phone keeps the top because it has a tab bar
+  there; the tablet frames all put it at the bottom, which is free once
+  the tab bar becomes a rail.
+
+**The crash boundary went 420 → 480.** It was already right about the
+hard part — no rail, no chrome, centred — and the number was wrong. It
+does **not** import `layout.lane.width`: its own comment explains that
+it uses raw primitives and hex so a broken design system cannot bring
+the crash screen down with the app, and a boundary that imports what
+may have just crashed is not a boundary. The literal changed and gained
+a comment naming the token it mirrors.
+
+**One hole filled:** Medium had **no offline banner at all**. The
+Compact mount is gated `!isWide` and the wide one lives inside the
+master, so that branch fell between them. The row above says Library
+offline shipped complete in R-M2a; it did not.
+
+**Carried from M8:**
+
+- **The 30 `Alert.alert` sites stay native.** The brief's row is "iOS
+  alert on tablets, web dialog on desktop", so on native they are
+  already correct at every size M8 covers, and the Desktop 400 dialog
+  is web-only and waits for R-M9 with the Monetisation pair. Worth
+  writing down because this doc had assigned "the five native `Alert`s"
+  to R-M8 and the real count is **30 across 8 files**, 12 of them in
+  `AccountScreen`. `Presenter` has no `'alert'` kind, so the one
+  existing non-native case — Discover's "Already removed", from M5a —
+  hand-rolls a bare `Modal`.
+- **`Skeleton`'s shimmer is two hex literals**, `#EAE6DC` → `#F0EDE5`,
+  where §4 says skeletons use `color/bg/surface`. Neither is on the
+  cream ramp (`surface` is `#F5F1E8`, `cream.200` is `#ECE5D5`), so
+  binding them changes how every skeleton in the app looks. **For the
+  sign-off pass (R-M10).**
+- React error boundaries do not catch throws from event handlers, only
+  render-phase ones — worth knowing before anyone tries to test this
+  boundary the quick way.
 
 ## Pricing and caps — split out of R-M7
 

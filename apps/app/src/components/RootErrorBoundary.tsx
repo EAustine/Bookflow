@@ -82,7 +82,12 @@ const styles = StyleSheet.create({
   },
   card: {
     width: '100%',
-    maxWidth: 420,
+    // 480 is `tokens.layout.lane.width`, written as a literal on
+    // purpose. This file uses raw primitives and hex so a broken
+    // design system cannot bring the crash screen down with the app —
+    // a boundary that imports the thing that may have just crashed is
+    // not a boundary. Keep the two in step by hand (M8).
+    maxWidth: 480,
     backgroundColor: '#FFFFFF',
     borderRadius: 16,
     padding: 24,

@@ -30,7 +30,7 @@ import {
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { BottomSheetModalProvider } from '@gorhom/bottom-sheet';
-import { ToastHost } from '~/components/ToastHost';
+import { useShellChromeStore } from '~/stores/shellChrome';
 import { SideRail } from '~/components/SideRail';
 import { useSizeClass } from '~/hooks/useSizeClass';
 import { useFonts } from 'expo-font';
@@ -496,6 +496,18 @@ export function SignedInShell({
    * conditions of its own below, for the Listen and You tabs.
    */
   const chromeHidden = railHidden || discoverSubViewOpen;
+
+  /**
+   * Publish whether the rail is on screen, so the toast — mounted at
+   * the window root, outside this tree — can centre over the content
+   * area rather than the window (§4). Same condition the rail renders
+   * on below.
+   */
+  const railVisible = isWide && !railHidden;
+  const setRailVisible = useShellChromeStore((s) => s.setRailVisible);
+  useEffect(() => {
+    setRailVisible(railVisible);
+  }, [railVisible, setRailVisible]);
 
   const handleStartListening = useCallback(
     (book: Book) => {
