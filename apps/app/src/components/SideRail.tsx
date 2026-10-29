@@ -15,6 +15,7 @@
  * interaction states.
  */
 
+import type { ReactNode } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Icon, type IconName } from './Icon';
@@ -43,9 +44,23 @@ export type SideRailProps = {
   onChange: (tab: TabKey) => void;
   /** Desktop. Widens to 240 and swaps the logomark for the full lockup. */
   expanded?: boolean;
+  /**
+   * Pinned to the bottom of the rail, under a flexible spacer. Desktop
+   * puts the mini player here (`Rail mini player` `295:98`).
+   *
+   * A slot rather than the thing itself: the rail is navigation and
+   * knows nothing about audio. The shell composes, which also keeps
+   * the per-tick re-render inside whatever leaf the caller passes.
+   */
+  footer?: ReactNode;
 };
 
-export function SideRail({ activeTab, onChange, expanded = false }: SideRailProps) {
+export function SideRail({
+  activeTab,
+  onChange,
+  expanded = false,
+  footer,
+}: SideRailProps) {
   const insets = useSafeAreaInsets();
   return (
     <View
@@ -79,6 +94,13 @@ export function SideRail({ activeTab, onChange, expanded = false }: SideRailProp
           />
         ))}
       </View>
+
+      {footer && (
+        <>
+          <View style={styles.spacer} />
+          <View style={styles.footer}>{footer}</View>
+        </>
+      )}
     </View>
   );
 }
@@ -142,6 +164,12 @@ const styles = StyleSheet.create({
   items: {
     gap: tokens.space.xs,
     paddingHorizontal: tokens.space.sm,
+  },
+  /** Pushes the footer to the bottom without the rail owning a height. */
+  spacer: { flex: 1 },
+  footer: {
+    paddingHorizontal: tokens.space.lg,
+    paddingTop: tokens.space.lg,
   },
   item: {
     borderRadius: tokens.radii.md,

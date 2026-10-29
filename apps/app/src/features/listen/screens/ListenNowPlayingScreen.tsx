@@ -20,7 +20,7 @@
  * scrollable content area between the status bar and the tab bar.
  */
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import {
   Animated,
   Easing,
@@ -35,8 +35,10 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { EqBars, Icon, RecentListenRow, Text } from '~/components';
 import { tokens } from '~/design/tokens';
 import { useSizeClass } from '~/hooks/useSizeClass';
+import { Presenter, type BottomSheetRef } from '~/components';
+import { PlaybackSpeedPicker } from './PlaybackSpeedPicker';
 import { peekCachedCoverUrl, resolveCoverUrl } from '~/core/bookCovers';
-import type { Speed } from './PlaybackSpeedSheet';
+import type { Speed } from '@bookflow/shared/src';
 
 // ─── Props ────────────────────────────────────────────────────────────────────
 
@@ -98,7 +100,7 @@ export type ListenNowPlayingScreenProps = {
   /** Forward 15s within the current page (inner right). */
   onForward15?: () => void;
   onScrubTo?: (percent: number) => void;
-  onOpenSpeedSheet: () => void;
+  onSpeedChange: (next: Speed) => void;
   onOpenVoiceSheet: () => void;
   onOpenRecent: (id: string) => void;
   onSeeAllRecent?: () => void;
@@ -126,13 +128,19 @@ export function ListenNowPlayingScreen({
   onRewind15,
   onForward15,
   onScrubTo,
-  onOpenSpeedSheet,
+  onSpeedChange,
   onOpenVoiceSheet,
   onOpenRecent,
   onSeeAllRecent,
   onOpenProfile,
 }: ListenNowPlayingScreenProps) {
   const { sizeClass, isWide } = useSizeClass();
+  // The speed picker is hosted here rather than by the shell, because
+  // its anchor is the pill inside the hero card. Sheet on Compact, a
+  // 340 popover above — and unlike the foreground player's bar-wide
+  // anchor, a pill is small enough to point an arrow at.
+  const speedSheetRef = useRef<BottomSheetRef>(null);
+  const speedAnchorRef = useRef<View>(null);
   const paused = state === 'paused';
   const cardBg = paused ? tokens.colors.cardPaused : tokens.colors.forest[800];
   const dimOpacity = paused ? 0.6 : 1;
@@ -303,7 +311,8 @@ export function ListenNowPlayingScreen({
           icon="ArrowsSort"
           label={`${formatSpeed(speed)}×`}
           prominent
-          onPress={onOpenSpeedSheet}
+          anchorRef={speedAnchorRef}
+          onPress={() => speedSheetRef.current?.present()}
           opacity={dimOpacity}
         />
         <Pill icon="Microphone" label={voice} onPress={onOpenVoiceSheet} opacity={dimOpacity} />
@@ -428,6 +437,26 @@ export function ListenNowPlayingScreen({
           </>
         )}
       </ScrollView>
+
+      {/* Playback speed. The popover takes the compact one-line list;
+          the phone sheet keeps the description. No time estimate here
+          — the tab is handed formatted strings, not the raw seconds
+          the foreground player has. */}
+      <Presenter
+        kind="menu"
+        anchorRef={speedAnchorRef}
+        ref={speedSheetRef}
+        title="Playback speed"
+      >
+        <PlaybackSpeedPicker
+          speed={speed}
+          compact={isWide}
+          onChange={(next) => {
+            onSpeedChange(next);
+            speedSheetRef.current?.dismiss();
+          }}
+        />
+      </Presenter>
     </SafeAreaView>
   );
 }
@@ -593,15 +622,19 @@ function Pill({
   prominent = false,
   onPress,
   opacity = 1,
+  anchorRef,
 }: {
   icon: 'ArrowsSort' | 'Microphone';
   label: string;
   prominent?: boolean;
   onPress: () => void;
   opacity?: number;
+  /** Lets a pill be the anchor its popover measures against. */
+  anchorRef?: RefObject<View | null>;
 }) {
   return (
     <Pressable
+      ref={anchorRef}
       onPress={onPress}
       style={[
         styles.pill,

@@ -38,6 +38,72 @@ Target: `docs/ARCHITECTURE.md` · Distance to it: `docs/ARCHITECTURE_GAPS.md`
 
 ## Progress
 
+### Responsive M4b — the Listen player · 2026-10-29
+
+The other half of Listen, and the end of §4 Listen: the foreground
+player, its three controls, and the Desktop mini player.
+
+**The frames cap the whole player bar, not its contents.** The
+instinct was a full-bleed surface with an inner 680 wrapper, so the
+hairline and fill would still run edge to edge. The frames say
+otherwise — `Listen player bar` is 680 wide with `top: 1` and a
+cream-50 fill, while `header` keeps the full frame width with
+`bottom: 1` and no fill. Since the bar's fill is the page's own
+canvas, what the cap actually changes is where the hairline stops.
+The bimodal text takes its cap on the scroll *content container*: a
+ScrollView sized to 680 would scroll a 680 viewport, so the gesture
+would only work over the text.
+
+**The popovers needed almost no new plumbing.** `VoiceSheet` and
+`SleepSheet` were never sheets — they are plain bodies with the
+`BottomSheet` at the call site — so converting them to
+`Presenter kind="menu"` was one line each, and Compact keeps its sheet
+for free.
+
+What did need something: the frames centre the sleep and speed
+popovers over the bar and draw no arrow. **Anchoring on the bar rather
+than on the buttons is what produces that** — a card centred on a
+centred anchor, flipped above it because there is no room below.
+Anchoring on the buttons, which is where the triggers actually are,
+throws both cards hard left. `Popover` gained `arrow={false}` for it,
+because an arrow aimed at the midpoint of a 680-wide element points at
+nothing, and `offset` for the frames' 12.
+
+**The speed cycle is gone.** Tapping the pill used to step through the
+set in place, in three separate implementations — `ListenScreen`,
+`SignedInShell` and `App.tsx` — so the same control behaved one way on
+the tab and another on the player, and never showed what the options
+were. Both surfaces now open a picker: `PlaybackSpeedPicker`, one body
+with a `compact` flag, giving the popover the one-line list and the
+phone the descriptions and the time estimate. It replaces
+`PlaybackSpeedSheet`, which was built, never wired, and had only its
+`Speed` type imported.
+
+**Closing the mini player stops playback now.** The code called
+`dismissMiniPlayer()`, which only hid the strip, while a comment forty
+lines below claimed it called `stop()` "because closing means closing,
+not hiding". The comment was the intended behaviour. With the code
+moved to `stop()`, nothing could set `miniPlayerHidden` any more, so
+the flag, its setter, its two context entries and the reset effect
+that went with it came out too — a hide mechanism nothing can trigger
+is worse than none.
+
+**Found, not fixed: popovers that flip above a trigger sit about 24px
+too high on Android.** The sleep and speed cards were given
+`offset: 12` and land about 36 above the bar; the tab's speed card
+drops below its pill and overlaps it by a similar amount. 24 is the
+status-bar height, which is consistent with `measureInWindow` and
+`useWindowDimensions` disagreeing about whether it counts. This is
+app-wide and predates M4b — every popover since M2a has it — so it is
+recorded rather than fixed inside a layout milestone.
+
+Verified on the emulator at 360 / 820 / 1180 / 1440: the bar's
+hairline stops at 680 while the header's runs edge to edge, the three
+popovers land at 340, the phone keeps its descriptive sheet, the rail
+card replaces the bottom bar on Desktop only, and a swipe-dismiss
+drops the Listen tab back to its resume state. Gate held: 0 errors /
+222 warnings, 98 tests.
+
 ### Responsive M4a — the Listen tab · 2026-10-29
 
 §4 gives Listen one sentence, but the build log's Listen flow is eight

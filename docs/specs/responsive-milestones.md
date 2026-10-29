@@ -62,42 +62,47 @@ roughly twice R-M3b, so it splits the way R-M3 did.
 states centred, and the "Listen" title held to one line.
 `layout.listen` carries the frame widths.
 
-**R-M4b — the player.** Planned:
+**R-M4b — the player.** ✅
 
-- The foreground player at **680**, centred — the bimodal text on its
-  scroll content container and the bar's controls on an inner wrapper,
-  so the bar's border and fill stay full bleed.
-- **Voice, sleep timer and speed as popovers** above Compact, anchored
-  on their pills. `placePopover` already flips above a trigger with no
-  room below, which is the player bar's case, so the popovers want an
-  anchor rather than a new "centred above this node" mode. Figma draws
-  them arrowless and centred over the bar; anchoring keeps an arrow
-  pointing at the pill, which is what every other popover in the app
-  does. That divergence is deliberate.
-- **`Panel / Playback speed (compact)`** (`372:448`) as the speed
-  content: one line per speed, the name in muted text, the selected row
-  tinted with a Check. `SPEED_CATALOG` in `@bookflow/shared` already
-  carries `{ value, display, label, description }`, so this is the same
-  data with the description dropped.
-  **Figma's panel lists eight speeds ending at 3×; the code must ship
-  seven.** `PLAYBACK_SPEEDS` stops at 2× and
-  `packages/shared/src/__tests__/playback.test.ts:17` asserts 3× is
-  absent from both the store set and the catalog, because the store
-  cannot persist it. The panel's `opt/3×` row re-introduces exactly the
-  bug that test guards. Code wins.
-- **Wiring the phone's speed sheet.** Speed currently cycles in place on
-  tap on both Listen surfaces, and `PlaybackSpeedSheet` — the phone's
-  designed sheet, descriptions and all — is built but dead; only its
-  `Speed` type is imported. The build log says the phone sheet keeps its
-  descriptions while Medium and up use the compact panel, so Compact
-  gets the sheet and the cycle goes.
+- The foreground player at **680**, centred. The frames cap the whole
+  bar — fill, top hairline and all — not a full-bleed surface with
+  capped contents; the header is the one that stays full width. The
+  bimodal text takes the cap on its scroll *content container*, since a
+  ScrollView sized to 680 would only scroll over the text.
+- **Voice, sleep timer and speed as popovers** above Compact, through
+  `Presenter kind="menu"`. `VoiceSheet` and `SleepSheet` were already
+  plain bodies with the `BottomSheet` at the call site, so each
+  conversion was one line.
+  Sleep and speed anchor on the **bar**, not on their buttons: the
+  frames centre both over the 680 bar and draw no arrow, and a
+  bar-shaped anchor is what produces that. `Popover` gained
+  `arrow={false}` for it — an arrow aimed at the midpoint of a 680
+  element says nothing — and `offset`, for the frames' 12.
+- **`Panel / Playback speed (compact)`** (`372:448`) as the popover
+  content and `Sheet / Playback speed` on the phone, both from one
+  `PlaybackSpeedPicker` body with a `compact` flag. `SPEED_CATALOG` in
+  `@bookflow/shared` already carries `{ value, display, label,
+  description }`, so the difference is whether the description and the
+  time estimate render.
+- **The cycle is gone from both surfaces.** Speed used to cycle in
+  place in `ListenScreen`, `SignedInShell` and `App.tsx`, which meant
+  the same control behaved differently depending on where you tapped it
+  and never showed what the options were. The tab hosts its own
+  `Presenter` beside the pill, so `onOpenSpeedSheet` became
+  `onSpeedChange`.
 - **The Desktop mini player in the side rail** (`Rail mini player`
-  `295:98`, 208 × 138: cover and title, a 2px progress line, then a
-  centred three-button transport). `SideRail` has no footer region, so
-  it gains a `footer` slot the shell fills — keeping the rail a dumb nav
-  component rather than teaching it about audio. Desktop only: the rail
-  is only `expanded` there, and the build log keeps Expanded on the
-  bottom bar.
+  `295:98`, 208 × 138). `SideRail` gained a `footer` slot the shell
+  fills, so the rail stays a dumb nav component that knows nothing
+  about audio. Desktop only: the rail is only `expanded` there, and the
+  build log keeps Expanded on the bottom bar.
+
+**Carried from M4b:** Figma's **Voice popover on the Now playing tab**
+(`329:2927` and its Medium and Desktop twins). It is side-anchored
+beside the pill with a left-pointing arrow, and `placePopover` does
+above and below only. The tab's voice pill still expands to the
+foreground, where the picker lives. Building it means teaching the
+shared module side placement for the one popover in the app that wants
+it.
 
 ## Follow-up: translate word pop-over content
 
