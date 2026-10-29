@@ -38,6 +38,82 @@ Target: `docs/ARCHITECTURE.md` · Distance to it: `docs/ARCHITECTURE_GAPS.md`
 
 ## Progress
 
+### Responsive M6 — You & Settings · 2026-10-29
+
+The last of §4: 43 wide frames, which measure out to **two
+containers**. A 600 column centred at Medium, and the 440 master plus a
+560 detail column above it; every drill-in page inherits one. That is
+why this stayed one milestone where Listen and Discover each split.
+
+**There was no gutter pass.** You & Settings already used 16 everywhere
+and the frames draw 16 everywhere — 408 inside the 440 master, 568
+inside the 600 column, 528 inside the 560 detail. Discover's 20-vs-16
+problem had no counterpart here. The work was entirely containers,
+shell wiring and the two confirms.
+
+**The detail column is left aligned, not centred.** The frames put it
+33 from the master edge at Expanded and 41 at Desktop, which is
+`1 + gutter[sizeClass]` — a hairline plus the page gutter — and the
+pane keeps what is left over. The hairline belongs to the detail, the
+way `LibraryBookPane` carries its own `borderLeft`.
+
+**The real work was where the pages render.** The seven drill-ins are
+Expo Router pushes onto the root stack with no `_layout.tsx`, so a
+sub-page covered the whole shell including the rail. Above Compact the
+tab now renders them itself, inside the content column — the same
+components the routes mount, given a different container and no
+`onBack`, which is the pattern `LibraryScreen` already uses for its
+upload dialogs. Compact is untouched and still pushes.
+
+That let `youSubViewOpen` go from `SignedInShell` and `App.tsx`. It was
+dead for seven of the eight pages anyway: `view` stayed `'home'` when a
+route pushed, so the rail disappeared because the route covered the
+shell, not because of the flag.
+
+**Reading display opens on arrival** above Medium. §8 leaves a separate
+wide You home out on purpose — the master is always visible — so
+something has to be open.
+
+**Two component changes.** `ListRow` gained `active`, the
+`bg/accent-muted` fill Figma draws as `List row (selected)`; its
+existing `selected` is a trailing check, which answers a different
+question and is why `LibraryScreen` grew its own row. `SubHeader`'s
+`onBack` became optional, which is Figma's hidden `backBtn` layer —
+not a size-class test but "does the master offer a way back", so Edit
+profile keeps its button at every size and returns to Account &
+subscription rather than You home.
+
+**Three sheets became 440 modals**: Sign out (implemented twice, with
+byte-identical copy), Delete account, and the notification permission
+sheet. The last is §4 System states' row, pulled forward rather than
+left as the only bottom sheet on a screen whose Sign out row two rows
+above already opened a modal.
+
+**Extracted** to `features/account/components/`: `YouHomeBody` — one
+body serving You home, the Medium column and the master — plus
+`PlanCard` and `SettingsSection`, with the shared types moved to
+`features/account/types.ts`. `HelpFAQScreen` moved onto `SubHeader`,
+closing the last F-30 holdout.
+
+**Two bugs only the device caught.** Nested `SafeAreaView` double-applies
+the inset — the page components each bring their own and
+safe-area-context does not subtract what a parent applied — which put
+the Sub header 24 low until the safe area moved per child. And Android
+under-measures tracked, weighted text: "YOUR PLAN" broke after "YOUR"
+at 440 and 600 but never on the phone, on a card 80dp narrower, because
+it only shows at density 160.
+
+**Recorded, not guessed at.** Figma uses one `Plan card` at both 408
+and 528; the code has two different designs, and collapsing them is a
+design call. Three section cards carry label sizes 10, 11 and 12
+against `Label/MD`'s 12 — the vertical rhythm difference is real, the
+label sizes are drift, and only You's was rebuilt.
+
+Gate: 0 errors / **213** warnings — eight below the 221 baseline, from
+dead styles and imports the extraction exposed — 98 tests. Verified at
+360 / 820 / 1180 / 1440. Delete account's confirm path calls a
+production edge function and was not run.
+
 ### Responsive M5b — Discover · 2026-10-29
 
 The rest of Discover: 26 wide frames, the Featured card's Size

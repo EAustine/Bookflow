@@ -14,6 +14,13 @@
  * handlers stack LIFO, which is what makes nesting work: a drill-in
  * opened from Settings registers above Settings' own, so hardware-back
  * returns to Settings rather than skipping past it to the You tab.
+ *
+ * Above Medium, You & Settings renders its pages in a detail pane with
+ * the master list still beside them, so those pages have no back
+ * action at all — Figma hides the component's `backBtn` layer there.
+ * That is `onBack` being optional rather than a separate `showBack`
+ * flag: a page either has somewhere to go back to or it does not, and
+ * one prop cannot disagree with itself about which.
  */
 import { Pressable, StyleSheet, View } from 'react-native';
 import { Icon } from './Icon';
@@ -23,26 +30,35 @@ import { useBackHandler } from '~/lib/useBackHandler';
 
 export type SubHeaderProps = {
   title: string;
-  onBack: () => void;
+  /**
+   * Omit where the page cannot be left — the You detail pane above
+   * Medium. There is then no button and no Android back handler, so
+   * hardware-back falls through to the tab, which is correct when
+   * nothing is covering it.
+   */
+  onBack?: () => void;
 };
 
 export function SubHeader({ title, onBack }: SubHeaderProps) {
   useBackHandler(() => {
+    if (!onBack) return false;
     onBack();
     return true;
   });
 
   return (
     <View style={styles.header}>
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel="Back"
-        onPress={onBack}
-        hitSlop={8}
-        style={({ pressed }) => [styles.backBtn, pressed && { opacity: 0.7 }]}
-      >
-        <Icon name="ArrowLeft" size={16} color={tokens.textColors.secondary} />
-      </Pressable>
+      {onBack && (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Back"
+          onPress={onBack}
+          hitSlop={8}
+          style={({ pressed }) => [styles.backBtn, pressed && { opacity: 0.7 }]}
+        >
+          <Icon name="ArrowLeft" size={16} color={tokens.textColors.secondary} />
+        </Pressable>
+      )}
       <Text style={styles.title} numberOfLines={1}>
         {title}
       </Text>

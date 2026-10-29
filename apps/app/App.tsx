@@ -1298,10 +1298,6 @@ function LibraryStage({
   // Discover's "Read now" hands a book id across the tab switch; the
   // Library stage owns the reader route. Mirrors SignedInShell.
   const [pendingReadBookId, setPendingReadBookId] = useState<string | null>(null);
-  // You-sub-view flag — driven by YouScreen so the mini player
-  // stays out of focused settings surfaces (Account, Settings,
-  // Notifications, etc). Mirrors the readerOpen pattern.
-  const [youSubViewOpen, setYouSubViewOpen] = useState(false);
   // Discover-sub-view flag — driven by DiscoverScreen so the mini
   // player hides on the category list and book detail screens, not
   // just the home rails.
@@ -1389,7 +1385,6 @@ function LibraryStage({
           onUpgrade={onUpgrade}
           onTabChange={setActiveTab}
           onSignOut={onSignOut}
-          onSubViewOpenChange={setYouSubViewOpen}
           onRefresh={refreshYou}
         />
       )}
@@ -1445,7 +1440,6 @@ function LibraryStage({
       {audio.book &&
         !listenForeground &&
         !readerOpen &&
-        !youSubViewOpen &&
         !discoverSubViewOpen &&
         activeTab !== 'listen' &&
         activeTab !== 'you' && (

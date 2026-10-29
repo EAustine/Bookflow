@@ -10,7 +10,7 @@ Built directly in Figma from chat. Claude Code implements from this file and the
 
 ## Decisions
 
-- Rail stays collapsed (72) on Medium and Expanded; expands (240) from 1280. At 1180 an expanded rail plus a 360 master leaves only 580 for detail.
+- Rail stays collapsed (72) on Medium and Expanded; expands (240) from 1280. At 1180 an expanded rail plus a 440 master leaves only 500 for detail.
 - Mini player: bar across the content area on Medium and Expanded; card at the rail foot on Desktop.
 - Reader has no rail at any size. Page column capped at 680. Panels slide over on Medium, dock on Expanded and Desktop.
 - Library on Medium: Library hero card plus a 4-column cover grid that opens the reader. Expanded and Desktop: list + proposed book pane.
@@ -30,7 +30,7 @@ All carry WEB code syntax `tokens.layout.*` (lands in code in M1, used by shells
 | layout/breakpoint/rail-expand | 1280 | doc only |
 | layout/rail/collapsed | 72 | width |
 | layout/rail/expanded | 240 | width |
-| layout/pane/master | 360 | width |
+| layout/pane/master | 440 (was 360) | width |
 | layout/panel/side | 380 | width |
 | layout/popover/width | 340 | width |
 | layout/modal/confirm | 440 | width |
@@ -292,7 +292,7 @@ Placed in the page sections. No new components; every frame is built from existi
 
 - **Discover keeps the phone order** (search, category chips, Featured, rails) with gutters bound to `layout/gutter/*`. The search bar caps at `layout/lane/width` (480) on Expanded and Desktop; the Featured card caps at 640. Rails show as many cards as fit (5 on Medium, 8 on Expanded, 9 on Desktop) and still scroll sideways.
 - **Book detail is a page in the content area, not a sheet or panel**: cover column left (phone cover scaled), info column right capped at 680, then a "More like this" rail. The phone's bottom CTA bar becomes inline buttons under the meta row: Add to library (Primary Large) or Read now, Listen and Remove from library (Primary, Secondary, Tertiary).
-- **You & Settings is master and detail on Expanded and Desktop**: the You home list is the 360 master with the open row on `color/bg/accent-muted`; the drill-in fills the detail column (560 wide, left hairline). The drill's back button is hidden there because the master stays visible. Medium stays single column, 600 wide and centred, and drill-ins push as full pages with their back button.
+- **You & Settings is master and detail on Expanded and Desktop**: the You home list is the 440 master with the open row on `color/bg/accent-muted`; the drill-in fills the detail column (560 wide, left hairline). The drill's back button is hidden there because the master stays visible. Medium stays single column, 600 wide and centred, and drill-ins push as full pages with their back button.
 - **Sign out and Delete account** are Confirm modals (440) over a scrim, using Sheet / Confirm as content, with the phone sheet's copy and buttons.
 - Not drawn: Discover search results, category list and the remaining four settings drill-ins (Default playback speed, Help & FAQ, Send feedback, Edit profile). They follow the same patterns.
 
@@ -596,7 +596,7 @@ Every mobile screen on these pages now has a tablet portrait, tablet landscape a
 | Reading options / Full mode | new popover | new popover | new popover |
 
 - Theme frames set the reader variable mode on the frame (Light 98:1, Sepia 98:2, Dark 98:3) and Theme on Reader header, Reader page and Reader action bar. Dark also switches the status bar and home indicator to Content=Light.
-- Reading options on Medium sits right aligned to the 32 gutter with Arrow=None, because the anchored position would run off the screen.
+- Reading options on Medium sits right aligned to the 24 gutter with Arrow=None, because the anchored position would run off the screen.
 - Full mode reading options uses the Popover with `Sheet / Reading options (Full mode)` as its content.
 
 ### AI tools (10 per size)
@@ -811,3 +811,22 @@ Found while checking the brief against the file:
 ## Progress ring percentage
 
 `Progress ring` (`123:57`) now shows the percentage in the centre: Fraunces SemiBold 24/28 in `color/text/primary` (Determinate) or `color/text/error` (Failed). New properties: `Value` (text, default "59%") and `Show value` (boolean, default on). Indeterminate has no number. The Determinate arc now matches 59%. It appears on every Uploading screen through the Processing screen, on mobile, tablet and desktop. In code, round to whole percent and update the arc and the label from the same value.
+
+## Medium pop-overs aligned to the 32 gutter
+
+The four Arrow=None pop-overs on tablet portrait sat 24 from the right edge, which is not a gutter token. They now sit at the Medium gutter (32): `Library / Sort & filter / Popover / Medium`, `Library / Add book / Popover / Medium`, `Reader / Reading options / Popover / Medium` and `Reader / Reading options / Full mode / Medium`. This matches the brief's fallback rule: drop the arrow and align to the gutter.
+
+Measured for M3a: the Reader action bar and the Reader page are both 680 wide and centred at Medium, Expanded and Desktop. The Reader page keeps 24 inner padding at every size, phone included.
+
+## Listen player fixes for M4b
+
+- `Listen / Speed / Popover / Expanded` sat 6 above the player bar; it now sits 12, like every other Speed and Sleep popover.
+- 3× removed from `Panel / Playback speed (compact)` (`372:448`) and from `Sheet / Playback speed` (`165:368`). The app supports seven speeds, ending at 2×, and a shared test guards that 3× stays out. The speed popovers were re-placed 12 above the bar after the height change.
+- Measured: the Bimodal text keeps 16 horizontal padding (18 top) at every size, phone included, inside the 680 column. It is not the 24 reader page padding.
+
+
+## You & Settings fixes for M6
+
+- Desktop drill-in Sub headers were 57 tall with the back button still showing, against 42.5 with no back button on Expanded. All Desktop (and Monetisation detail) Sub headers now hide the back button and hug their height, so they match Expanded.
+- `You / Delete account / Modal / Desktop` was drawn over Reading display; it is now over Account & subscription, where the Delete account row lives.
+- Every remaining "360 master" mention in this log now says 440.

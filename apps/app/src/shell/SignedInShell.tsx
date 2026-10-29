@@ -453,10 +453,6 @@ export function SignedInShell({
    * `LibraryScreen` clears it once it has acted.
    */
   const [pendingReadBookId, setPendingReadBookId] = useState<string | null>(null);
-  // You-sub-view flag — driven by YouScreen so the mini player
-  // stays out of focused settings surfaces (Account, Settings,
-  // Notifications, etc). Mirrors the readerOpen pattern.
-  const [youSubViewOpen, setYouSubViewOpen] = useState(false);
   // Discover-sub-view flag — driven by DiscoverScreen so the mini
   // player hides on the category list and book detail screens, not
   // just the home rails.
@@ -483,8 +479,15 @@ export function SignedInShell({
    * the Desktop one, with the rail mini player in place. It used to be
    * grouped with the takeovers here, which left the wide detail page
    * running edge to edge with no navigation.
+   *
+   * **Nor is a You sub-page**, as of M6. Every wide You frame draws the
+   * rail, Medium included, and above Compact the page renders inside
+   * the content column rather than pushing over the shell. The old
+   * `youSubViewOpen` flag that hid the rail here is gone: the mini
+   * player it also suppressed has its own `activeTab !== 'you'` guards
+   * below, and Compact has no rail to hide.
    */
-  const railHidden = listenForeground || readerOpen || youSubViewOpen;
+  const railHidden = listenForeground || readerOpen;
 
   /**
    * No mini player. The takeovers above plus the Discover drill-ins:
@@ -593,7 +596,6 @@ export function SignedInShell({
           onUpgrade={onUpgrade}
           onTabChange={setActiveTab}
           onSignOut={onSignOut}
-          onSubViewOpenChange={setYouSubViewOpen}
           {...youDrillHandlers}
           onRefresh={refreshYou}
         />
