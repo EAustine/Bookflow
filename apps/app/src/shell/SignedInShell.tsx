@@ -446,6 +446,13 @@ export function SignedInShell({
   // floats over the reader chrome, distracts from the page, and
   // overlaps the bottom action row.
   const [readerOpen, setReaderOpen] = useState(false);
+  /**
+   * A book Discover asked us to open in the reader. The reader is a
+   * route inside the Library stage, so "Read now" on the wide book
+   * detail crosses here: we switch tabs and hand the id over, and
+   * `LibraryScreen` clears it once it has acted.
+   */
+  const [pendingReadBookId, setPendingReadBookId] = useState<string | null>(null);
   // You-sub-view flag — driven by YouScreen so the mini player
   // stays out of focused settings surfaces (Account, Settings,
   // Notifications, etc). Mirrors the readerOpen pattern.
@@ -465,17 +472,27 @@ export function SignedInShell({
   const { isWide, sizeClass } = useSizeClass();
 
   /**
-   * A screen is covering the shell, so neither the rail nor the mini
-   * player should be drawn over it.
+   * No rail: a screen is covering the shell rather than sitting in it.
    *
-   * These four are the full-screen takeovers: all three readers (§2 —
-   * "no rail at any size"), the foreground Listen overlay, and the You
-   * and Discover drill-ins. The mini player adds two more conditions of
-   * its own below, because it also hides on the Listen and You tabs —
-   * the rail does not, since that is where the user navigates from.
+   * All three readers (§2 — "no rail at any size"), the foreground
+   * Listen overlay, and the You drill-ins.
+   *
+   * **A Discover drill-in is deliberately not one.** §4 says "Book
+   * detail is a page in the content area, not a sheet or panel", and
+   * every wide Book detail frame draws the rail beside it — including
+   * the Desktop one, with the rail mini player in place. It used to be
+   * grouped with the takeovers here, which left the wide detail page
+   * running edge to edge with no navigation.
    */
-  const chromeHidden =
-    listenForeground || readerOpen || youSubViewOpen || discoverSubViewOpen;
+  const railHidden = listenForeground || readerOpen || youSubViewOpen;
+
+  /**
+   * No mini player. The takeovers above plus the Discover drill-ins:
+   * the floating bar competes with a focused page on a phone, and the
+   * rail's own card covers Desktop. The mini player adds two more
+   * conditions of its own below, for the Listen and You tabs.
+   */
+  const chromeHidden = railHidden || discoverSubViewOpen;
 
   const handleStartListening = useCallback(
     (book: Book) => {
@@ -530,12 +547,10 @@ export function SignedInShell({
 
   return (
     <View style={[styles.stageRoot, isWide && styles.stageRootWide]}>
-      {/* Primary nav above Compact (§2). Suppressed by exactly the same
-          four conditions that already hide the mini player below: the
-          reader has no rail at any size, and neither do the foreground
-          Listen overlay or the You / Discover drill-ins, all of which
-          take over the whole screen. */}
-      {isWide && !chromeHidden && (
+      {/* Primary nav above Compact (§2). Suppressed only by the real
+          takeovers — see `railHidden`. A Discover drill-in keeps it,
+          because the book detail is a page in the content area. */}
+      {isWide && !railHidden && (
         <SideRail
           activeTab={activeTab}
           onChange={setActiveTab}
@@ -563,6 +578,8 @@ export function SignedInShell({
           onReaderOpenChange={setReaderOpen}
           pendingUploadAssets={pendingUploadAssets}
           onPendingUploadAssetsConsumed={onPendingUploadAssetsConsumed}
+          openBookId={pendingReadBookId}
+          onOpenBookConsumed={() => setPendingReadBookId(null)}
         />
       )}
       {activeTab === 'you' && (
@@ -585,6 +602,11 @@ export function SignedInShell({
         <DiscoverScreen
           onTabChange={setActiveTab}
           onSubViewOpenChange={setDiscoverSubViewOpen}
+          onReadBook={(book) => {
+            setPendingReadBookId(book.id);
+            setActiveTab('library');
+          }}
+          onListenToBook={handleStartListening}
         />
       )}
       {activeTab === 'listen' && historyOpen && (

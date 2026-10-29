@@ -157,6 +157,18 @@ export type LibraryScreenProps = {
    */
   pendingUploadAssets?: DocumentPicker.DocumentPickerAsset[] | null;
   onPendingUploadAssetsConsumed?: () => void;
+  /**
+   * A book id to open in the reader as soon as it is available.
+   *
+   * The reader is a route owned by this screen (`selectedBook`), but
+   * Discover's wide book detail has a "Read now" action, so the shell
+   * carries the intent across the tab switch. Consume-once, like
+   * `pendingUploadAssets` above: we clear it through
+   * `onOpenBookConsumed` so a later remount does not reopen the
+   * reader behind the user.
+   */
+  openBookId?: string | null;
+  onOpenBookConsumed?: () => void;
 };
 
 export function LibraryScreen({
@@ -167,6 +179,8 @@ export function LibraryScreen({
   onReaderOpenChange,
   pendingUploadAssets,
   onPendingUploadAssetsConsumed,
+  openBookId,
+  onOpenBookConsumed,
 }: LibraryScreenProps) {
   const { isConnected, refresh: refreshNetwork } = useNetworkState();
   const isOffline = !isConnected;
@@ -253,6 +267,7 @@ export function LibraryScreen({
   useEffect(() => {
     onReaderOpenChange?.(selectedBook !== null || highlightsBook !== null);
   }, [selectedBook, highlightsBook, onReaderOpenChange]);
+
   // EPUB reader mode preference. Defaults to 'full' (WebView with
   // original-formatting HTML) so the user sees the book the way
   // its designer laid it out — chapter headings, line breaks,
@@ -273,6 +288,20 @@ export function LibraryScreen({
   // manual refresh. Hoisted to the top of the component because the upload
   // terminal-state effect below needs `refetch` as a fallback.
   const { books, continueBook: continueBookFromHook, isLoading, refetch } = useBooks();
+
+  /**
+   * Honour a "Read now" handed over from Discover. It waits for the
+   * row to exist and be ready — the book was added moments ago, so
+   * `useBooks` realtime may still be catching up — and clears the
+   * intent either way once a match lands, so it fires once.
+   */
+  useEffect(() => {
+    if (!openBookId) return;
+    const target = books.find((b) => b.id === openBookId);
+    if (!target) return;
+    if (target.processingStatus === 'ready') setSelectedBook(target);
+    onOpenBookConsumed?.();
+  }, [openBookId, books, onOpenBookConsumed]);
 
   // Pull-to-refresh state. The hook's realtime subscription handles most
   // updates automatically, but a manual pull is useful for catching

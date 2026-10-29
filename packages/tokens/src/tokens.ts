@@ -741,6 +741,26 @@ export const layout = {
     resume: 560,
     history: 720,
   },
+  /**
+   * Book detail above Compact — §4: "cover column left (phone cover
+   * scaled), info column right capped at 680".
+   *
+   * The cover keeps the phone's ratio at every size (120 × 176 →
+   * 192 × 282 → 228 × 334), so both dimensions are written down
+   * rather than derived from a ratio nobody would recognise.
+   *
+   * The info column is not a width, it is a cap: it flexes, and at
+   * Medium it lands on 460 by itself. Expanded and Desktop share the
+   * same cover and gap, so they share one entry.
+   */
+  bookDetail: {
+    cover: {
+      medium: { width: 192, height: 282 },
+      wide: { width: 228, height: 334 },
+    },
+    gap: { medium: 32, wide: 48 },
+    info: 680,
+  },
   /** Reader text, PDF and player columns. Aliases `readingMeasure`. */
   reading: {
     measure: 680,

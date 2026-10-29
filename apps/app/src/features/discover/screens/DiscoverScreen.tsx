@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -6,6 +13,7 @@ import {
   Pressable,
   RefreshControl,
   ScrollView,
+  Share,
   StyleSheet,
   TextInput,
   View,
@@ -17,6 +25,7 @@ import {
   type BottomSheetRef,
   Button,
   Icon,
+  Modal,
   Presenter,
   RemoveBookSheetBody,
   TabBar,
@@ -24,12 +33,24 @@ import {
   Text,
 } from '~/components';
 import { tokens } from '~/design/tokens';
+import { useSizeClass } from '~/hooks/useSizeClass';
+import type { Book } from '~/types/book';
 import { SUPPORT_EMAIL } from '~/lib/legalUrls';
 import { formatNetworkError } from '~/lib/networkErrors';
 import { useBackHandler } from '~/lib/useBackHandler';
 import { useSlowOp } from '~/hooks/useSlowOp';
 import { SlowNetworkBanner } from '~/components/SlowNetworkBanner';
-import { fetchOpenLibrary, fetchWikisource, fetchDoabRest, popularGutenberg, searchGutenberg, topicGutenberg, type DiscoverBook as ApiBook } from '../api/discoverApi';
+import {
+  discoverIdFromSourceUrl,
+  discoverPageUrl,
+  fetchOpenLibrary,
+  fetchWikisource,
+  fetchDoabRest,
+  popularGutenberg,
+  searchGutenberg,
+  topicGutenberg,
+  type DiscoverBook as ApiBook,
+} from '../api/discoverApi';
 import { getCachedShelf, hydrateShelfCache, peekCachedShelf, setCachedShelf } from '../api/discoverCache';
 import { importDiscoverBook, importErrorMessage } from '../api/discoverImport';
 import { DISCOVER_SEED, BIBLE_VERSIONS } from '../api/discoverSeed';
@@ -277,13 +298,30 @@ export type DiscoverScreenProps = {
    * (`onReaderOpenChange`) and YouScreen (`onSubViewOpenChange`).
    */
   onSubViewOpenChange?: (open: boolean) => void;
+  /**
+   * Open the reader on a book the user has added. The reader is owned
+   * by the Library stage, not by this screen, so the shell carries the
+   * intent across — §4 puts "Read now" on the wide book detail.
+   */
+  onReadBook: (book: Book) => void;
+  /** Start audio and open the foreground player. */
+  onListenToBook: (book: Book) => void;
 };
 
 export function DiscoverScreen({
   onTabChange,
   onSubViewOpenChange,
+  onReadBook,
+  onListenToBook,
 }: DiscoverScreenProps) {
+  const { sizeClass } = useSizeClass();
   const [view, setView] = useState<'home' | 'category' | 'detail'>('home');
+  /**
+   * Desktop's stand-in for the native "Already removed" alert. Held
+   * here rather than in `DetailView` because the remove path can
+   * reach it from the category and home views too.
+   */
+  const [alreadyRemovedOpen, setAlreadyRemovedOpen] = useState(false);
   // Notify the parent shell when we leave / return to the home
   // view. Effect-based so both directions fire without wrapping
   // every setView call.
@@ -310,82 +348,15 @@ export function DiscoverScreen({
   // Free-tier book cap (isPro-aware: Pro users get isExceeded=false).
   const planUsage = useFreePlanUsage();
   const libraryIds = useMemo<Set<string>>(() => {
+    // Reverse-map each stored source_url back to its Discover id.
+    // The mapping itself lives in discoverApi beside the id
+    // construction it inverts, so the remove path can share it — it
+    // used to carry its own two-source copy of this. (See
+    // `discoverIdFromSourceUrl`.)
     const set = new Set<string>();
     for (const b of userBooks) {
-      const url = b.source_url;
-      if (!url) continue;
-      // Reverse-map books.source_url back to the Discover id form.
-      // Each source has its own URL pattern → id template, mirroring
-      // the id construction in discoverApi.ts and the standard-ebooks
-      // edge function:
-      //
-      //   Gutenberg:
-      //     URL    https://www.gutenberg.org/ebooks/12345.epub.images
-      //     id     gutenberg:12345
-      //
-      //   Standard Ebooks:
-      //     URL    https://standardebooks.org/ebooks/jane-austen/
-      //              pride-and-prejudice/downloads/…epub
-      //     id     standard-ebooks:jane-austen/pride-and-prejudice
-      //
-      // Both branches are tried per row — order doesn't matter
-      // because the URL patterns don't overlap.
-      const gutMatch = url.match(/gutenberg\.org\/.*?\/(\d+)/);
-      if (gutMatch) {
-        set.add(`gutenberg:${gutMatch[1]}`);
-        continue;
-      }
-      const seMatch = url.match(
-        /standardebooks\.org\/ebooks\/([^/]+\/[^/]+)/,
-      );
-      if (seMatch) {
-        set.add(`standard-ebooks:${seMatch[1]}`);
-        continue;
-      }
-      // Open Library:
-      //   URL    https://archive.org/download/{ia}/{ia}.epub
-      //   id     open-library:{ia}
-      // The edge function generates the discover id using the IA
-      // identifier (see discover-open-library/index.ts) precisely so
-      // we can do this reverse-match without an extra column.
-      const olMatch = url.match(/archive\.org\/download\/([^/]+)\//);
-      if (olMatch) {
-        set.add(`open-library:${olMatch[1]}`);
-        continue;
-      }
-      // Wikisource:
-      //   URL    https://ws-export.wmcloud.org/?lang=X&page=Title&format=...
-      //   id     wikisource:X:Title_underscored
-      // Pull lang + page out of the wsexport query string and
-      // rebuild the id the same way the discover-wikisource function
-      // constructs it (spaces → underscores).
-      try {
-        const wsUrl = new URL(url);
-        if (wsUrl.hostname === 'ws-export.wmcloud.org') {
-          const wsLang = wsUrl.searchParams.get('lang');
-          const wsPage = wsUrl.searchParams.get('page');
-          if (wsLang && wsPage) {
-            set.add(`wikisource:${wsLang}:${wsPage.replace(/\s+/g, '_')}`);
-          }
-        }
-      } catch {
-        // Malformed source_url — skip; the row won't be matchable
-        // but the rest of the library is unaffected.
-      }
-      // DOAB (academic OA):
-      //   URL    https://library.oapen.org/bitstream/handle/{handlePrefix}/{bookId}/{filename}.pdf?sequence=N
-      //   id     doab:{bookId}
-      // The DOAB adapter intentionally builds its Discover id from
-      // the OAPEN bookId (the second numeric path segment) instead
-      // of the DOAB item UUID, precisely so this reverse-map can
-      // reconstruct it without any extra column.
-      const doabMatch = url.match(
-        /library\.oapen\.org\/bitstream\/handle\/[\w.]+\/(\d+)\//,
-      );
-      if (doabMatch) {
-        set.add(`doab:${doabMatch[1]}`);
-        continue;
-      }
+      const id = discoverIdFromSourceUrl(b.source_url);
+      if (id) set.add(id);
     }
     return set;
   }, [userBooks]);
@@ -1130,48 +1101,88 @@ export function DiscoverScreen({
   };
 
   /**
+   * The library row behind a Discover book, or null when there is
+   * none. Everything that acts on an added book — read, listen,
+   * remove — goes through this, so they all agree about what "in the
+   * library" means.
+   */
+  const findLibraryRow = useCallback(
+    (book: DiscoverBook) =>
+      userBooks.find((b) => discoverIdFromSourceUrl(b.source_url) === book.id) ?? null,
+    [userBooks],
+  );
+
+  /**
+   * The informational dead end when `libraryIds` still lists a book
+   * whose row has gone — removed on another device, or realtime has
+   * not caught up. Not a destructive confirmation, so it stays an
+   * alert rather than a sheet (F-26); on Desktop, where there is no
+   * native alert worth showing, it is the 400 dialog `modal/alert`
+   * was added for.
+   */
+  const showAlreadyRemoved = useCallback(() => {
+    if (sizeClass === 'desktop') {
+      setAlreadyRemovedOpen(true);
+      return;
+    }
+    Alert.alert('Already removed', 'This book is no longer in your library.');
+  }, [sizeClass]);
+
+  const handleOpenInReader = useCallback(
+    (book: DiscoverBook) => {
+      const row = findLibraryRow(book);
+      if (!row) {
+        showAlreadyRemoved();
+        return;
+      }
+      onReadBook(row);
+    },
+    [findLibraryRow, showAlreadyRemoved, onReadBook],
+  );
+
+  const handleListenTo = useCallback(
+    (book: DiscoverBook) => {
+      const row = findLibraryRow(book);
+      if (!row) {
+        showAlreadyRemoved();
+        return;
+      }
+      onListenToBook(row);
+    },
+    [findLibraryRow, showAlreadyRemoved, onListenToBook],
+  );
+
+  /**
    * Remove a previously-added Discover book from the library. We
    * look up the actual Supabase book id by reverse-matching
    * source_url (the Discover id format is `gutenberg:NNN`; the
    * stored source_url contains `/NNN.epub.something`). After
-   * confirming via native Alert, we clear storage + delete the row
+   * confirming in the remove sheet or modal, we clear storage and
+   * delete the row
    * — the `useBooks` realtime subscription removes the id from
    * `libraryIds` automatically, flipping the AddPill back to "Add".
    */
   const handleRemoveFromLibrary = useCallback(
     (book: DiscoverBook) => {
-      // Find the matching DB row by reversing the source_url match
-      // we use to build libraryIds. Tries Gutenberg first, then
-      // Standard Ebooks — same shapes as the libraryIds memo.
-      const match = userBooks.find((b) => {
-        const url = b.source_url;
-        if (!url) return false;
-        const gutMatch = url.match(/gutenberg\.org\/.*?\/(\d+)/);
-        if (gutMatch) return `gutenberg:${gutMatch[1]}` === book.id;
-        const seMatch = url.match(
-          /standardebooks\.org\/ebooks\/([^/]+\/[^/]+)/,
-        );
-        if (seMatch) return `standard-ebooks:${seMatch[1]}` === book.id;
-        return false;
-      });
+      // Find the matching DB row through the same reverse map that
+      // decided the book was in the library in the first place. This
+      // used to be a separate copy covering only Gutenberg and
+      // Standard Ebooks, so Open Library, Wikisource and DOAB books
+      // offered "Remove from library" and then landed in the
+      // "Already removed" alert below — a designed edge state reached
+      // as the normal outcome for three of five catalogues.
+      const match = userBooks.find(
+        (b) => discoverIdFromSourceUrl(b.source_url) === book.id,
+      );
       if (!match) {
-        // Still a native alert, deliberately. This is not a
-        // destructive confirmation — nothing is about to be deleted.
-        // It fires when `libraryIds` still lists the book but the row
-        // is gone: removed on another device, or realtime has not
-        // caught up yet. An informational dead end, so an alert is the
-        // honest shape. (F-26.)
-        Alert.alert(
-          'Already removed',
-          'This book is no longer in your library.',
-        );
+        showAlreadyRemoved();
         return;
       }
       setRemoveTarget(book);
       setRemoveMatchId(match.id);
       removeSheetRef.current?.present();
     },
-    [userBooks],
+    [userBooks, showAlreadyRemoved],
   );
 
   const confirmRemoveFromLibrary = useCallback(() => {
@@ -1229,6 +1240,72 @@ export function DiscoverScreen({
     if (changed) setPendingIds(next);
   }, [libraryIds, pendingIds]);
 
+  /**
+   * The rail under a book's detail, above Compact.
+   *
+   * There is no related-books endpoint — `discoverApi` has none and
+   * inventing one would mean a request per detail view — so this is
+   * built from shelves already in memory: the category the user
+   * drilled in from, then `localPool` (every book seen this session)
+   * matched on shared subject tags, then the popular shelf.
+   *
+   * **The title follows the content.** It only says "More like this"
+   * when the books actually share a category or a subject with the
+   * one on screen; when it has fallen back to the popular shelf it
+   * says so. A rail claiming kinship with an unrelated list is a
+   * small lie, and the product does not tell those.
+   */
+  const relatedShelf = useMemo<{ title: string; books: DiscoverBook[] }>(() => {
+    const current = detailBook;
+    if (!current) return { title: 'More like this', books: [] };
+    /**
+     * Drop the book itself, then de-duplicate by work rather than by
+     * id: `localPool` is already unique by id, but the same title can
+     * arrive from two catalogues under two ids, and a shelf showing
+     * "The Picture of Dorian Gray" twice reads as a bug.
+     */
+    const without = (list: DiscoverBook[]) => {
+      const seen = new Set<string>();
+      const out: DiscoverBook[] = [];
+      for (const b of list) {
+        if (b.id === current.id) continue;
+        const work = `${b.title}|${b.author}`.toLowerCase();
+        if (seen.has(work)) continue;
+        seen.add(work);
+        out.push(b);
+        if (out.length === 12) break;
+      }
+      return out;
+    };
+
+    // Enough to read as a shelf rather than a leftover.
+    const ENOUGH = 4;
+
+    // 1. The category the user came from is the strongest signal we
+    //    have: they were looking at exactly this grouping.
+    if (detailFrom === 'category') {
+      const fromCategory = without(categoryBooks);
+      if (fromCategory.length >= ENOUGH) {
+        return { title: 'More like this', books: fromCategory };
+      }
+    }
+
+    // 2. Otherwise match the book's own subject tags against
+    //    everything seen this session.
+    const tags = new Set(current.tags.map((t) => t.toLowerCase()));
+    if (tags.size > 0) {
+      const byTag = without(
+        localPool.filter((b) => b.tags.some((t) => tags.has(t.toLowerCase()))),
+      );
+      if (byTag.length >= ENOUGH) {
+        return { title: 'More like this', books: byTag };
+      }
+    }
+
+    // 3. Nothing to claim kinship with. Say what it is.
+    return { title: 'Popular fiction', books: without(popular) };
+  }, [detailBook, detailFrom, categoryBooks, localPool, popular]);
+
   const openDetail = (book: DiscoverBook, from: 'home' | 'category') => {
     setDetailBook(book);
     setDetailFrom(from);
@@ -1240,9 +1317,9 @@ export function DiscoverScreen({
     setView('category');
   };
 
+  let stage: ReactNode;
   if (view === 'detail' && detailBook) {
-    return (
-      <>
+    stage = (
       <DetailView
         book={detailBook}
         inLibrary={libraryIds.has(detailBook.id)}
@@ -1250,39 +1327,16 @@ export function DiscoverScreen({
         onBack={() => setView(detailFrom)}
         onAdd={() => handleAddToLibrary(detailBook)}
         onRemove={() => handleRemoveFromLibrary(detailBook)}
+        onRead={() => handleOpenInReader(detailBook)}
+        onListen={() => handleListenTo(detailBook)}
         onTabChange={onTabChange}
+        related={relatedShelf}
+        libraryIds={libraryIds}
+        onOpenRelated={(b) => openDetail(b, detailFrom)}
       />
-      {/*
-        Confirm modal above Compact, sheet on the phone (§3). Library's
-        remove was converted in the same change; leaving this one a
-        sheet would have put the same destructive action behind two
-        different containers at the same window width, which is the
-        split F-26 extracted this body to close.
-      */}
-      <Presenter
-        kind="confirm"
-        ref={removeSheetRef}
-        onDismiss={() => {
-          if (!removing) {
-            setRemoveTarget(null);
-            setRemoveMatchId(null);
-          }
-        }}
-      >
-        <RemoveBookSheetBody
-          title={removeTarget?.title ?? ''}
-          removing={removing}
-          onConfirm={confirmRemoveFromLibrary}
-          onCancel={() => removeSheetRef.current?.dismiss()}
-        />
-      </Presenter>
-      </>
     );
-  }
-
-  if (view === 'category') {
-    return (
-      <>
+  } else if (view === 'category') {
+    stage = (
       <CategoryView
         category={activeCategory}
         books={categoryBooks}
@@ -1303,37 +1357,10 @@ export function DiscoverScreen({
         }}
         onTabChange={onTabChange}
       />
-      {/*
-        Confirm modal above Compact, sheet on the phone (§3). Library's
-        remove was converted in the same change; leaving this one a
-        sheet would have put the same destructive action behind two
-        different containers at the same window width, which is the
-        split F-26 extracted this body to close.
-      */}
-      <Presenter
-        kind="confirm"
-        ref={removeSheetRef}
-        onDismiss={() => {
-          if (!removing) {
-            setRemoveTarget(null);
-            setRemoveMatchId(null);
-          }
-        }}
-      >
-        <RemoveBookSheetBody
-          title={removeTarget?.title ?? ''}
-          removing={removing}
-          onConfirm={confirmRemoveFromLibrary}
-          onCancel={() => removeSheetRef.current?.dismiss()}
-        />
-      </Presenter>
-      </>
     );
-  }
-
-  return (
-    <>
-    <HomeView
+  } else {
+    stage = (
+      <HomeView
       activeCategory={activeCategory}
       featured={featured}
       gatsbyRail={fictionRail}
@@ -1357,8 +1384,19 @@ export function DiscoverScreen({
       onTabChange={onTabChange}
       refreshing={refreshing}
       onRefresh={onPullToRefresh}
-    />
+      />
+    );
+  }
+
+  return (
+    <>
+      {stage}
+
       {/*
+        The overlays are mounted once, outside the view switch. They
+        used to be copied into all three branches — identical down to
+        the comment — because each branch had its own return.
+
         Confirm modal above Compact, sheet on the phone (§3). Library's
         remove was converted in the same change; leaving this one a
         sheet would have put the same destructive action behind two
@@ -1382,6 +1420,25 @@ export function DiscoverScreen({
           onCancel={() => removeSheetRef.current?.dismiss()}
         />
       </Presenter>
+
+      {/* Desktop's stand-in for the native alert: title, one line, OK. */}
+      <Modal
+        visible={alreadyRemovedOpen}
+        size="alert"
+        title="Already removed"
+        onDismiss={() => setAlreadyRemovedOpen(false)}
+      >
+        <Text style={s.alreadyRemovedText}>
+          This book is no longer in your library.
+        </Text>
+        <Button
+          size="large"
+          variant="primary"
+          fullWidth
+          label="OK"
+          onPress={() => setAlreadyRemovedOpen(false)}
+        />
+      </Modal>
     </>
   );
 }
@@ -2426,7 +2483,8 @@ function CategoryView({
 // ─── Detail view ──────────────────────────────────────────────────────────────
 
 function DetailView({
-  book, inLibrary, pending, onBack, onAdd, onRemove, onTabChange,
+  book, inLibrary, pending, onBack, onAdd, onRemove, onRead, onListen,
+  onTabChange, related, libraryIds, onOpenRelated,
 }: {
   book: DiscoverBook;
   inLibrary: boolean;
@@ -2435,8 +2493,21 @@ function DetailView({
   onAdd: () => void;
   /** Remove the book from the user's library. Caller confirms. */
   onRemove: () => void;
+  /** Open the reader on this book. Only offered once it is added. */
+  onRead: () => void;
+  /** Start audio and open the foreground player. Added books only. */
+  onListen: () => void;
   onTabChange: (tab: TabKey) => void;
+  /**
+   * The rail under the detail, above Compact. `title` travels with the
+   * books because it has to stay true to them — see `relatedShelf`.
+   */
+  related: { title: string; books: DiscoverBook[] };
+  libraryIds: Set<string>;
+  onOpenRelated: (book: DiscoverBook) => void;
 }) {
+  const { sizeClass, isWide } = useSizeClass();
+
   // Hardware back returns to whichever Discover view the user came
   // from (home rails or a category list) — same as the in-screen
   // chevron. Without this, Android's default back behaviour fell
@@ -2445,115 +2516,233 @@ function DetailView({
     onBack();
     return true;
   });
+
+  const gutter = tokens.layout.gutter[sizeClass];
+  const cover =
+    sizeClass === 'medium'
+      ? tokens.layout.bookDetail.cover.medium
+      : tokens.layout.bookDetail.cover.wide;
+  const columnGap =
+    sizeClass === 'medium'
+      ? tokens.layout.bookDetail.gap.medium
+      : tokens.layout.bookDetail.gap.wide;
+
+  /**
+   * The system share sheet. Opening it is the user's own action and
+   * sends nothing by itself — they choose the target and confirm.
+   * `discoverPageUrl` returns null for sources with no public page we
+   * can derive, and in that case the message carries no link rather
+   * than a direct EPUB download dressed up as one.
+   */
+  const handleShare = () => {
+    const url = discoverPageUrl(book);
+    const line = `${book.title} by ${book.author}`;
+    Share.share(url ? { message: `${line}\n${url}`, url } : { message: line }).catch(
+      () => {
+        // Dismissing the sheet is not a failure worth surfacing.
+      },
+    );
+  };
+
+  /**
+   * The actions. On Compact these stay in the bar at the bottom of the
+   * screen; above it they sit inline under the meta row, where §4 puts
+   * them, and wrap — at Medium the three in-library buttons are wider
+   * than the 460 info column, so "Remove from library" drops to a
+   * second line exactly as the frame draws it.
+   */
+  const actions = inLibrary ? (
+    <View style={s.detailActions}>
+      <Button size="large" variant="primary" leadingIcon="Book" label="Read now" onPress={onRead} />
+      <Button
+        size="large"
+        variant="secondary"
+        leadingIcon="Headphones"
+        label="Listen"
+        onPress={onListen}
+      />
+      <Button
+        size="large"
+        variant="tertiary"
+        label="Remove from library"
+        onPress={onRemove}
+        accessibilityLabel={`Remove ${book.title} from library`}
+      />
+    </View>
+  ) : (
+    <View style={s.detailActions}>
+      <Button
+        size="large"
+        variant="primary"
+        loading={pending}
+        leadingIcon="Plus"
+        label={pending ? 'Adding…' : 'Add to library'}
+        onPress={() => {
+          if (!pending) onAdd();
+        }}
+        accessibilityLabel={`Add ${book.title} to library`}
+      />
+    </View>
+  );
+
+  // Everything that reads as the book's description, in one block so
+  // the stacked and two-column layouts render the same thing.
+  const info = (
+    <>
+      <Text style={s.detailBookTitle}>{book.title}</Text>
+      <Text style={s.detailAuthor}>{book.author}</Text>
+
+      <View style={s.detailMetaRow}>
+        {/* Read time and chapter count used to render here behind
+            truthiness checks. No construction site ever populated them
+            — `fromApiBook` is the only path that builds a DiscoverBook
+            and returns neither — so the meta row has always shown just
+            the Free badge. (F-23.) */}
+        <View style={s.detailMetaItem}>
+          <Badge kind="free" label="Free" />
+        </View>
+      </View>
+
+      {isWide && actions}
+
+      <Text style={s.detailSectionLabel}>About</Text>
+      <Text style={s.detailAbout}>{book.about}</Text>
+
+      <Text style={s.detailSectionLabel}>Topics</Text>
+      <View style={s.detailTags}>
+        {book.tags.map((tag) => (
+          <Badge key={tag} kind="tag" label={tag} />
+        ))}
+      </View>
+
+      {(book.sourceLabel || book.source) && (
+        <>
+          <Text style={s.detailSectionLabel}>Source</Text>
+          <Text style={s.detailSource}>
+            {book.sourceLabel ?? book.source}
+          </Text>
+        </>
+      )}
+    </>
+  );
+
   return (
     <SafeAreaView style={s.safe} edges={['top', 'left', 'right']}>
-      <View style={s.detailHeader}>
+      <View style={[s.detailHeader, isWide && { paddingHorizontal: gutter }]}>
         <Pressable onPress={onBack} style={s.iconBtn} hitSlop={8}>
           <Icon name="ArrowLeft" size={18} color={tokens.colors.ink[700]} />
         </Pressable>
         <Text style={s.detailHeaderTitle}>Book details</Text>
-        <Pressable style={s.iconBtn} hitSlop={8}>
+        <Pressable
+          onPress={handleShare}
+          style={s.iconBtn}
+          hitSlop={8}
+          accessibilityRole="button"
+          accessibilityLabel={`Share ${book.title}`}
+        >
           <Icon name="Upload" size={17} color={tokens.colors.ink[700]} />
         </Pressable>
       </View>
 
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={s.detailScroll}>
-        <View style={s.detailCoverWrap}>
-          <CoverBox
-            book={book}
-            style={s.detailCover}
-            fallbackTextStyle={s.detailCoverText}
-          />
-        </View>
-
-        <Text style={s.detailBookTitle}>{book.title}</Text>
-        <Text style={s.detailAuthor}>{book.author}</Text>
-
-        <View style={s.detailMetaRow}>
-          {/* Read time and chapter count used to render here behind
-              truthiness checks. No construction site ever populated them
-              — `fromApiBook` is the only path that builds a DiscoverBook
-              and returns neither — so the meta row has always shown just
-              the Free badge. (F-23.) */}
-          <View style={s.detailMetaItem}>
-            <Badge kind="free" label="Free" />
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={[
+          s.detailScroll,
+          isWide && { paddingHorizontal: gutter },
+        ]}
+      >
+        {isWide ? (
+          // Cover fixed, info flexing to a 680 cap. The row is
+          // left-aligned: above Medium the cap leaves real space to
+          // its right, which is what the frames draw.
+          <View style={[s.detailMain, { gap: columnGap }]}>
+            <View style={{ width: cover.width }}>
+              <CoverBox
+                book={book}
+                style={[s.detailCover, { width: cover.width, height: cover.height }]}
+                fallbackTextStyle={s.detailCoverText}
+              />
+            </View>
+            <View style={s.detailInfo}>{info}</View>
           </View>
-        </View>
-
-        <Text style={s.detailSectionLabel}>About</Text>
-        <Text style={s.detailAbout}>{book.about}</Text>
-
-        <Text style={s.detailSectionLabel}>Topics</Text>
-        <View style={s.detailTags}>
-          {book.tags.map((tag) => (
-            <Badge key={tag} kind="tag" label={tag} />
-          ))}
-        </View>
-
-        {(book.sourceLabel || book.source) && (
+        ) : (
           <>
-            <Text style={s.detailSectionLabel}>Source</Text>
-            <Text style={s.detailSource}>
-              {book.sourceLabel ?? book.source}
-            </Text>
+            <View style={s.detailCoverWrap}>
+              <CoverBox
+                book={book}
+                style={s.detailCover}
+                fallbackTextStyle={s.detailCoverText}
+              />
+            </View>
+            {info}
+          </>
+        )}
+
+        {isWide && related.books.length > 0 && (
+          <>
+            <View style={s.detailRelatedSpacer} />
+            <View style={s.detailRelatedRow}>
+              <Text style={s.sectionTitle}>{related.title}</Text>
+              <Text style={s.sectionSubLabel}>Free · public domain</Text>
+            </View>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={s.detailRelatedRail}
+            >
+              {related.books.map((b) => (
+                <RailCard
+                  key={b.id}
+                  book={b}
+                  inLibrary={libraryIds.has(b.id)}
+                  onPress={() => onOpenRelated(b)}
+                />
+              ))}
+            </ScrollView>
           </>
         )}
 
         <View style={{ height: 16 }} />
       </ScrollView>
 
-      <View style={s.detailCTABar}>
-        {/* Single primary CTA cycles through three states:
-         *   - default     → "Add to library" (forest filled)
-         *   - in-flight   → "Adding…" with spinner
-         *   - in library  → "Remove from library" (muted, taps to
-         *                    confirm + delete). Was previously a
-         *                    non-interactive "In library" badge. */}
-        {/* Canonical Button at Large (52 / radius 10 / 16), per F-25.
-            Was a screen-local 48 / 10 / 14 Pressable that matched no
-            button size in the system. Wrapped in a flex:1 View because
-            Button spreads `...rest` after its own `style`, so passing
-            flex through would clobber its internals. */}
-        <View style={s.detailPrimaryBtnWrap}>
-          <Button
-            fullWidth
-            size="large"
-            variant={inLibrary ? 'secondary' : 'primary'}
-            loading={pending}
-            leadingIcon={inLibrary ? 'Check' : 'Plus'}
-            label={
-              inLibrary
-                ? 'Remove from library'
-                : pending
-                  ? 'Adding…'
-                  : 'Add to library'
-            }
-            onPress={() => {
-              if (pending) return;
-              if (inLibrary) onRemove();
-              else onAdd();
-            }}
-            accessibilityLabel={
-              inLibrary
-                ? `Remove ${book.title} from library`
-                : `Add ${book.title} to library`
-            }
-          />
+      {/* Compact keeps the bar at the bottom of the screen. The
+          listen-sample Pressable that used to sit beside it was never
+          wired to anything; Listen is a real action above Compact now,
+          and on the phone the single CTA stands on its own. */}
+      {!isWide && (
+        <View style={s.detailCTABar}>
+          {/* Canonical Button at Large (52 / radius 10 / 16), per F-25.
+              Wrapped in a flex:1 View because Button spreads `...rest`
+              after its own `style`, so passing flex through would
+              clobber its internals. */}
+          <View style={s.detailPrimaryBtnWrap}>
+            <Button
+              fullWidth
+              size="large"
+              variant={inLibrary ? 'secondary' : 'primary'}
+              loading={pending}
+              leadingIcon={inLibrary ? 'Check' : 'Plus'}
+              label={
+                inLibrary
+                  ? 'Remove from library'
+                  : pending
+                    ? 'Adding…'
+                    : 'Add to library'
+              }
+              onPress={() => {
+                if (pending) return;
+                if (inLibrary) onRemove();
+                else onAdd();
+              }}
+              accessibilityLabel={
+                inLibrary
+                  ? `Remove ${book.title} from library`
+                  : `Add ${book.title} to library`
+              }
+            />
+          </View>
         </View>
-        {/* Listen-sample button — only shown for books already in
-            the user's library. Playback runs against the user's
-            books table row (page extraction, signed audio URLs,
-            etc) and isn't wired up for un-added Discover books;
-            the play affordance previously misled the user into
-            thinking they could preview before adding. We hide
-            rather than disable so the layout doesn't carry a dead
-            control around. */}
-        {inLibrary ? (
-          <Pressable style={s.detailSampleBtn}>
-            <Icon name="Play" size={14} color={tokens.colors.ink[700]} />
-          </Pressable>
-        ) : null}
-      </View>
+      )}
 
       <TabBar activeTab="discover" onChange={onTabChange} />
     </SafeAreaView>
@@ -3049,9 +3238,58 @@ const s = StyleSheet.create({
     fontSize: 17,
     color: tokens.textColors.primary,
   },
+  alreadyRemovedText: {
+    fontFamily: tokens.fonts.ui,
+    fontSize: tokens.fontSizes.ui.sm,
+    lineHeight: 20,
+    color: tokens.textColors.secondary,
+    marginBottom: tokens.space.lg,
+  },
+
   detailScroll: {
     paddingHorizontal: 20,
     paddingTop: 20,
+  },
+  /**
+   * The two columns above Compact. `flex-start` so the cover and the
+   * info top-align; the row deliberately does not fill the content
+   * width, because the info column caps at 680 and the frames leave
+   * the remainder empty rather than stretching either side.
+   */
+  detailMain: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+  },
+  detailInfo: {
+    flex: 1,
+    maxWidth: tokens.layout.bookDetail.info,
+  },
+  /**
+   * Inline actions. Wrapping is the whole mechanism: at Medium the
+   * three in-library buttons total 521 against a 460 column, so
+   * "Remove from library" drops to a second line on its own, which is
+   * what the Medium frame draws. Above that they fit on one line and
+   * nothing special happens.
+   */
+  detailActions: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    columnGap: 12,
+    rowGap: 8,
+    marginTop: 14,
+    marginBottom: 4,
+  },
+  /** The 40 the frames put between the info block and the rail. */
+  detailRelatedSpacer: { height: 40 },
+  detailRelatedRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  detailRelatedRail: {
+    gap: 12,
+    paddingBottom: 4,
   },
   detailCoverWrap: {
     alignItems: 'center',
@@ -3143,16 +3381,4 @@ const s = StyleSheet.create({
     backgroundColor: tokens.bgColors.canvas,
   },
   detailPrimaryBtnWrap: { flex: 1 },
-  detailSampleBtn: {
-    // 52x52 so it squares off against the Large CTA beside it (F-25).
-    width: tokens.button.height.large,
-    height: tokens.button.height.large,
-    borderRadius: tokens.button.radius.large,
-    backgroundColor: tokens.colors.cream[100],
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: tokens.colors.ink[200],
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexShrink: 0,
-  },
 });
