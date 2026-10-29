@@ -19,6 +19,23 @@
 
 import { expect, test } from '@playwright/test';
 
+/**
+ * Console messages that are expected and are not a bundle failure.
+ *
+ * CI builds with no Supabase env — it holds no `EXPO_PUBLIC_*` secrets
+ * and the native bundle step does not either — so the app's own
+ * "missing env" notice fires on every CI load. It is the app telling
+ * the truth about its configuration, not the page failing to boot.
+ *
+ * Keep this list short and specific. The failure this test exists for
+ * is caught by the two rules below it, not by this one: a dead bundle
+ * never paints, so the content assertions fail first, and it raises an
+ * uncaught error, which `pageerror` fails on with no exceptions.
+ */
+const EXPECTED_CONSOLE = [
+  '[supabase] Missing EXPO_PUBLIC_SUPABASE_URL',
+];
+
 const WIDTHS = [
   { name: 'phone', width: 390, height: 844 },
   { name: 'desktop', width: 1440, height: 900 },
@@ -26,10 +43,17 @@ const WIDTHS = [
 
 for (const { name, width, height } of WIDTHS) {
   test(`welcome renders at ${width} (${name})`, async ({ page }) => {
-    const errors: string[] = [];
-    page.on('pageerror', (err) => errors.push(err.message));
+    // Split on purpose. An uncaught error is the blank-page class and
+    // never has an exception; a console error might legitimately be
+    // the app reporting its own environment.
+    const uncaught: string[] = [];
+    const consoleErrors: string[] = [];
+    page.on('pageerror', (err) => uncaught.push(err.message));
     page.on('console', (msg) => {
-      if (msg.type() === 'error') errors.push(msg.text());
+      if (msg.type() !== 'error') return;
+      const text = msg.text();
+      if (EXPECTED_CONSOLE.some((known) => text.includes(known))) return;
+      consoleErrors.push(text);
     });
 
     await page.setViewportSize({ width, height });
@@ -43,8 +67,13 @@ for (const { name, width, height } of WIDTHS) {
     ).toBeVisible({ timeout: 30_000 });
     await expect(page.getByText('Get started', { exact: false })).toBeVisible();
 
-    expect(errors, `console errors at ${width}px:\n${errors.join('\n')}`).toEqual(
-      [],
-    );
+    expect(
+      uncaught,
+      `uncaught errors at ${width}px:\n${uncaught.join('\n')}`,
+    ).toEqual([]);
+    expect(
+      consoleErrors,
+      `unexpected console errors at ${width}px:\n${consoleErrors.join('\n')}`,
+    ).toEqual([]);
   });
 }
