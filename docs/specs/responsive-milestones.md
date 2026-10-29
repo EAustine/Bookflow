@@ -21,7 +21,7 @@ spelled out below.
 | §4 AI tools | R-M3b, R-M3c | ✅ Panels in M3b; the practice session takeover and the anchored word pop-over in M3c |
 | §4 Listen | R-M4a, R-M4b | ✅ The tab in M4a; the player in M4b. Split below |
 | §4 Book detail | R-M5a | ✅ Cover left, info capped at 680, inline wrapping actions, More like this |
-| §4 Discover | R-M5b | Planned. Featured card sizes, two-column results, 640 request form |
+| §4 Discover | R-M5b | ✅ Gutter pass, Featured card sizes with the Reading nook art, two-column results, 640 request form |
 | §4 You & Settings | R-M6 | Planned. 440 You column as master |
 | §4 Monetisation | R-M7 | Planned. Buy credits Large modal, paywall |
 | §4 System states | R-M8 | Planned. Skeletons per layout, toast over content, crash in the lane |
@@ -126,18 +126,46 @@ everything seen this session, then the popular shelf. **The title
 follows the content**: it only claims kinship when the books share a
 category or subject, and says "Popular fiction" when it has fallen back.
 
-**R-M5b — Discover.** Planned: home, loading, refreshing, error, slow
-network, search results, no matches (request form capped at 640),
-category list and category empty, at three sizes. Plus the `Featured
-card` Size property — Compact (phone), Medium (684 × 268, `375:30`) and
-Wide (`372:51539`) — including the Reading nook illustration, to be
-hand-converted to a token-bound RN SVG the way `UploadFailedIllustration`
-was in M2b.
+**R-M5b — Discover.** ✅
 
-Discover's file is the obstacle: `DiscoverScreen.tsx` is 3158 lines and
-owns the home, search, category and detail views with no `components/`
-folder, every card a module-local function, and ~12 literal 20pt
-gutters. M5a added the first `useSizeClass` in the feature.
+- **One gutter pass covers nine frames.** Every home block spans the
+  content width behind the gutter, and loading, error, slow network,
+  refreshing and category empty are the same home with a zone swapped
+  in, so they inherit it. **Compact keeps 20**, not `gutter.compact`
+  (16): the flow's mobile frames are drawn at 20, and the token would
+  move the phone 4px for no reason the frames ask for. Recorded as
+  `layout.discover.gutterCompact`.
+- **Featured card** gained its Size property. Medium and Wide replace
+  the cover column with the **Reading nook** illustration anchored
+  right — 440 × 268 flush at Expanded and Desktop, the same drawing at
+  0.86 (378 × 230) bottom-right at Medium — with the book's real cover
+  standing on the stack at 6°. Hand-converted from the two SVGs in
+  `assets/illustrations/`, every colour bound to a ramp.
+- **Search results and category are two columns** at every wide size:
+  330, 510 and 548, which is `tileWidth(inner, columnGap, 2)` from
+  `@bookflow/shared`. Two, not a ceiling like the Library grid's four.
+- The **no-matches request form** is centred and capped at 640.
+- `DiscoverScreen.tsx` went **3400 → 2986 lines**, with `CoverBox`,
+  `DiscoverBookRow`, `DiscoverResultList`, `FeaturedCard`, `RailCard`
+  and `AddPill` extracted to `features/discover/components/` and 30
+  dead styles removed.
+
+**Corrected on the way: Discover's pills are not design-system drift.**
+M5b set out to move them onto `Button`, on the reading that a
+hand-rolled 28pt control was wrong against the system's compact 32.
+The frames say otherwise — `Add pill` is a Figma component in its own
+right, used at 28 throughout Discover, and on the Featured card it is
+amber on forest, which `Button` has no variant for. Forcing `Button`
+there rendered a forest primary on a forest-800 card and the control
+vanished. The pill stays; what is actually missing is recorded below.
+
+**Carried from M5b:** the design system has **no on-dark button
+variant**, and **`Add pill` is not in the system at all**. The search
+bar is still a raw `TextInput` where `Input` exists, and the rail
+skeletons are local grey blocks where `Skeleton` exists — neither is a
+surface M5b rewrote. Also untouched: seven unused exports in
+`discoverApi`, two `console.log`s on the Wikisource fetch, and three
+stale comments.
 
 ## Follow-up: translate word pop-over content
 

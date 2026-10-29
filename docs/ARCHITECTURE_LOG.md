@@ -38,6 +38,72 @@ Target: `docs/ARCHITECTURE.md` · Distance to it: `docs/ARCHITECTURE_GAPS.md`
 
 ## Progress
 
+### Responsive M5b — Discover · 2026-10-29
+
+The rest of Discover: 26 wide frames, the Featured card's Size
+property, and the Reading nook illustration. Finishes §4 Discover.
+
+**Nine frames, one gutter pass.** Home, loading, refreshing, error and
+slow network are the same screen with a zone swapped in, and every
+block spans the content width behind the gutter — so most of this
+milestone was moving a dozen literal 20s onto one size-class value,
+not building nine layouts.
+
+**Compact keeps 20, and that is written down.** `gutter.compact` is
+16, but Discover's mobile frames are drawn at 20. Taking the token
+would have shifted the phone 4px across every surface in the flow for
+no reason the frames ask for, so `layout.discover.gutterCompact`
+records the exception rather than leaving it to read as an oversight.
+
+**Two columns, not a ceiling.** Search results and category lists
+measure 330, 510 and 548 against inner widths of 684, 1044 and 1120 —
+`(inner − columnGap) / 2` in each case. That is `tileWidth` from
+`@bookflow/shared`, already pure and already tested, called with 2.
+Deliberately not `BookGrid`: that lays out cover tiles at 2–4 columns,
+and these are list rows with a 72-wide cover, which a third column
+would squeeze below a readable title.
+
+**The illustration is two drawings, not one scaled.** Wide is 440 × 268
+flush right; Medium is the same artwork at 0.86 anchored bottom-right
+**with the left sparkle and the squiggle removed**, because at that
+scale they sit under the card's text. Both share a viewBox and a cover
+slot, so `ReadingNookIllustration` carries one path set with a variant
+tail, and the real cover is laid over the slot in RN rather than drawn
+into the SVG — which keeps its image-with-fallback behaviour instead
+of making a second code path inside an SVG.
+
+**Corrected mid-milestone: Discover's pills were not drift.** The plan
+moved them onto `Button`, on the reading that a hand-rolled 28pt
+control was wrong against the system's compact 32. The frames say
+otherwise — `Add pill` is a Figma component in its own right, used at
+28 throughout Discover, and on the Featured card it is amber on
+forest. `Button` has no on-dark variant, so the swap rendered a forest
+primary on a forest-800 card and the control disappeared on screen.
+The pill stays as a component; the real gaps are recorded instead: the
+design system has no on-dark button, and `Add pill` is not in it.
+Worth noting the premise came from a token comparison rather than from
+the frames, which is the wrong way round for this programme.
+
+**The file came down with it.** `DiscoverScreen.tsx` went 3400 → 2986
+lines: `CoverBox`, `DiscoverBookRow`, `DiscoverResultList`,
+`FeaturedCard`, `RailCard` and `AddPill` moved to
+`features/discover/components/`, the screen-side `DiscoverBook` type
+moved to `features/discover/types.ts` so those components can name it
+without importing the screen, and 30 styles left dead by the move were
+removed.
+
+**A near miss worth recording:** one `str.replace` for the request
+form's 640 cap silently matched nothing, because the style had a
+different first property than the pattern assumed — and unlike the
+others it had no assertion. It shipped to the emulator as a form still
+at full width. Every edit in the milestone was then re-audited against
+the file. Asserting on each replace is the cheap half of this; the
+expensive half is that only the device screenshot caught it.
+
+Verified at 360 / 820 / 1180 / 1440. Gate held: 0 errors / **221**
+warnings — one below the old baseline, from an import the extraction
+left unused — 98 tests; tokens 204 → 214.
+
 ### Responsive M5a — Book detail · 2026-10-29
 
 §4 Book detail and §4 Discover are 41 wide frames between them, so M5

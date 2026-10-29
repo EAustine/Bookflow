@@ -9,7 +9,6 @@ import {
 import {
   ActivityIndicator,
   Alert,
-  Image,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -61,42 +60,18 @@ import { supabase } from '~/lib/supabase';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-/**
- * Screen-side book shape. A superset of the API's DiscoverBook, with
- * UI-specific fields (`coverColor`, `coverLabel`) derived from the
- * source data + a deterministic palette.
- *
- * `source` is the literal source name (matching `ImportableBook`) so
- * the import flow's type-narrowing works without extra coercion.
- */
-type DiscoverBook = {
-  id: string;
-  title: string;
-  coverLabel?: string;
-  author: string;
-  coverColor: string;
-  /** Real cover image (Gutenberg jpeg). When set the cards render an
-   * <Image>; the colored cover is the fallback. */
-  coverUrl: string | null;
-  /** Direct EPUB URL — used by the import flow. */
-  epubUrl: string | null;
-  tags: string[];
-  about: string;
-  /** Source identifier the edge function knows how to import from.
-   * The OPDS sources (feedbooks, manybooks, doab, oapen) are served
-   * by the generic `discover-opds` edge function — see `discoverApi.ts`. */
-  source:
-    | 'gutenberg'
-    | 'standardebooks'
-    | 'openlibrary'
-    | 'wikisource'
-    | 'feedbooks'
-    | 'manybooks'
-    | 'doab'
-    | 'oapen';
-  /** Display label for the detail view ("Project Gutenberg"). */
-  sourceLabel?: string;
-};
+// The screen-side book shape moved to `../types` so the extracted
+// components can name it without importing this 3000-line screen.
+// Not re-exported: `discoverApi` already exports a `DiscoverBook`, and
+// two of them through one barrel is an ambiguity, not a convenience.
+import type { DiscoverBook } from '../types';
+import {
+  CoverBox,
+  DiscoverResultList,
+  FeaturedCard,
+  type FeaturedCardSize,
+  RailCard,
+} from '../components';
 
 // ─── Cover palette ────────────────────────────────────────────────────────────
 
@@ -1495,6 +1470,30 @@ function HomeView({
   onBook: (book: DiscoverBook) => void;
   onTabChange: (tab: TabKey) => void;
 }) {
+  /**
+   * Discover's gutter. Compact keeps **20**, not `gutter.compact` (16):
+   * the flow's mobile frames are drawn at 20, so taking the token would
+   * move the phone 4px across every Discover surface for no reason the
+   * frames ask for. Written down in `layout.discover.gutterCompact`
+   * rather than left looking like an oversight.
+   */
+  const { sizeClass, isWide } = useSizeClass();
+  const gutterStyle = {
+    paddingHorizontal: isWide
+      ? tokens.layout.gutter[sizeClass]
+      : tokens.layout.discover.gutterCompact,
+  };
+  /**
+   * Figma's `Featured card` Size property. Medium gets the drawing at
+   * 0.86 anchored bottom-right; Expanded and Desktop get it at full
+   * size flush to the right edge.
+   */
+  const featuredSize: FeaturedCardSize = !isWide
+    ? 'compact'
+    : sizeClass === 'medium'
+      ? 'medium'
+      : 'wide';
+
   // "For you" is the home view itself, so it has nowhere to navigate.
   // Rather than leave an active-looking chip inert (F-28), tapping it
   // returns the page to the top — the same affordance a tapped tab icon
@@ -1550,12 +1549,12 @@ function HomeView({
         }
       >
         {/* Header */}
-        <View style={s.homeHeader}>
+        <View style={[s.homeHeader, gutterStyle]}>
           <Text style={s.homeTitle}>Discover</Text>
         </View>
 
         {/* Search bar */}
-        <View style={s.searchBar}>
+        <View style={[s.searchBar, gutterStyle]}>
           <Icon name="Search" size={16} color={tokens.colors.ink[400]} />
           <TextInput
             value={searchQuery}
@@ -1590,7 +1589,7 @@ function HomeView({
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
-              contentContainerStyle={s.chipScroll}
+              contentContainerStyle={[s.chipScroll, gutterStyle]}
             >
               {CATEGORIES.map((cat) => {
                 const active = cat === activeCategory;
@@ -1642,16 +1641,22 @@ function HomeView({
                 {/* Featured this week */}
                 {featured && (
                   <>
-                    <View style={[s.sectionRow, { marginBottom: 10 }]}>
+                    <View style={[s.sectionRow, gutterStyle, { marginBottom: 10 }]}>
                       <Text style={s.sectionTitle}>Featured this week</Text>
                     </View>
-                    <FeaturedCard
-                      book={featured}
-                      inLibrary={libraryIds.has(featured.id)}
-                      pending={pendingIds.has(featured.id)}
-                      onPress={() => onBook(featured)}
-                      onAdd={() => onAdd(featured)}
-                    />
+                    {/* The card fills the inner width above
+                        Compact, so it takes the gutter as margin
+                        rather than padding. */}
+                    <View style={[gutterStyle, s.featuredWrap]}>
+                      <FeaturedCard
+                        book={featured}
+                        size={featuredSize}
+                        inLibrary={libraryIds.has(featured.id)}
+                        pending={pendingIds.has(featured.id)}
+                        onPress={() => onBook(featured)}
+                        onAdd={() => onAdd(featured)}
+                      />
+                    </View>
                   </>
                 )}
 
@@ -1659,14 +1664,14 @@ function HomeView({
                  *  (KJV, World English Bible, Douay-Rheims). Baked-in
                  *  Gutenberg references rather than a network fetch, so
                  *  the rail is always present and never empties. */}
-                <View style={s.sectionRow}>
+                <View style={[s.sectionRow, gutterStyle]}>
                   <Text style={s.sectionTitle}>The Holy Bible</Text>
                   <Text style={s.sectionSubLabel}>Free · public domain</Text>
                 </View>
                 <ScrollView
                   horizontal
                   showsHorizontalScrollIndicator={false}
-                  contentContainerStyle={s.railScroll}
+                  contentContainerStyle={[s.railScroll, gutterStyle]}
                 >
                   {BIBLE_VERSIONS.map(fromApiBook).map((book) => (
                     <RailCard
@@ -1685,7 +1690,7 @@ function HomeView({
                     refreshed something rather than no-oping. */}
                 {(refreshing || gatsbyRail.length > 0) && (
                   <>
-                    <View style={s.sectionRow}>
+                    <View style={[s.sectionRow, gutterStyle]}>
                       <Text style={s.sectionTitle}>Popular fiction</Text>
                       <Pressable
                         hitSlop={8}
@@ -1700,7 +1705,7 @@ function HomeView({
                       <ScrollView
                         horizontal
                         showsHorizontalScrollIndicator={false}
-                        contentContainerStyle={s.railScroll}
+                        contentContainerStyle={[s.railScroll, gutterStyle]}
                       >
                         {gatsbyRail.map((book) => (
                           <RailCard
@@ -1722,7 +1727,7 @@ function HomeView({
                  *  short-form down the page. */}
                 {(refreshing || spiritualRail.length > 0) && (
                   <>
-                    <View style={s.sectionRow}>
+                    <View style={[s.sectionRow, gutterStyle]}>
                       <Text style={s.sectionTitle}>Spiritual classics</Text>
                       <Pressable
                         hitSlop={8}
@@ -1737,7 +1742,7 @@ function HomeView({
                       <ScrollView
                         horizontal
                         showsHorizontalScrollIndicator={false}
-                        contentContainerStyle={s.railScroll}
+                        contentContainerStyle={[s.railScroll, gutterStyle]}
                       >
                         {spiritualRail.map((book) => (
                           <RailCard
@@ -1758,7 +1763,7 @@ function HomeView({
                  *  a title-pattern heuristic in the edge function. */}
                 {(refreshing || wikisourceRail.length > 0) && (
                   <>
-                    <View style={s.sectionRow}>
+                    <View style={[s.sectionRow, gutterStyle]}>
                       <Text style={s.sectionTitle}>Curated classics</Text>
                       <Text style={s.sectionSubLabel}>
                         From Wikisource
@@ -1770,7 +1775,7 @@ function HomeView({
                       <ScrollView
                         horizontal
                         showsHorizontalScrollIndicator={false}
-                        contentContainerStyle={s.railScroll}
+                        contentContainerStyle={[s.railScroll, gutterStyle]}
                       >
                         {wikisourceRail.map((book) => (
                           <RailCard
@@ -1793,7 +1798,7 @@ function HomeView({
                  *  fills coverage gaps for everything those two miss. */}
                 {(refreshing || openLibraryRail.length > 0) && (
                   <>
-                    <View style={s.sectionRow}>
+                    <View style={[s.sectionRow, gutterStyle]}>
                       <Text style={s.sectionTitle}>From the Internet Archive</Text>
                       <Text style={s.sectionSubLabel}>
                         Via Open Library
@@ -1805,7 +1810,7 @@ function HomeView({
                       <ScrollView
                         horizontal
                         showsHorizontalScrollIndicator={false}
-                        contentContainerStyle={s.railScroll}
+                        contentContainerStyle={[s.railScroll, gutterStyle]}
                       >
                         {openLibraryRail.map((book) => (
                           <RailCard
@@ -1826,7 +1831,7 @@ function HomeView({
                  *  import-from-url allowlist. */}
                 {(refreshing || doabRail.length > 0) && (
                   <>
-                    <View style={s.sectionRow}>
+                    <View style={[s.sectionRow, gutterStyle]}>
                       <Text style={s.sectionTitle}>Academic books</Text>
                       <Text style={s.sectionSubLabel}>
                         From DOAB (open access)
@@ -1838,7 +1843,7 @@ function HomeView({
                       <ScrollView
                         horizontal
                         showsHorizontalScrollIndicator={false}
-                        contentContainerStyle={s.railScroll}
+                        contentContainerStyle={[s.railScroll, gutterStyle]}
                       >
                         {doabRail.map((book) => (
                           <RailCard
@@ -1856,7 +1861,7 @@ function HomeView({
                 {/* Short reads */}
                 {(refreshing || shortReads.length > 0) && (
                   <>
-                    <View style={s.sectionRow}>
+                    <View style={[s.sectionRow, gutterStyle]}>
                       <Text style={s.sectionTitle}>Short reads</Text>
                       <Pressable
                         hitSlop={8}
@@ -1871,7 +1876,7 @@ function HomeView({
                       <ScrollView
                         horizontal
                         showsHorizontalScrollIndicator={false}
-                        contentContainerStyle={[s.railScroll, { paddingBottom: 28 }]}
+                        contentContainerStyle={[s.railScroll, gutterStyle, { paddingBottom: 28 }]}
                       >
                         {shortReads.map((book) => (
                           <ShortCard
@@ -1943,40 +1948,14 @@ function SearchResults({
     return <SearchEmptyState query={query} />;
   }
   return (
-    <View style={s.catBookList}>
-      {results.map((book, i) => (
-        <View key={book.id}>
-          {i > 0 && <View style={s.catDivider} />}
-          <Pressable onPress={() => onBook(book)} style={s.catBookCard}>
-            <CoverBox
-              style={s.catBookCover}
-              book={book}
-              fallbackTextStyle={s.catCoverText}
-            />
-            <View style={s.catBookInfo}>
-              <Text style={s.catBookTitle} numberOfLines={2}>
-                {book.title}
-              </Text>
-              <Text style={s.catBookAuthor} numberOfLines={1}>
-                {book.author}
-              </Text>
-              <View style={s.catTags}>
-                {book.tags.slice(0, 2).map((tag) => (
-                  <Badge key={tag} kind="tag" size="compact" label={tag} />
-                ))}
-              </View>
-              <AddPill
-                book={book}
-                inLibrary={libraryIds.has(book.id)}
-                pending={pendingIds.has(book.id)}
-                onAdd={onAdd}
-                onRemove={onRemove}
-              />
-            </View>
-          </Pressable>
-        </View>
-      ))}
-    </View>
+    <DiscoverResultList
+        books={results}
+        libraryIds={libraryIds}
+        pendingIds={pendingIds}
+        onBook={onBook}
+        onAdd={onAdd}
+        onRemove={onRemove}
+      />
   );
 }
 
@@ -2043,8 +2022,16 @@ function SearchEmptyState({ query }: { query: string }) {
     [],
   );
 
+  // Same Discover gutter as the home — see `HomeView`.
+  const { sizeClass, isWide } = useSizeClass();
+  const gutterStyle = {
+    paddingHorizontal: isWide
+      ? tokens.layout.gutter[sizeClass]
+      : tokens.layout.discover.gutterCompact,
+  };
+
   return (
-    <View style={s.searchRequestZone}>
+    <View style={[s.searchRequestZone, gutterStyle]}>
       <Text style={s.errorTitle}>No matches</Text>
       <Text style={s.errorBody}>
         We couldn't find "{trimmed}" in our catalog. Tap each field
@@ -2139,194 +2126,14 @@ function CopyableRow({
  * Centralised so SearchResults + CategoryView render the same control
  * without duplicating the three-state logic at every site.
  */
-function AddPill({
-  book,
-  inLibrary,
-  pending,
-  onAdd,
-  onRemove,
-}: {
-  book: DiscoverBook;
-  inLibrary: boolean;
-  pending: boolean;
-  onAdd: (book: DiscoverBook) => void;
-  /**
-   * Remove handler — when present + `inLibrary` is true, the pill
-   * becomes a tappable "Remove from library" affordance. Caller
-   * decides whether to confirm and what to do on success. Optional
-   * because some surfaces (search results inside Discover) don't
-   * yet wire removal up.
-   */
-  onRemove?: (book: DiscoverBook) => void;
-}) {
-  if (inLibrary) {
-    // Tappable when a remove handler is wired; falls back to a
-    // static badge if not. Confirmation is the caller's
-    // responsibility — we just propagate the tap.
-    return (
-      <Pressable
-        onPress={(e) => {
-          e.stopPropagation?.();
-          if (onRemove) onRemove(book);
-        }}
-        style={s.catAddedBtn}
-        disabled={!onRemove}
-        accessibilityRole="button"
-        accessibilityLabel={
-          onRemove ? `Remove ${book.title} from library` : 'In library'
-        }
-      >
-        <Icon
-          name="Check"
-          size={10}
-          color={tokens.colors.forest[800]}
-        />
-        <Text style={s.catAddedBtnText}>In library</Text>
-      </Pressable>
-    );
-  }
-  return (
-    <Pressable
-      onPress={(e) => {
-        e.stopPropagation?.();
-        if (!pending) onAdd(book);
-      }}
-      style={[s.catAddBtn, pending && { opacity: 0.7 }]}
-      disabled={pending}
-    >
-      {pending ? (
-        <ActivityIndicator size="small" color={tokens.colors.cream[50]} />
-      ) : (
-        <Icon
-          name="Plus"
-          size={10}
-          color={tokens.colors.cream[50]}
-        />
-      )}
-      <Text style={s.catAddBtnText}>{pending ? 'Adding…' : 'Add'}</Text>
-    </Pressable>
-  );
-}
 
 /**
  * Cover container — renders the real cover image when one is available,
  * with a colored fallback box (text on top) for books missing imagery.
  * Image errors fall back to the colored box at runtime.
  */
-function CoverBox({
-  book,
-  style,
-  fallbackTextStyle,
-}: {
-  book: DiscoverBook;
-  style: object;
-  fallbackTextStyle: object;
-}) {
-  const [errored, setErrored] = useState(false);
-  const showImage = !!book.coverUrl && !errored;
-  return (
-    <View style={[style, { backgroundColor: book.coverColor, overflow: 'hidden' }]}>
-      {showImage ? (
-        <Image
-          source={{ uri: book.coverUrl! }}
-          style={StyleSheet.absoluteFill}
-          resizeMode="cover"
-          onError={() => setErrored(true)}
-        />
-      ) : (
-        <Text style={fallbackTextStyle} numberOfLines={3}>
-          {book.coverLabel ?? book.title}
-        </Text>
-      )}
-    </View>
-  );
-}
 
-function FeaturedCard({
-  book, inLibrary, pending, onPress, onAdd,
-}: {
-  book: DiscoverBook;
-  inLibrary: boolean;
-  pending: boolean;
-  onPress: () => void;
-  onAdd: () => void;
-}) {
-  const buttonLabel = inLibrary
-    ? 'In library'
-    : pending
-      ? 'Adding…'
-      : 'Add to library';
-  const buttonIcon = inLibrary ? 'Check' : 'Plus';
-  return (
-    <Pressable onPress={onPress} style={s.featuredCard}>
-      <CoverBox
-        book={book}
-        style={s.featuredCoverCol}
-        fallbackTextStyle={s.featuredCoverText}
-      />
-      <View style={s.featuredInfo}>
-        <Text style={s.featuredEyebrow}>✦ Editor's pick</Text>
-        <Text style={s.featuredBookTitle} numberOfLines={2}>{book.title}</Text>
-        <Text style={s.featuredAuthor} numberOfLines={1}>{book.author}</Text>
-        <Text style={s.featuredBlurb} numberOfLines={3}>{book.about}</Text>
-        <Pressable
-          onPress={(e) => {
-            e.stopPropagation?.();
-            if (!inLibrary && !pending) onAdd();
-          }}
-          style={[
-            s.featuredAddBtn,
-            inLibrary && s.featuredAddBtnAdded,
-            pending && { opacity: 0.7 },
-          ]}
-          disabled={inLibrary || pending}
-        >
-          {pending ? (
-            <ActivityIndicator
-              size="small"
-              color={tokens.colors.forest[900]}
-            />
-          ) : (
-            <Icon
-              name={buttonIcon}
-              size={11}
-              color={inLibrary ? tokens.colors.forest[800] : tokens.colors.forest[900]}
-            />
-          )}
-          <Text
-            style={[
-              s.featuredAddBtnText,
-              { color: inLibrary ? tokens.colors.forest[800] : tokens.colors.forest[900] },
-            ]}
-          >
-            {buttonLabel}
-          </Text>
-        </Pressable>
-      </View>
-    </Pressable>
-  );
-}
 
-function RailCard({ book, inLibrary, onPress }: { book: DiscoverBook; inLibrary: boolean; onPress: () => void }) {
-  return (
-    <Pressable onPress={onPress} style={s.railCard}>
-      <View style={s.railCoverWrap}>
-        <CoverBox
-          book={book}
-          style={s.railCover}
-          fallbackTextStyle={s.railCoverText}
-        />
-        {inLibrary && (
-          <View style={s.addedBadge}>
-            <Icon name="Check" size={9} color={tokens.colors.cream[50]} />
-          </View>
-        )}
-      </View>
-      <Text style={s.railCardTitle} numberOfLines={2}>{book.title}</Text>
-      <Text style={s.railCardMeta} numberOfLines={1}>{book.author}</Text>
-    </Pressable>
-  );
-}
 
 /**
  * Placeholder card shown in rail rows while content is loading or
@@ -2354,11 +2161,19 @@ function RailCardSkeleton() {
  * card width; rendering more is wasted DOM.
  */
 function RailSkeletonRow() {
+  // Same Discover gutter as the home — see `HomeView`.
+  const { sizeClass, isWide } = useSizeClass();
+  const gutterStyle = {
+    paddingHorizontal: isWide
+      ? tokens.layout.gutter[sizeClass]
+      : tokens.layout.discover.gutterCompact,
+  };
+
   return (
     <ScrollView
       horizontal
       showsHorizontalScrollIndicator={false}
-      contentContainerStyle={s.railScroll}
+      contentContainerStyle={[s.railScroll, gutterStyle]}
     >
       {Array.from({ length: 6 }).map((_, i) => (
         <RailCardSkeleton key={i} />
@@ -2398,9 +2213,17 @@ function CategoryView({
   onBack: () => void;
   onTabChange: (tab: TabKey) => void;
 }) {
+  // Same Discover gutter as the home — see `HomeView`.
+  const { sizeClass, isWide } = useSizeClass();
+  const gutterStyle = {
+    paddingHorizontal: isWide
+      ? tokens.layout.gutter[sizeClass]
+      : tokens.layout.discover.gutterCompact,
+  };
+
   return (
     <SafeAreaView style={s.safe} edges={['top', 'left', 'right']}>
-      <View style={s.catHeader}>
+      <View style={[s.catHeader, gutterStyle]}>
         <Pressable onPress={onBack} style={s.iconBtn} hitSlop={8}>
           <Icon name="ArrowLeft" size={18} color={tokens.colors.ink[700]} />
         </Pressable>
@@ -2426,40 +2249,14 @@ function CategoryView({
          *   3. Truly empty + done fetching → empty-state copy.
          */}
         {books.length > 0 ? (
-          <View style={s.catBookList}>
-            {books.map((book, i) => (
-              <View key={book.id}>
-                {i > 0 && <View style={s.catDivider} />}
-                <Pressable onPress={() => onBook(book)} style={s.catBookCard}>
-                  <CoverBox
-                    book={book}
-                    style={s.catBookCover}
-                    fallbackTextStyle={s.catCoverText}
-                  />
-                  <View style={s.catBookInfo}>
-                    <Text style={s.catBookTitle} numberOfLines={2}>
-                      {book.title}
-                    </Text>
-                    <Text style={s.catBookAuthor} numberOfLines={1}>
-                      {book.author}
-                    </Text>
-                    <View style={s.catTags}>
-                      {book.tags.slice(0, 2).map((tag) => (
-                        <Badge key={tag} kind="tag" size="compact" label={tag} />
-                      ))}
-                    </View>
-                    <AddPill
-                      book={book}
-                      inLibrary={libraryIds.has(book.id)}
-                      pending={pendingIds.has(book.id)}
-                      onAdd={onAdd}
-                      onRemove={onRemove}
-                    />
-                  </View>
-                </Pressable>
-              </View>
-            ))}
-          </View>
+          <DiscoverResultList
+            books={books}
+            libraryIds={libraryIds}
+            pendingIds={pendingIds}
+            onBook={onBook}
+            onAdd={onAdd}
+            onRemove={onRemove}
+          />
         ) : loading ? (
           <View style={s.loadingZone}>
             <ActivityIndicator size="small" color={tokens.colors.forest[800]} />
@@ -2767,7 +2564,6 @@ const s = StyleSheet.create({
 
   // Home
   homeHeader: {
-    paddingHorizontal: 20,
     // Top padding bumped + explicit lineHeight so Fraunces' tall display
     // caps don't get clipped at the SafeAreaView edge (same fix we
     // applied to the Listen tab header).
@@ -2782,7 +2578,6 @@ const s = StyleSheet.create({
     letterSpacing: -0.5,
   },
   searchBar: {
-    marginHorizontal: 20,
     marginBottom: tokens.space.lg,
     height: 40,
     backgroundColor: tokens.colors.cream[100],
@@ -2793,11 +2588,6 @@ const s = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 14,
     gap: 8,
-  },
-  searchPlaceholder: {
-    fontSize: 14,
-    color: tokens.colors.ink[400],
-    fontFamily: tokens.fonts.ui,
   },
   searchInput: {
     flex: 1,
@@ -2840,8 +2630,16 @@ const s = StyleSheet.create({
   // than the generic errorZone so the three copy cards have room
   // to breathe inside the screen's existing horizontal margins.
   searchRequestZone: {
+    /**
+     * Centred and capped. 640 is `modal.large`, the same number the
+     * build log gives for this form — it is a task-sized block of
+     * copyable fields, not a column of body text. The horizontal
+     * padding comes from the gutter at the call site.
+     */
+    width: '100%',
+    maxWidth: tokens.layout.discover.requestForm,
+    alignSelf: 'center',
     paddingVertical: 24,
-    paddingHorizontal: 22,
     alignItems: 'stretch',
     gap: 6,
   },
@@ -2878,14 +2676,7 @@ const s = StyleSheet.create({
     lineHeight: 18,
     color: tokens.textColors.primary,
   },
-  // Rail cover needs a relative wrapper so the "in library" badge can
-  // anchor to its top-right corner. The CoverBox itself paints the full
-  // cover area.
-  railCoverWrap: {
-    position: 'relative',
-  },
   chipScroll: {
-    paddingHorizontal: 20,
     paddingBottom: tokens.space.lg,
     gap: 8,
   },
@@ -2910,7 +2701,6 @@ const s = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 20,
     marginBottom: 10,
   },
   sectionTitle: {
@@ -2935,82 +2725,12 @@ const s = StyleSheet.create({
   },
 
   // Featured card
-  featuredCard: {
-    marginHorizontal: 20,
+  featuredWrap: {
     marginBottom: 22,
-    backgroundColor: tokens.colors.forest[800],
-    borderRadius: 14,
-    flexDirection: 'row',
-    overflow: 'hidden',
-  },
-  featuredCoverCol: {
-    width: 90,
-    flexShrink: 0,
-    minHeight: 130,
-    padding: 10,
-    justifyContent: 'flex-end',
-  },
-  featuredCoverText: {
-    fontFamily: tokens.fonts.display,
-    fontSize: 8,
-    color: tokens.colors.forest[200],
-    lineHeight: 11,
-  },
-  featuredInfo: {
-    flex: 1,
-    padding: 14,
-    paddingLeft: 12,
-  },
-  featuredEyebrow: {
-    fontFamily: tokens.fonts.uiMedium,
-    fontSize: 9,
-    letterSpacing: 0.8,
-    textTransform: 'uppercase',
-    color: tokens.colors.forest[200],
-    marginBottom: 6,
-  },
-  featuredBookTitle: {
-    fontFamily: tokens.fonts.display,
-    fontSize: 15,
-    color: tokens.colors.cream[50],
-    lineHeight: 18,
-    marginBottom: 4,
-  },
-  featuredAuthor: {
-    fontFamily: tokens.fonts.ui,
-    fontSize: 11,
-    color: tokens.colors.forest[200],
-    marginBottom: 8,
-  },
-  featuredBlurb: {
-    fontFamily: tokens.fonts.ui,
-    fontSize: 11,
-    color: tokens.colors.forest[200],
-    lineHeight: 16.5,
-    opacity: 0.85,
-    marginBottom: 10,
-  },
-  featuredAddBtn: {
-    height: 28,
-    paddingHorizontal: 12,
-    borderRadius: 14,
-    backgroundColor: tokens.colors.amber[500],
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    alignSelf: 'flex-start',
-  },
-  featuredAddBtnAdded: {
-    backgroundColor: tokens.colors.forest[100],
-  },
-  featuredAddBtnText: {
-    fontFamily: tokens.fonts.uiMedium,
-    fontSize: 11,
   },
 
   // Rail cards
   railScroll: {
-    paddingHorizontal: 20,
     paddingBottom: 20,
     gap: 12,
   },
@@ -3039,12 +2759,6 @@ const s = StyleSheet.create({
     justifyContent: 'flex-end',
     overflow: 'hidden',
   },
-  railCoverText: {
-    fontFamily: tokens.fonts.display,
-    fontSize: 7,
-    color: tokens.colors.cream[50],
-    lineHeight: 9,
-  },
   railCardTitle: {
     fontFamily: tokens.fonts.display,
     fontSize: 12,
@@ -3055,17 +2769,6 @@ const s = StyleSheet.create({
     fontFamily: tokens.fonts.ui,
     fontSize: 10,
     color: tokens.colors.ink[400],
-  },
-  addedBadge: {
-    position: 'absolute',
-    top: 6,
-    right: 6,
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    backgroundColor: tokens.colors.forest[800],
-    alignItems: 'center',
-    justifyContent: 'center',
   },
 
   // Short reads cards
@@ -3093,7 +2796,6 @@ const s = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
-    paddingHorizontal: 16,
     paddingTop: 10,
     paddingBottom: 12,
     borderBottomWidth: StyleSheet.hairlineWidth,
@@ -3119,106 +2821,6 @@ const s = StyleSheet.create({
     fontSize: 11,
     color: tokens.colors.ink[500],
     marginTop: 1,
-  },
-  catBookList: {
-    paddingHorizontal: 20,
-    paddingVertical: 12,
-  },
-  catDivider: {
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: tokens.colors.ink[200],
-    marginVertical: 14,
-  },
-  catBookCard: {
-    flexDirection: 'row',
-    gap: 14,
-  },
-  catBookCover: {
-    width: 72,
-    height: 104,
-    borderRadius: 6,
-    padding: 7,
-    justifyContent: 'flex-end',
-    flexShrink: 0,
-    overflow: 'hidden',
-  },
-  catCoverText: {
-    fontFamily: tokens.fonts.display,
-    fontSize: 6.5,
-    color: tokens.colors.cream[50],
-    lineHeight: 8.5,
-  },
-  catBookInfo: {
-    flex: 1,
-    justifyContent: 'center',
-    gap: 4,
-  },
-  catBookTitle: {
-    fontFamily: tokens.fonts.display,
-    fontSize: 14,
-    color: tokens.colors.ink[900],
-    lineHeight: 17.5,
-  },
-  catBookAuthor: {
-    fontFamily: tokens.fonts.ui,
-    fontSize: 11,
-    color: tokens.colors.ink[500],
-  },
-  catTags: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 5,
-    marginTop: 4,
-  },
-  catActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginTop: 6,
-  },
-  catAddBtn: {
-    // alignSelf pins the button to its content width — without it the
-    // Pressable stretches to fill the parent flex column on iOS,
-    // making the row look like one giant button.
-    alignSelf: 'flex-start',
-    height: 28,
-    paddingHorizontal: 12,
-    borderRadius: 14,
-    backgroundColor: tokens.colors.forest[800],
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 4,
-    marginTop: 6,
-  },
-  catAddBtnText: {
-    fontFamily: tokens.fonts.uiMedium,
-    fontSize: 11,
-    color: tokens.colors.cream[50],
-  },
-  catAddedBtn: {
-    alignSelf: 'flex-start',
-    height: 28,
-    paddingHorizontal: 12,
-    borderRadius: 14,
-    backgroundColor: tokens.colors.forest[50],
-    borderWidth: 0.5,
-    borderColor: tokens.colors.forest[200],
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 4,
-    marginTop: 6,
-  },
-  catAddedBtnText: {
-    fontFamily: tokens.fonts.uiMedium,
-    fontSize: 11,
-    color: tokens.colors.forest[800],
-  },
-  catReadTime: {
-    fontFamily: tokens.fonts.ui,
-    fontSize: 10,
-    color: tokens.colors.ink[400],
   },
 
   // Detail view

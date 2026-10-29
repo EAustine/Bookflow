@@ -761,6 +761,44 @@ export const layout = {
     gap: { medium: 32, wide: 48 },
     info: 680,
   },
+  /**
+   * Discover above Compact — §4 and the build log's Discover flow.
+   *
+   * The home is structurally the same at all three sizes: every block
+   * spans the content width behind the gutter, so the only numbers
+   * worth a token are the Featured card's and the results grid's.
+   */
+  discover: {
+    /**
+     * Featured card. One height; the art is the Wide drawing, or the
+     * same drawing at 0.86 for tablet portrait.
+     */
+    featured: {
+      height: 268,
+      /** Larger than the phone card's 14, and off the radius scale. */
+      radius: 20,
+      artWide: { width: 440, height: 268 },
+      artMedium: { width: 378, height: 230 },
+      /** Right padding the Medium text keeps clear of the art. */
+      mediumTextGutter: 300,
+    },
+    /**
+     * Search results and category lists. Exactly two at every wide
+     * size — the frames measure 330, 510 and 548 against inner widths
+     * of 684, 1044 and 1120, which is `(inner - columnGap) / 2` in
+     * each case. Not a ceiling like the Library grid's four.
+     */
+    resultColumns: 2,
+    /** The no-matches request form, centred. Same 640 as a Large modal. */
+    requestForm: 640,
+    /**
+     * Discover's own Compact gutter. The flow's mobile frames are
+     * drawn at 20 where `gutter.compact` is 16, so taking the token
+     * would move the phone 4px across every Discover surface for no
+     * reason the frames ask for. Written down as the exception it is.
+     */
+    gutterCompact: 20,
+  },
   /** Reader text, PDF and player columns. Aliases `readingMeasure`. */
   reading: {
     measure: 680,
