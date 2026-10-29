@@ -24,6 +24,7 @@ import {
   Text as RNText,
   View,
 } from 'react-native';
+import { Modal as RNModal, useWindowDimensions } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   Presenter,
@@ -39,7 +40,14 @@ import { AIToolsSheet } from '~/features/ai';
 import { ReaderSkeleton } from '~/ui/SkeletonScreens';
 import { formatNetworkError } from '~/lib/networkErrors';
 import { reprocessBook } from '~/features/library';
-import { pageDisplayShort, pageDisplayText, pdfIndexOf, windowStartFor } from '@bookflow/shared';
+import {
+  pageDisplayShort,
+  pageDisplayText,
+  pdfIndexOf,
+  placePopover,
+  windowStartFor,
+  type AnchorRect,
+} from '@bookflow/shared';
 import { tokens } from '~/design/tokens';
 import { useSizeClass } from '~/hooks/useSizeClass';
 import { useBackHandler } from '~/lib/useBackHandler';
@@ -507,6 +515,16 @@ export function ReaderScreen({
   const isOpenSlow = useSlowOp(pageListLoading || allPagesLoading);
 
   const [tappedWord, setTappedWord] = useState<string | null>(null);
+  /**
+   * Where the tapped word was, in window coordinates.
+   *
+   * Deliberately separate state rather than widening `tappedWord` to
+   * `{ word, rect }`: `TappableParagraph`'s memo compares `tappedWord`
+   * by identity, so an object there would re-render every paragraph on
+   * every tap — the regression the comparator's own notes record as
+   * already fixed once. The comparator never sees this.
+   */
+  const [tappedWordAnchor, setTappedWordAnchor] = useState<AnchorRect | null>(null);
   const [selectedSentence, setSelectedSentence] = useState<string | null>(null);
   // §3: the panel slides over on Medium and docks on Expanded and
   // Desktop. The reader hosts it itself rather than through
@@ -1350,10 +1368,11 @@ export function ReaderScreen({
    * starts, so a page in the middle of chapter 3 carries no title of
    * its own and has to look backwards.
    */
-  const handleWordPress = useCallback((word: string) => {
+  const handleWordPress = useCallback((word: string, at?: AnchorRect) => {
     const cleaned = word.replace(/[^a-zA-Z'-]/g, '').toLowerCase();
     if (cleaned.length <= 1) return;
     setTappedWord((prev) => (prev === cleaned ? null : cleaned));
+    setTappedWordAnchor(at ?? null);
   }, []);
 
   const handleSentenceLongPress = useCallback((sentence: string) => {
@@ -1361,7 +1380,10 @@ export function ReaderScreen({
     sentenceSheetRef.current?.present();
   }, []);
 
-  const dismissPopover = useCallback(() => setTappedWord(null), []);
+  const dismissPopover = useCallback(() => {
+    setTappedWord(null);
+    setTappedWordAnchor(null);
+  }, []);
 
   // Reprocess flow — surfaces on the "No text available" empty
   // state so users whose book failed earlier (scanned PDF before
@@ -1970,14 +1992,27 @@ export function ReaderScreen({
       )}
 
       {/* Dismiss overlay + word translate popover */}
+      {/*
+        Anchored over the word, in a Modal so the coordinates mean the
+        window and not whatever View happens to be the parent — the
+        same reason `Popover` does it. It does not use `Popover`
+        itself because this card is `ink[900]`, and nesting a dark
+        card inside a cream one is not the design.
+      */}
       {tappedWord && (
-        <>
+        <RNModal
+          visible
+          transparent
+          animationType="fade"
+          onRequestClose={dismissPopover}
+        >
           <Pressable
             style={styles.dismissOverlay}
             onPress={dismissPopover}
             accessibilityLabel="Dismiss"
           />
           <TranslatePopover
+            anchor={tappedWordAnchor}
             word={tappedWord}
             saved={savedWords.has(tappedWord)}
             onSave={() => {
@@ -2000,7 +2035,7 @@ export function ReaderScreen({
             }}
             onDismiss={dismissPopover}
           />
-        </>
+        </RNModal>
       )}
 
       </View>
@@ -2302,7 +2337,7 @@ type PageSectionProps = {
   matchOffset: number;
   tappedWord: string | null;
   selectedSentence: string | null;
-  onWordPress: (word: string) => void;
+  onWordPress: (word: string, at?: AnchorRect) => void;
   onSentenceLongPress: (sentence: string) => void;
   /**
    * Per-page highlight sets, threaded down from the book-wide
@@ -2566,7 +2601,7 @@ type TappableParagraphProps = {
   selectedSentence: string | null;
   savedWords: ReadonlySet<string>;
   savedSentences: ReadonlySet<string>;
-  onWordPress: (word: string) => void;
+  onWordPress: (word: string, at?: AnchorRect) => void;
   onSentenceLongPress: (sentence: string) => void;
   style: { fontFamily: string; fontSize: number; color: string };
 };
@@ -2874,7 +2909,17 @@ function TappableParagraphImpl({
           e.nativeEvent.locationY,
           linesRef.current,
         );
-        if (word) onWordPress(word);
+        if (word) {
+          // A zero-size rect at the finger. The word's own frame would
+          // need a ref per token; the touch point is already on the
+          // word and costs nothing.
+          onWordPress(word, {
+            x: e.nativeEvent.pageX,
+            y: e.nativeEvent.pageY,
+            width: 0,
+            height: 0,
+          });
+        }
       }}
       onLongPress={(e) => {
         const sentence = findTappedSentence(
@@ -3279,17 +3324,30 @@ const SentenceTranslateSheet = forwardRef<BottomSheetModal, {
 
 // ─── Translate popover ────────────────────────────────────────────────────────
 
+/** Card width, and what `placePopover` places. */
+const POPOVER_WIDTH = tokens.layout.popover.width;
+
 function TranslatePopover({
   word,
+  anchor,
   saved,
   onSave,
   onDismiss,
 }: {
   word: string;
+  /** The tapped word's position. Null falls back to centred. */
+  anchor: AnchorRect | null;
   saved: boolean;
   onSave: () => void;
   onDismiss: () => void;
 }) {
+  const { width: winW, height: winH } = useWindowDimensions();
+  const { sizeClass } = useSizeClass();
+  const placement = placePopover(anchor, winW, winH, {
+    width: POPOVER_WIDTH,
+    gutter: tokens.layout.gutter[sizeClass],
+  });
+
   // Dictionary lookup for the tapped word. We start optimistic — show the
   // word + a "Looking up…" line — and replace with the real definition or
   // a not-found state once the fetch resolves. Cached in-memory by
@@ -3312,7 +3370,16 @@ function TranslatePopover({
   }, [word]);
 
   return (
-    <View style={styles.popoverOverlay} pointerEvents="box-none">
+    <View
+      style={[
+        styles.popoverOverlay,
+        placement.from === 'top'
+          ? { top: placement.offset }
+          : { bottom: placement.offset },
+        { left: placement.left, width: POPOVER_WIDTH },
+      ]}
+      pointerEvents="box-none"
+    >
       <View style={styles.popover}>
         <Text style={styles.popoverWord}>{lookup?.word ?? word}</Text>
         {lookup?.phonetic ? (
@@ -3327,7 +3394,9 @@ function TranslatePopover({
         ) : lookup && lookup.definitions.length > 0 ? (
           lookup.definitions.map((d, i) => (
             <View key={i} style={styles.popoverRow}>
-              <Text style={styles.popoverLang}>{abbreviatePos(d.partOfSpeech)}</Text>
+              <Text style={styles.popoverLang} numberOfLines={1}>
+                {abbreviatePos(d.partOfSpeech)}
+              </Text>
               <Text style={styles.popoverDef}>{d.definition}</Text>
             </View>
           ))
@@ -3869,12 +3938,15 @@ const styles = StyleSheet.create({
   },
 
   // Translate popover
+  /**
+   * Anchored over the tapped word. It used to be
+   * `left: 0, right: 0, bottom: 148` — a full-bleed bar pinned above
+   * the action bar, which is not what the design shows and not what
+   * this file's own note about the popover "sitting ON TOP of the
+   * word" described. `placePopover` supplies left/top/bottom now.
+   */
   popoverOverlay: {
     position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 148,
-    paddingHorizontal: tokens.space.lg,
     zIndex: 20,
   },
   popover: {
@@ -3917,7 +3989,10 @@ const styles = StyleSheet.create({
     letterSpacing: 0.6,
     textTransform: 'uppercase',
     color: tokens.colors.ink[400],
-    width: 28,
+    // 28 was enough while this card was the window's width; anchored
+    // at 340 it broke "NOUN" across two lines. Widened, and pinned to
+    // one line so it cannot wrap again at any width.
+    width: 34,
     paddingTop: 1,
     flexShrink: 0,
   },

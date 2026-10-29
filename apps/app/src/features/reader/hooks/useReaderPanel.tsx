@@ -86,8 +86,26 @@ export function useReaderPanel({
 }: UseReaderPanelOptions): ReaderPanel {
   const { sizeClass, isWide } = useSizeClass();
   const [panelView, setPanelView] = useState<PanelView>(null);
+  /**
+   * True while practice is running questions. §4 says the session
+   * takes over the screen, and the screen does that with its own
+   * modal — but a slide-over panel is *also* a modal, and two of them
+   * do not compose: the session ended up under the panel's scrim with
+   * an empty panel on top of it.
+   *
+   * So while a session runs the panel presents **docked** whatever
+   * the size class, because docked is plain inline content that a
+   * takeover simply covers. Switching `mode` rather than swapping the
+   * wrapper is deliberate — the practice screen holds its questions
+   * and answers in its own state, and changing the element type
+   * around it would remount it and lose them.
+   */
+  const [practiceSession, setPracticeSession] = useState(false);
 
-  const close = () => setPanelView(null);
+  const close = () => {
+    setPanelView(null);
+    setPracticeSession(false);
+  };
   const backToTools = () => setPanelView('tools');
 
   // ── Compact: the full screens, unchanged ──────────────────────────
@@ -179,6 +197,7 @@ export function useReaderPanel({
                     book={book}
                     pageIndex={pageIndex}
                     embedded
+                    onSessionChange={setPracticeSession}
                     onBack={backToTools}
                   />
                 ),
@@ -231,7 +250,9 @@ export function useReaderPanel({
     isWide && spec ? (
       <SidePanel
         visible
-        mode={sizeClass === 'medium' ? 'slide-over' : 'docked'}
+        mode={
+          practiceSession || sizeClass !== 'medium' ? 'docked' : 'slide-over'
+        }
         title={spec.title}
         bare={spec.bare}
         onBack={spec.back}
@@ -248,7 +269,7 @@ export function useReaderPanel({
     close,
     // Only a docked panel changes the host's layout. A slide-over is
     // an overlay and leaves the content column alone.
-    dock: isWide && sizeClass !== 'medium' && spec !== null,
+    dock: isWide && (practiceSession || sizeClass !== 'medium') && spec !== null,
     panel,
     fullScreen,
   };

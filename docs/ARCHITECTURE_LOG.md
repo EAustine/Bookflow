@@ -38,6 +38,69 @@ Target: `docs/ARCHITECTURE.md` · Distance to it: `docs/ARCHITECTURE_GAPS.md`
 
 ## Progress
 
+### Responsive M3c — the practice takeover · 2026-10-29
+
+The last piece of the Reader. §4: "A practice session takes over the
+screen: on Medium the question sits above the source passage; on
+Expanded and Desktop they are two columns."
+
+**The source passage was new data, not a layout change.**
+`PracticeQuestion` is `{ question, options, correctIndex, explanation }`
+— no source text, no per-question page. `generate-practice` reads the
+page content, feeds it to the model and returns none of it. So the
+passage is fetched client-side with `usePage`, one page, matching the
+one page the questions came from. There was no precedent for showing
+source *text* anywhere in the app; every other traceability affordance
+is a page-label chip.
+
+That chip was itself inconsistent: practice synthesised `p. N` and
+ignored printed page labels, while Summary went through
+`pageDisplayText` + `usePageLabels`. A book whose publisher numbers
+its pages was cited two different ways depending on which AI tool you
+were in. Practice is on the shared helpers now.
+
+**Two defects the device found.**
+
+The session rendered **inside the 380 panel** and overflowed it. M3b
+routed practice into the panel and M3c changed only its internal
+layout, so nothing ever took the screen over. The session phases now
+escape into a full-screen modal.
+
+Then at Medium that broke differently: a slide-over panel is *also* a
+modal, and two do not compose — the session came up under the panel's
+scrim with an empty panel on top. So while a session runs the panel
+presents **docked** whatever the size class, because docked is plain
+inline content a takeover simply covers. Switching `mode` rather than
+swapping the wrapper is deliberate: practice keeps its questions and
+answers in its own state, and changing the element type around it
+would remount it and lose them.
+
+**The word pop-over was never anchored.** It was
+`left: 0, right: 0, bottom: 148` — a full-bleed bar above the action
+bar — while this file's own note claimed it "sits ON TOP of the word".
+It now goes through `placePopover`, in a modal so the coordinates mean
+the window. It does **not** use `Popover` itself: this card is
+`ink[900]`, and a dark card inside a cream one is not the design.
+
+The anchor is the touch point rather than the word's frame — a ref per
+token would be the alternative, and the point is already on the word.
+It lives in state of its own, because `TappableParagraph`'s memo
+compares `tappedWord` by identity and an object there would re-render
+every paragraph on every tap. Narrowing the card from the window's
+width to 340 also broke the part-of-speech gutter, which wrapped
+"NOUN" to two lines at `width: 28`.
+
+Verified at 360, 820, 1180 and 1440. The session measures **520 / 40 /
+440** centred at 1180 and **600 / 40 / 520** centred at 1440, matching
+the new `layout.practice` tokens; at 820 it stacks full width with 32
+down each side and no panel in the way; the phone is unchanged. The
+pop-over opens over the tapped word, 340 wide, centred on the tap.
+M3b's practice-config item is also closed: it renders in the panel
+with its Generate button pinned.
+
+Still unverified on device: the Results phase, Highlights in a panel,
+and the chat composer.
+
 ### Responsive M3b — the reader's panels · 2026-10-29
 
 The five overlays that were whole-tree early returns become

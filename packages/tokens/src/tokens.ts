@@ -700,6 +700,26 @@ export const layout = {
   lane: {
     width: 480,
   },
+  /**
+   * The practice session takeover (§4: "on Medium the question sits
+   * above the source passage; on Expanded and Desktop they are two
+   * columns").
+   *
+   * Frame widths from `AI tools / Practice / MCQ session / *`. None of
+   * them is bound to a Figma variable, so these are the measurements
+   * written down rather than inferred from the nearest existing
+   * token. They are per size class because the two columns grow at
+   * different rates: Expanded totals 1000 in 1180, Desktop 1160 in
+   * 1440.
+   */
+  practice: {
+    /** Stacked, both columns full width. */
+    medium: { gap: 24, paddingX: 32 },
+    expanded: { question: 520, source: 440, gap: 40 },
+    desktop: { question: 600, source: 520, gap: 40 },
+    /** Results is a centred single column at every wide size. */
+    results: 560,
+  },
   /** Reader text, PDF and player columns. Aliases `readingMeasure`. */
   reading: {
     measure: 680,
