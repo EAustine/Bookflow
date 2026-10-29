@@ -3,9 +3,11 @@
  * sheet. Figma `Popover` `296:434`.
  *
  * §3 of docs/specs/responsive-handoff.md: anchored to its trigger, 340
- * wide, with an arrow — except when the anchor sits within 24 of the
- * window edge, where it right-aligns to the gutter and drops the arrow
- * rather than letting the card hang off the screen.
+ * wide by default, with an arrow — except when the card placed with its
+ * arrow on the trigger would cross the window gutter, where it aligns
+ * to the gutter and drops the arrow rather than pointing at nothing.
+ * `placePopover` owns that decision; see its note on why the rule asks
+ * about the card and not the anchor.
  *
  * Positioned from `measureInWindow` coordinates, which is why it renders
  * inside an RN `Modal`: a `position: 'absolute'` View in React Native is
@@ -39,6 +41,13 @@ export type PopoverProps = {
   title?: string;
   children: ReactNode;
   footer?: ReactNode;
+  /**
+   * Card width. Defaults to `layout/popover/width` (340); a context
+   * menu passes `layout/menu/width` (280), which is narrower because it
+   * holds one line per action. It feeds the placement maths, so the
+   * edge rule answers for the card actually being drawn.
+   */
+  width?: number;
 };
 
 const ARROW = 10;
@@ -50,11 +59,11 @@ export function Popover({
   title,
   children,
   footer,
+  width = tokens.layout.popover.width,
 }: PopoverProps) {
   const { width: winW, height: winH } = useWindowDimensions();
   const { sizeClass } = useSizeClass();
   const gutter = tokens.layout.gutter[sizeClass];
-  const width = tokens.layout.popover.width;
 
   // The arithmetic lives in @bookflow/shared so the edge rules are
   // unit-tested: the near-edge fallback cannot be reached by tapping,

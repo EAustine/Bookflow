@@ -55,7 +55,7 @@ Every phone sheet is a component that the larger containers take through a Conte
 
 | Phone | Medium | Expanded and Desktop |
 |---|---|---|
-| Bottom sheet (menu, options, picker) | `Popover` anchored to its trigger. If the anchor sits within 24 of the edge, use Arrow=None and right-align to the gutter | `Popover` anchored, with an arrow |
+| Bottom sheet (menu, options, picker) | `Popover` anchored to its trigger. If the pop-over placed with its arrow on the trigger would cross the window gutter, use Arrow=None and align to the gutter | `Popover` anchored, with an arrow |
 | Bottom sheet (reader tools, AI tools, highlights, chapters) | `Side panel` Mode=Slide-over over a scrim, 380 wide, from the right | `Side panel` Mode=Docked, 380, pushes the reading area |
 | Confirm sheet (remove book, sign out, delete account) | `Modal` Size=Confirm (440) over a scrim | same |
 | Full-screen task (upload progress, upload errors, buy credits) | Centred 480 dialog or `Modal` Size=Large (640) over the dimmed screen | same |
@@ -166,7 +166,7 @@ These components have `Interaction = Default / Hover / Focus-visible`: Book list
 
 - Every frame in Figma has a matching screen at its size class, apart from the gaps in section 8.
 - At 820, 1180 and 1440 wide, side-by-side screenshots match the Figma frames.
-- No container runs off screen; anchored popovers fall back to right-aligned without an arrow near the edge.
+- No container runs off screen; a pop-over that cannot be centred on its trigger without crossing the gutter falls back to gutter-aligned without an arrow.
 - Keyboard tabbing on web shows the focus ring on every interactive row, card and button.
 - Reader text, the PDF and the player columns never exceed 680.
 - Prices and caps match section 7 everywhere they appear.

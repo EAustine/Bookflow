@@ -12,7 +12,7 @@
  * affordance.
  */
 
-import { memo } from 'react';
+import { memo, useRef } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
 import { Icon } from '~/components/Icon';
 import { Text } from '~/components/Text';
@@ -30,7 +30,11 @@ export type BookGridTileProps = {
   now: Date;
   onPress: (book: Book) => void;
   onRemove?: (book: Book) => void;
-  onLongPress?: (book: Book) => void;
+  /**
+   * The second argument is this tile's own view, so the wide-screen
+   * context menu anchors to the tile that was pressed.
+   */
+  onLongPress?: (book: Book, node: View | null) => void;
 };
 
 export const BookGridTile = memo(function BookGridTile({
@@ -41,6 +45,7 @@ export const BookGridTile = memo(function BookGridTile({
   onRemove,
   onLongPress,
 }: BookGridTileProps) {
+  const tileRef = useRef<View | null>(null);
   const state = bookState(book);
   const isProcessing = state === 'processing';
   const isFailed = state === 'failed';
@@ -62,10 +67,11 @@ export const BookGridTile = memo(function BookGridTile({
 
   return (
     <Pressable
+      ref={tileRef}
       accessibilityRole="button"
       accessibilityLabel={book.title}
       onPress={handlePress}
-      onLongPress={onLongPress ? () => onLongPress(book) : undefined}
+      onLongPress={onLongPress ? () => onLongPress(book, tileRef.current) : undefined}
       delayLongPress={350}
       style={({ pressed }) => [
         { width },

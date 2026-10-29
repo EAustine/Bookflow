@@ -23,6 +23,9 @@ export type { LogomarkProps } from './Logomark';
 export { Spinner } from './Spinner';
 export type { SpinnerProps } from './Spinner';
 
+export { ProgressRing } from './ProgressRing';
+export type { ProgressRingProps } from './ProgressRing';
+
 export { Toggle } from './Toggle';
 export type { ToggleProps } from './Toggle';
 

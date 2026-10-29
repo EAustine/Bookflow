@@ -21,8 +21,8 @@ import Svg, {
 } from 'react-native-svg';
 import { CURATED_LIBRARY } from '~/data/curatedLibrary';
 import {
-  BottomSheet,
   type BottomSheetRef,
+  Modal,
   Presenter,
   Button,
   Icon,
@@ -56,7 +56,7 @@ import { presentPaywall, ENTITLEMENT_PRO, useIsPro } from '~/features/billing';
 import { reprocessBook } from '../api/reprocessBook';
 import { DEFAULT_VOICE, estimateDownload, type AudioVoice } from '~/features/listen';
 import { toast } from '~/lib/toast';
-import { useDownloadsStore, type BookDownload } from '~/stores/downloadsStore';
+import { useDownloadsStore } from '~/stores/downloadsStore';
 import {
   downloadBook,
   cancelDownload,
@@ -172,7 +172,6 @@ export function LibraryScreen({
   const isOffline = !isConnected;
   // Pro users never see the free-tier "running low" upsell banner.
   const { isPro } = useIsPro();
-  const downloads = useDownloadsStore((s) => s.downloads);
   // Real audio usage drives the "running low" banner — show it only when
   // the free user is actually near their monthly audio limit, and only if
   // they haven't turned usage warnings off (Settings / Notifications).
@@ -200,7 +199,20 @@ export function LibraryScreen({
   // header's sort label — open the same menu, and the Figma frames
   // anchor it under the header icons, so one ref covers both.
   const filterAnchorRef = useRef<View>(null);
+  // The `+` in the header. Same idea as the filter anchor, with one
+  // difference worth knowing: at Medium the card cannot be centred on
+  // this button without crossing the gutter, so it comes out
+  // right-aligned with no arrow. `placePopover` decides that; the call
+  // site just supplies the trigger.
+  const addAnchorRef = useRef<View>(null);
   const addSheetRef = useRef<BottomSheetRef>(null);
+  /**
+   * The row or tile a long press landed on, so the context menu opens
+   * at it. Written at press time rather than held per row: only one
+   * menu is ever open, and a ref-per-row would mean a ref for every
+   * book in the library.
+   */
+  const actionAnchorRef = useRef<View | null>(null);
   const bookActionSheetRef = useRef<BottomSheetRef>(null);
   const removeConfirmSheetRef = useRef<BottomSheetRef>(null);
   // Book selected by a long-press, used to populate the action sheet.
@@ -638,12 +650,13 @@ export function LibraryScreen({
     }
   }, [bookToRemove, removing, refetch]);
 
-  // Long-press opens a designed bottom sheet with book actions. We stage
-  // the selected book in state so the sheet can render its title/cover
-  // header — the BottomSheet itself doesn't accept arguments through its
-  // imperative `present()` API.
-  const handleLongPressBook = useCallback((book: Book) => {
+  // Long-press opens the book actions: a sheet on the phone, a context
+  // menu at the row above Compact. We stage the book in state because
+  // the imperative `present()` takes no arguments, and the pressed
+  // row's view alongside it so the menu knows where to open.
+  const handleLongPressBook = useCallback((book: Book, node: View | null) => {
     setActionBook(book);
+    actionAnchorRef.current = node;
     bookActionSheetRef.current?.present();
   }, []);
 
@@ -799,6 +812,7 @@ export function LibraryScreen({
       onFilter={openSheet}
       filterAnchorRef={filterAnchorRef}
       onAdd={() => addSheetRef.current?.present()}
+      addAnchorRef={addAnchorRef}
       isOffline={isOffline}
     />
   );
@@ -987,63 +1001,104 @@ export function LibraryScreen({
     );
   }
 
-  if (showProcessing) {
-    const sizeLabelForProcessing = upload.state.fileSize
-      ? `${(upload.state.fileSize / 1024 / 1024).toFixed(1)} MB`
-      : undefined;
-    return (
-      <ProcessingScreen
-        title={processingTitle}
-        subtitle={processingSubtitle}
-        progress={processingProgress}
-        steps={processingSteps}
-        failed={upload.state.phase === 'failed'}
-        bookTitle={upload.state.fileName ?? undefined}
-        fileSizeLabel={sizeLabelForProcessing}
-        onBackground={() => setShowProcessing(false)}
-        onCancel={() => {
-          upload.cancel();
-          setShowProcessing(false);
-          upload.reset();
-        }}
-        onRetryAudio={() => {
-          // Audio generation isn't wired yet — fall back to retrying the
-          // upload. M2 will replace this with a targeted audio retry.
-          setShowProcessing(false);
-          upload.reset();
-        }}
-        onReadWithoutAudio={() => {
-          setShowProcessing(false);
-          upload.reset();
-        }}
-        onRemoveBook={() => {
-          setShowProcessing(false);
-          upload.reset();
-        }}
-      />
-    );
-  }
+  /**
+   * The upload flow. On a phone each of these takes the whole window;
+   * above Compact they open as a 480 dialog over the library, which
+   * stays visible and dimmed behind them (§3's full-screen task row,
+   * and the build log: "a 480 dialog over the dimmed library ...
+   * instead of a full screen").
+   *
+   * Built once and rendered either way, so the two presentations
+   * cannot drift. `embedded` is the only difference, and it changes no
+   * content — just drops the chrome a window needs and a card does
+   * not.
+   */
+  const uploadSizeLabel = upload.state.fileSize
+    ? `${(upload.state.fileSize / 1024 / 1024).toFixed(1)} MB`
+    : undefined;
 
-  if (showScannedPdfError) {
-    const sizeLabelForScanned = upload.state.fileSize
-      ? `${(upload.state.fileSize / 1024 / 1024).toFixed(1)} MB`
-      : undefined;
-    return (
-      <ScannedPdfErrorScreen
-        fileName={upload.state.fileName ?? undefined}
-        fileSizeLabel={sizeLabelForScanned}
-        onTryAnother={() => {
-          setShowScannedPdfError(false);
-          // Re-open add sheet after a tick so the screen transition completes
-          setTimeout(() => addSheetRef.current?.present(), 50);
-        }}
-        onBrowse={() => {
-          setShowScannedPdfError(false);
-          onTabChange('discover');
-        }}
-      />
-    );
-  }
+  const renderProcessing = (embedded: boolean) => (
+    <ProcessingScreen
+      embedded={embedded}
+      title={processingTitle}
+      subtitle={processingSubtitle}
+      progress={processingProgress}
+      steps={processingSteps}
+      failed={upload.state.phase === 'failed'}
+      bookTitle={upload.state.fileName ?? undefined}
+      fileSizeLabel={uploadSizeLabel}
+      onBackground={() => setShowProcessing(false)}
+      onCancel={() => {
+        upload.cancel();
+        setShowProcessing(false);
+        upload.reset();
+      }}
+      onRetryAudio={() => {
+        // Audio generation isn't wired yet, so fall back to retrying
+        // the upload. A targeted audio retry replaces this later.
+        setShowProcessing(false);
+        upload.reset();
+      }}
+      onReadWithoutAudio={() => {
+        setShowProcessing(false);
+        upload.reset();
+      }}
+      onRemoveBook={() => {
+        setShowProcessing(false);
+        upload.reset();
+      }}
+    />
+  );
+
+  const renderScannedPdfError = (embedded: boolean) => (
+    <ScannedPdfErrorScreen
+      embedded={embedded}
+      fileName={upload.state.fileName ?? undefined}
+      fileSizeLabel={uploadSizeLabel}
+      onTryAnother={() => {
+        setShowScannedPdfError(false);
+        // Re-open the add menu after a tick so the transition completes
+        setTimeout(() => addSheetRef.current?.present(), 50);
+      }}
+      onBrowse={() => {
+        setShowScannedPdfError(false);
+        onTabChange('discover');
+      }}
+    />
+  );
+
+  /**
+   * Mounted by every branch that can be underneath them, which is the
+   * populated tree and the empty one — a first upload happens with an
+   * empty library behind it.
+   */
+  const uploadDialogs = isWide ? (
+    <>
+      <Modal
+        visible={showProcessing}
+        size="lane"
+        bare
+        // An upload in flight is not dismissed by a stray tap on the
+        // scrim. "Continue in background" and "Cancel upload" are
+        // inside the dialog and say what they do.
+        dismissOnScrimPress={false}
+        onDismiss={() => setShowProcessing(false)}
+      >
+        {renderProcessing(true)}
+      </Modal>
+      <Modal
+        visible={showScannedPdfError}
+        size="lane"
+        bare
+        onDismiss={() => setShowScannedPdfError(false)}
+      >
+        {renderScannedPdfError(true)}
+      </Modal>
+    </>
+  ) : null;
+
+  if (showProcessing && !isWide) return renderProcessing(false);
+  if (showScannedPdfError && !isWide) return renderScannedPdfError(false);
 
   // Show the skeleton while the first books fetch is in flight. Once
   // resolved, an empty `books` array means the user genuinely has no
@@ -1069,7 +1124,11 @@ export function LibraryScreen({
             />
           }
         >
-          <Header onSearch={openSearch} onAdd={() => addSheetRef.current?.present()} />
+          <Header
+            onSearch={openSearch}
+            onAdd={() => addSheetRef.current?.present()}
+            addAnchorRef={addAnchorRef}
+          />
           <LibraryEmptyContent
             userName={userName}
             wide={isWide}
@@ -1081,9 +1140,11 @@ export function LibraryScreen({
         <TabBar activeTab="library" onChange={onTabChange} />
         <AddBookSheet
           ref={addSheetRef}
+          anchorRef={addAnchorRef}
           onUpload={handleUploadTap}
           onBrowse={() => onTabChange('discover')}
         />
+        {uploadDialogs}
       </SafeAreaView>
     );
   }
@@ -1238,24 +1299,35 @@ export function LibraryScreen({
       </Presenter>
       <AddBookSheet
         ref={addSheetRef}
+        anchorRef={addAnchorRef}
         onUpload={handleUploadTap}
         onBrowse={() => onTabChange('discover')}
       />
-      <BottomSheet
+      {/*
+        `Sheet / Book actions` `360:3010` on the phone, `Context menu /
+        Book actions` `298:467` at the row above Compact. The menu is
+        280 rather than a popover's 340 because it holds one line per
+        action and nothing else.
+      */}
+      <Presenter
+        kind="menu"
+        anchorRef={actionAnchorRef}
+        width={tokens.layout.menu.width}
         ref={bookActionSheetRef}
         onDismiss={() => setActionBook(null)}
       >
         <BookActionSheetContent
           book={actionBook}
-          download={actionBook ? downloads[actionBook.id] : undefined}
           onDownload={handleDownloadFromSheet}
           onViewHighlights={handleViewHighlightsFromSheet}
           onReprocess={handleReprocessFromSheet}
           onRemove={handleRemoveFromSheet}
           onCancel={() => bookActionSheetRef.current?.dismiss()}
         />
-      </BottomSheet>
-      <BottomSheet
+      </Presenter>
+      {/* Confirm modal (440) above Compact, sheet on the phone (§3). */}
+      <Presenter
+        kind="confirm"
         ref={removeConfirmSheetRef}
         onDismiss={() => {
           if (!removing) setBookToRemove(null);
@@ -1267,7 +1339,8 @@ export function LibraryScreen({
           onConfirm={confirmRemoveBook}
           onCancel={() => removeConfirmSheetRef.current?.dismiss()}
         />
-      </BottomSheet>
+      </Presenter>
+      {uploadDialogs}
     </SafeAreaView>
   );
 }
@@ -1566,12 +1639,14 @@ function Header({
   onFilter,
   filterAnchorRef,
   onAdd,
+  addAnchorRef,
   isOffline,
 }: {
   onSearch: () => void;
   onFilter?: () => void;
   filterAnchorRef?: React.RefObject<View | null>;
   onAdd: () => void;
+  addAnchorRef?: React.RefObject<View | null>;
   isOffline?: boolean;
 }) {
   return (
@@ -1580,7 +1655,7 @@ function Header({
       <View style={styles.headerActions}>
         <CircleIconButton icon="Search" onPress={onSearch} dimmed={isOffline} />
         {onFilter && <CircleIconButton icon="Filter" onPress={onFilter} dimmed={isOffline} anchorRef={filterAnchorRef} />}
-        <CircleIconButton icon="Plus" onPress={onAdd} dimmed={isOffline} />
+        <CircleIconButton icon="Plus" onPress={onAdd} dimmed={isOffline} anchorRef={addAnchorRef} />
       </View>
     </View>
   );
@@ -1822,7 +1897,8 @@ function BookList({
   books: Book[];
   onBookPress: (book: Book) => void;
   onRemove?: (book: Book) => void;
-  onLongPress?: (book: Book) => void;
+  /** Second argument is the pressed row, for the context menu anchor. */
+  onLongPress?: (book: Book, node: View | null) => void;
   /** Master-list selection on Expanded and Desktop. Unset on a phone. */
   selectedId?: string | null;
 }) {
@@ -1854,7 +1930,13 @@ function BookListItem({
   book: Book;
   onPress: (book: Book) => void;
   onRemove?: (book: Book) => void;
-  onLongPress?: (book: Book) => void;
+  /**
+   * The second argument is this row's own view, so the wide-screen
+   * context menu can anchor to the row that was pressed rather than to
+   * a fixed point. Null on the platforms where the ref has not
+   * attached yet, which the popover handles by centring.
+   */
+  onLongPress?: (book: Book, node: View | null) => void;
   /**
    * The master-list selection fill on Expanded and Desktop. Not the
    * shared `ListRow`'s `selected`, which draws a trailing check — a
@@ -1862,6 +1944,7 @@ function BookListItem({
    */
   selected?: boolean;
 }) {
+  const rowRef = useRef<View | null>(null);
   const status = book.processingStatus;
   const isProcessing = status === 'pending' || status === 'processing';
   const isFailed = typeof status === 'string' && status.startsWith('failed');
@@ -1889,9 +1972,10 @@ function BookListItem({
 
   return (
     <Pressable
+      ref={rowRef}
       accessibilityRole="button"
       onPress={handlePress}
-      onLongPress={onLongPress ? () => onLongPress(book) : undefined}
+      onLongPress={onLongPress ? () => onLongPress(book, rowRef.current) : undefined}
       delayLongPress={350}
       style={({ pressed }) => [
         styles.bookRow,
@@ -2053,19 +2137,30 @@ function RadioDot({ checked }: { checked: boolean }) {
 // ─── Book action sheet (long-press) ──────────────────────────────────────────
 
 /**
- * Bottom sheet shown when a library row is long-pressed. Hosts the two
- * destructive-ish actions on a book (re-process / remove) inside the same
- * visual language as `AddBookSheet`: a header with a small book preview,
- * a hairline divider, two icon-led action rows, and a cancel footer.
+ * The four actions on a book, long-pressed from a row or a tile.
+ * `Sheet / Book actions` `360:3010` on the phone; the same four rows
+ * with no header as `Context menu / Book actions` `298:467` above
+ * Compact.
+ *
+ * **§7 stripped these rows back**: no subtitles, no cover, no author.
+ * The icon chips and the chevrons went with them — the chevrons were a
+ * standing hard-rule-3 violation (a chevron means "drills into more",
+ * and none of these do), and with the subtitles gone a chip around
+ * each icon was doing nothing but adding weight. The leading icons
+ * stay; they are what makes the list scannable.
+ *
+ * Offline download is genuinely disabled rather than tappable-with-a-
+ * toast, and says "Soon" on the trailing edge. Hard rule 4 wants a
+ * disabled row to explain itself, and with no sub-label left that is
+ * where the explanation goes.
  *
  * The component is intentionally presentational — the parent owns the
- * `actionBook` state and the action handlers, so the sheet can render an
- * empty placeholder for one frame while the BottomSheet animates closed
- * (state clears on dismiss).
+ * `actionBook` state and the handlers, so it can render an empty
+ * placeholder for one frame while the container animates closed (state
+ * clears on dismiss).
  */
 function BookActionSheetContent({
   book,
-  download,
   onDownload,
   onViewHighlights,
   onReprocess,
@@ -2073,13 +2168,13 @@ function BookActionSheetContent({
   onCancel,
 }: {
   book: Book | null;
-  download?: BookDownload;
   onDownload: () => void;
   onViewHighlights: () => void;
   onReprocess: () => void;
   onRemove: () => void;
   onCancel: () => void;
 }) {
+  const { isWide: wide } = useSizeClass();
   // Render a tiny placeholder during the dismiss animation rather than
   // returning null — null collapses the sheet's intrinsic height and makes
   // it visibly snap.
@@ -2090,130 +2185,121 @@ function BookActionSheetContent({
   const status = book.processingStatus;
   const isProcessing = status === 'processing' || status === 'pending';
   const isFailed = typeof status === 'string' && status.startsWith('failed');
-  const dlStatus = download?.status;
-  const dlPct =
-    download && download.totalPages > 0
-      ? Math.round((download.completedPages / download.totalPages) * 100)
-      : 0;
 
   return (
-    <View>
-      <View style={styles.actionSheetHeader}>
-        <BookCover book={book} size="sm" />
-        <View style={styles.actionSheetHeaderText}>
-          <Text style={styles.actionSheetTitle} numberOfLines={2}>
-            {book.title}
-          </Text>
-          {book.author ? (
-            <Text style={styles.actionSheetAuthor} numberOfLines={1}>
-              {book.author}
-            </Text>
-          ) : null}
-        </View>
-      </View>
-
-      <View style={styles.actionSheetDivider} />
-
-      {!isProcessing && !isFailed && (
-        <ActionRow
-          iconBg={tokens.colors.forest[50]}
-          iconName="Download"
-          iconColor={tokens.colors.forest[800]}
-          title="Offline download"
-          desc="Coming soon"
-          onPress={onDownload}
-        />
+    <View style={styles.actionMenu}>
+      {/*
+        The phone sheet is titled with the book; the context menu has
+        no header at all (`298:467`). `wide` comes from the size class
+        rather than from the container, because the content cannot see
+        which container took it.
+      */}
+      {!wide && (
+        <Text style={styles.actionSheetTitle} numberOfLines={1}>
+          {book.title}
+        </Text>
       )}
 
       <ActionRow
-        iconBg={tokens.colors.amber[200]}
-        iconName="Notebook"
-        iconColor={tokens.colors.ink[700]}
+        icon="Notebook"
         title="View highlights"
-        desc="Browse saved words and sentences"
         onPress={onViewHighlights}
       />
 
       <ActionRow
-        iconBg={tokens.colors.forest[50]}
-        iconName="Refresh"
-        iconColor={tokens.colors.forest[800]}
+        icon="Refresh"
         title="Re-process chapters"
-        desc={
-          isProcessing
-            ? 'Restart processing from the original file'
-            : 'Re-detect chapters from the original file'
-        }
         onPress={onReprocess}
       />
 
+      {!isProcessing && !isFailed && (
+        <ActionRow
+          icon="Download"
+          title="Offline download"
+          trailing="Soon"
+          disabled
+          onPress={onDownload}
+        />
+      )}
+
+      <View style={styles.actionMenuDivider} />
+
       <ActionRow
-        iconBg={tokens.colors.errorBg}
-        iconName="Trash"
-        iconColor={tokens.colors.error}
+        icon="Trash"
         title="Remove from library"
-        desc="Delete this book and its files"
         destructive
         onPress={onRemove}
       />
 
-      <View style={styles.actionSheetFooter}>
-        <Pressable
-          accessibilityRole="button"
-          onPress={onCancel}
-          style={({ pressed }) => [
-            styles.actionSheetCancel,
-            pressed && { opacity: 0.7 },
-          ]}
-        >
-          <Text style={styles.actionSheetCancelLabel}>Cancel</Text>
-        </Pressable>
-      </View>
+      {/* The phone sheet keeps a Cancel; a menu dismisses on the scrim. */}
+      {!wide && (
+        <View style={styles.actionSheetFooter}>
+          <Pressable
+            accessibilityRole="button"
+            onPress={onCancel}
+            style={({ pressed }) => [
+              styles.actionSheetCancel,
+              pressed && { opacity: 0.7 },
+            ]}
+          >
+            <Text style={styles.actionSheetCancelLabel}>Cancel</Text>
+          </Pressable>
+        </View>
+      )}
     </View>
   );
 }
 
+/**
+ * One action: a leading icon and a label, optionally a trailing word.
+ * No chip, no sub-label, no chevron — see the note on
+ * `BookActionSheetContent`.
+ */
 function ActionRow({
-  iconBg,
-  iconName,
-  iconColor,
+  icon,
   title,
-  desc,
+  trailing,
   destructive,
+  disabled,
   onPress,
 }: {
-  iconBg: string;
-  iconName: 'Refresh' | 'Trash' | 'Notebook' | 'Download' | 'Check';
-  iconColor: string;
+  icon: 'Refresh' | 'Trash' | 'Notebook' | 'Download' | 'Check';
   title: string;
-  desc: string;
+  /** A short status on the trailing edge, e.g. "Soon". */
+  trailing?: string;
   destructive?: boolean;
+  disabled?: boolean;
   onPress: () => void;
 }) {
+  const color = disabled
+    ? tokens.textColors.disabled
+    : destructive
+      ? tokens.colors.error
+      : tokens.textColors.primary;
+
   return (
     <Pressable
       accessibilityRole="button"
+      accessibilityState={{ disabled }}
+      disabled={disabled}
       onPress={onPress}
+      // Hard rule 6: the whole row is the target, not the label.
       style={({ pressed }) => [
         styles.actionRow,
-        pressed && { backgroundColor: tokens.bgColors.raised },
+        pressed && !disabled && { backgroundColor: tokens.bgColors.raised },
       ]}
     >
-      <View style={[styles.actionRowIcon, { backgroundColor: iconBg }]}>
-        <Icon name={iconName} size={20} color={iconColor} />
-      </View>
-      <View style={styles.actionRowText}>
-        <Text
-          style={[
-            styles.actionRowTitle,
-            destructive && { color: tokens.colors.error },
-          ]}
-        >
-          {title}
-        </Text>
-        <Text style={styles.actionRowDesc}>{desc}</Text>
-      </View>
-      <Icon name="ChevronRight" size={16} color={tokens.colors.ink[300]} />
+      <Icon
+        name={icon}
+        size={18}
+        color={disabled ? tokens.textColors.disabled : color}
+      />
+      <Text style={[styles.actionRowTitle, { color }]} numberOfLines={1}>
+        {title}
+      </Text>
+      {trailing ? (
+        <Text style={styles.actionRowTrailing}>{trailing}</Text>
+      ) : null}
     </Pressable>
   );
 }
@@ -2249,13 +2335,12 @@ function RemoveBookSheetContent({
   if (!book) {
     return <View style={styles.actionSheetPlaceholder} />;
   }
-  // Body is shared with Discover's book detail — see F-26. Only the
-  // cover differs, so Library passes its own.
+  // Body is shared with Discover's book detail (F-26). §7 cut it down
+  // to a title and one line, which took the `cover` slot with it — the
+  // only reason the two callers needed different arguments.
   return (
     <RemoveBookSheetBody
       title={book.title}
-      author={book.author}
-      cover={<BookCover book={book} size="sm" />}
       removing={removing}
       onConfirm={onConfirm}
       onCancel={onCancel}
@@ -3168,64 +3253,46 @@ const styles = StyleSheet.create({
   actionSheetPlaceholder: {
     height: 120,
   },
-  actionSheetHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: tokens.space.md,
-    paddingHorizontal: tokens.space.lg,
-    paddingTop: tokens.space.md,
-    paddingBottom: tokens.space.md,
-  },
-  actionSheetHeaderText: {
-    flex: 1,
+  actionMenu: {
+    paddingVertical: tokens.space.sm,
   },
   actionSheetTitle: {
     fontFamily: tokens.fonts.display,
-    fontSize: 16,
+    fontSize: tokens.fontSizes.display.sm,
     color: tokens.textColors.primary,
-    marginBottom: 2,
+    paddingHorizontal: tokens.space.lg,
+    paddingTop: tokens.space.sm,
+    paddingBottom: tokens.space.md,
   },
-  actionSheetAuthor: {
-    fontFamily: tokens.fonts.ui,
-    fontSize: 12,
-    color: tokens.textColors.muted,
-  },
-  actionSheetDivider: {
+  /**
+   * One hairline, above the destructive action only. The rows used to
+   * carry a border each, which made four actions look like a settings
+   * list rather than a menu.
+   */
+  actionMenuDivider: {
     height: StyleSheet.hairlineWidth,
     backgroundColor: tokens.borderColors.subtle,
+    marginVertical: tokens.space.sm,
+    marginHorizontal: tokens.space.md,
   },
   actionRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 14,
-    paddingVertical: 16,
+    gap: tokens.space.md,
+    paddingVertical: tokens.space.md,
     paddingHorizontal: tokens.space.lg,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: tokens.colors.ink[100],
-  },
-  actionRowIcon: {
-    width: 44,
-    height: 44,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexShrink: 0,
-  },
-  actionRowText: {
-    flex: 1,
+    borderRadius: tokens.radii.md,
   },
   actionRowTitle: {
-    fontFamily: tokens.fonts.uiMedium,
-    fontSize: 15,
-    fontWeight: '500',
-    color: tokens.textColors.primary,
-    marginBottom: 2,
-  },
-  actionRowDesc: {
+    flex: 1,
     fontFamily: tokens.fonts.ui,
-    fontSize: 12,
-    color: tokens.textColors.muted,
-    lineHeight: 16,
+    fontSize: tokens.fontSizes.ui.md,
+    lineHeight: 20,
+  },
+  actionRowTrailing: {
+    fontFamily: tokens.fonts.ui,
+    fontSize: tokens.fontSizes.ui.xs,
+    color: tokens.textColors.disabled,
   },
   actionSheetFooter: {
     paddingHorizontal: tokens.space.lg,

@@ -244,7 +244,7 @@ Placed in the page sections (see "Page sections").
 ### Decisions taken during Phase 3
 
 - **Medium library is a cover grid**: header, Reading stats + Continue card side by side, then 4 columns of Book grid tiles (153 wide at 820, gap `layout/column-gap`).
-- **Expanded and Desktop library is master and detail**: 360 master (`layout/pane/master`) with header, stats, section header and Book list items; the selected row uses `color/bg/accent-muted`. The book pane fills the rest. Continue card is dropped there because the pane does the same job.
+- **Expanded and Desktop library is master and detail**: 440 master (`layout/pane/master`) with header, stats, section header and Book list items; the selected row uses `color/bg/accent-muted`. The book pane fills the rest. Continue card is dropped there because the pane does the same job.
 - **Popovers anchor to their trigger**: Sort & filter and Add book under the header icons, Voice picker beside the voice pill. Remove book is a centred Confirm modal over a scrim. Book actions is the Context menu at the row.
 - **Upload drop zone is web and desktop only.** Expanded (touch) empty state keeps the phone Empty state; Desktop shows the drop zone, and dragging a file over a populated library covers the content area with `State=Drag over`.
 - **Listen has no mini player on its own tab** (the full player is on screen). Expanded and Desktop use two columns: player and monthly stats left, Recently listened in a surface card right.

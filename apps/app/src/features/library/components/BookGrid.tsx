@@ -30,7 +30,7 @@ export type BookGridProps = {
   now: Date;
   onBookPress: (book: Book) => void;
   onRemove?: (book: Book) => void;
-  onLongPress?: (book: Book) => void;
+  onLongPress?: (book: Book, node: View | null) => void;
 };
 
 export function BookGrid({
