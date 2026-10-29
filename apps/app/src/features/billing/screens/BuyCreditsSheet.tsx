@@ -195,7 +195,7 @@ export const BuyCreditsSheet = forwardRef<BuyCreditsSheetRef, BuyCreditsSheetPro
     if (res.ok) {
       innerRef.current?.dismiss();
       onPurchased?.();
-      toast.show('Purchase complete — your credits are on the way');
+      toast.show('Purchase complete. Your credits are on the way');
     } else if (!res.cancelled) {
       Alert.alert('Purchase failed', res.error ?? 'Please try again.');
     }

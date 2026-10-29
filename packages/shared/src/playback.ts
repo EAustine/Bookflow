@@ -21,12 +21,12 @@ export type SpeedDef = {
 };
 
 export const SPEED_CATALOG: SpeedDef[] = [
-  { value: 0.5,  display: '0.5×',  label: 'Slow',       description: 'Half speed — useful for unfamiliar accents or dense passages.' },
+  { value: 0.5,  display: '0.5×',  label: 'Slow',       description: 'Half speed, useful for unfamiliar accents or dense passages.' },
   { value: 0.75, display: '0.75×', label: 'Leisurely',  description: 'A relaxed pace, slower than natural speech.' },
-  { value: 1,    display: '1×',    label: 'Normal',     description: 'Natural narration speed — exactly how the audio was recorded.' },
-  { value: 1.25, display: '1.25×', label: 'Brisk',      description: '1.25× — slightly faster than natural speech. Most people find this easy to follow while listening.' },
-  { value: 1.5,  display: '1.5×',  label: 'Fast',       description: '1.5× — noticeably faster. Comprehension stays high once your ear adjusts.' },
-  { value: 1.75, display: '1.75×', label: 'Quick',      description: 'Fast pace — best for re-listening or when content is familiar.' },
+  { value: 1,    display: '1×',    label: 'Normal',     description: 'Natural narration speed, exactly how the audio was recorded.' },
+  { value: 1.25, display: '1.25×', label: 'Brisk',      description: '1.25×, slightly faster than natural speech. Most people find this easy to follow while listening.' },
+  { value: 1.5,  display: '1.5×',  label: 'Fast',       description: '1.5×, noticeably faster. Comprehension stays high once your ear adjusts.' },
+  { value: 1.75, display: '1.75×', label: 'Quick',      description: 'Fast pace, best for re-listening or when content is familiar.' },
   { value: 2,    display: '2×',    label: 'Rapid',      description: 'Twice natural speed. Great for review; harder for first listens.' },
 ];
 

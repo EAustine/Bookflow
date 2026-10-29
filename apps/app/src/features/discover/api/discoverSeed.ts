@@ -97,7 +97,7 @@ const SEED_RAW: Array<{
     author: 'Oscar Wilde',
     tags: ['Fiction', 'Gothic', 'Aesthetics'],
     about:
-      "Wilde's only novel: a young man's portrait ages while he stays beautiful — and corrupt.",
+      "Wilde's only novel: a young man's portrait ages while he stays beautiful, and corrupt.",
     downloadCount: 50000,
   },
   {
@@ -106,7 +106,7 @@ const SEED_RAW: Array<{
     author: 'Mark Twain',
     tags: ['Fiction', 'Adventure', 'American'],
     about:
-      'A boy and an escaped slave drift down the Mississippi together — and confront pre-war America.',
+      'A boy and an escaped slave drift down the Mississippi together, confronting pre-war America.',
     downloadCount: 45000,
   },
 ];
@@ -161,7 +161,7 @@ const BIBLE_RAW: Array<{
     author: 'KJV · 1611',
     tags: ['Bible', 'Scripture', 'KJV'],
     about:
-      'The complete King James Version of the Old and New Testaments — the classic 1611 English translation.',
+      'The complete King James Version of the Old and New Testaments, the classic 1611 English translation.',
     downloadCount: 17381,
   },
   {
@@ -170,7 +170,7 @@ const BIBLE_RAW: Array<{
     author: 'WEB · Modern English',
     tags: ['Bible', 'Scripture', 'Modern English'],
     about:
-      'A complete, readable modern-English translation in the public domain — a contemporary update of the American Standard Version.',
+      'A complete, readable modern-English translation in the public domain, a contemporary update of the American Standard Version.',
     downloadCount: 1445,
   },
   {
@@ -179,7 +179,7 @@ const BIBLE_RAW: Array<{
     author: 'Catholic · Challoner Revision',
     tags: ['Bible', 'Scripture', 'Catholic'],
     about:
-      'The complete Douay-Rheims Bible (Challoner Revision) — the traditional English Catholic translation.',
+      'The complete Douay-Rheims Bible (Challoner Revision), the traditional English Catholic translation.',
     downloadCount: 3175,
   },
 ];

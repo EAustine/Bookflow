@@ -172,7 +172,7 @@ function SignInForm({
         <Text variant="body-md" color="muted" style={styles.sub}>
           {isSignup
             ? "We'll send a magic link to set things up. No password needed."
-            : "Enter the email you used to sign up — we'll send you a magic link."}
+            : "Enter the email you used to sign up and we'll send you a magic link."}
         </Text>
       </View>
 

@@ -37,7 +37,7 @@ export function WelcomeScreen({ onGetStarted, onSignIn }: WelcomeScreenProps) {
             Everything you need to <RNText style={styles.headlineEm}>read better</RNText>.
           </RNText>
           <Text variant="body-lg" color="muted" align="center" style={styles.sub}>
-            Read, listen, summarize, and ask — for any book you bring or any classic in our library.
+            Read, listen, summarize, and ask questions about any book you bring or any classic in our library.
           </Text>
         </View>
 

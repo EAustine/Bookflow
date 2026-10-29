@@ -2,8 +2,8 @@ import type React from 'react';
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react';
 import { Animated, Easing, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import Svg, { Circle as SvgCircle } from 'react-native-svg';
-import { BottomSheet, type BottomSheetRef, Icon, Text } from '~/components';
+import { type BottomSheetRef, Icon, Presenter, ProgressRing, Text } from '~/components';
+import { UploadFailedIllustration } from '~/components/illustrations/UploadFailedIllustration';
 import { tokens } from '~/design/tokens';
 
 // ─── Add book sheet ───────────────────────────────────────────────────────────
@@ -11,10 +11,16 @@ import { tokens } from '~/design/tokens';
 export type AddBookSheetProps = {
   onUpload: () => void;
   onBrowse: () => void;
+  /**
+   * The header `+` this anchors to above Compact. At Medium the card
+   * cannot be centred on it without crossing the gutter, so it comes
+   * out right-aligned with no arrow — which is how Figma draws it.
+   */
+  anchorRef?: React.RefObject<View | null>;
 };
 
 export const AddBookSheet = forwardRef<BottomSheetRef, AddBookSheetProps>(
-  function AddBookSheet({ onUpload, onBrowse }, ref) {
+  function AddBookSheet({ onUpload, onBrowse, anchorRef }, ref) {
     const sheetRef = useRef<BottomSheetRef>(null);
 
     useImperativeHandle(ref, () => ({
@@ -23,7 +29,7 @@ export const AddBookSheet = forwardRef<BottomSheetRef, AddBookSheetProps>(
     }));
 
     return (
-      <BottomSheet ref={sheetRef}>
+      <Presenter kind="menu" anchorRef={anchorRef} ref={sheetRef}>
         <View style={styles.addHeader}>
           <Text style={styles.addTitle}>Add a book</Text>
           <Text style={styles.addSub}>Choose how you'd like to add</Text>
@@ -64,7 +70,7 @@ export const AddBookSheet = forwardRef<BottomSheetRef, AddBookSheetProps>(
             <Text style={styles.cancelLabel}>Cancel</Text>
           </Pressable>
         </View>
-      </BottomSheet>
+      </Presenter>
     );
   },
 );
@@ -134,6 +140,13 @@ export type ProcessingScreenProps = {
   progress?: number;
   steps?: ProcessingStep[];
   failed?: boolean;
+  /**
+   * Hosted inside a dialog rather than owning the window. The content
+   * is identical — this only drops the `flex: 1` that makes it fill a
+   * screen, because a flexed child of a card that sizes itself to its
+   * content has no height to grow into.
+   */
+  embedded?: boolean;
 };
 
 export function ProcessingScreen({
@@ -149,6 +162,7 @@ export function ProcessingScreen({
   progress: progressProp,
   steps: stepsProp,
   failed: failedProp,
+  embedded = false,
 }: ProcessingScreenProps) {
   const failed = failedProp ?? false;
   // Display name for the failed-state copy. Falls back to "this book"
@@ -176,46 +190,22 @@ export function ProcessingScreen({
     outputRange: ['0deg', '360deg'],
   });
 
-  const RADIUS = 40;
-  const CIRCUMFERENCE = 2 * Math.PI * RADIUS;
-
   if (failed) {
-    const FAILED_DASH_OFFSET = 25;
     return (
       <ScrollView
-        style={styles.processingScreenScroll}
+        style={[styles.processingScreenScroll, embedded && styles.embeddedScroll]}
         contentContainerStyle={styles.processingScreenScrollContent}
         showsVerticalScrollIndicator={false}
         alwaysBounceVertical={false}
       >
-        {/* Failed ring — red arc ~90% filled, × icon center */}
+        {/*
+          The illustration, not a ring. A ring that has stopped
+          reporting progress should stop looking like one — this used
+          to draw a red arc at a hardcoded ~90% with an × through it,
+          which implied a measurement it never had.
+        */}
         <View style={styles.ringWrap}>
-          <Svg width={96} height={96} viewBox="0 0 96 96">
-            <SvgCircle
-              cx={48}
-              cy={48}
-              r={RADIUS}
-              fill="none"
-              stroke={tokens.colors.cream[200]}
-              strokeWidth={6}
-            />
-            <SvgCircle
-              cx={48}
-              cy={48}
-              r={RADIUS}
-              fill="none"
-              stroke={tokens.colors.error}
-              strokeWidth={6}
-              strokeLinecap="round"
-              strokeDasharray={CIRCUMFERENCE}
-              strokeDashoffset={FAILED_DASH_OFFSET}
-              rotation={-90}
-              origin="48, 48"
-            />
-          </Svg>
-          <View style={styles.ringLabelAbsolute}>
-            <Icon name="X" size={22} color={tokens.colors.error} />
-          </View>
+          <UploadFailedIllustration size={160} />
         </View>
 
         <Text style={styles.processingTitle}>Audio generation failed</Text>
@@ -297,11 +287,6 @@ export function ProcessingScreen({
     );
   }
 
-  const PROGRESS = progressProp ?? 0.65;
-  const indeterminate = progressProp == null;
-  const DASH_OFFSET = CIRCUMFERENCE * (1 - PROGRESS);
-  const ringPercent = Math.round(PROGRESS * 100);
-
   const titleText = titleProp ?? `Preparing ${displayTitle}`;
   const subtitleText =
     subtitleProp ?? 'Reading the file and getting it ready for you.';
@@ -326,42 +311,15 @@ export function ProcessingScreen({
   const stepsToRender = stepsProp ?? defaultSteps;
 
   return (
-    <View style={styles.processingScreen}>
+    <View style={[styles.processingScreen, embedded && styles.embedded]}>
+      {/*
+        Undefined progress is passed straight through: the ring goes
+        indeterminate rather than inventing a number. The old code
+        defaulted to 0.65, which drew a confident 65% for an upload
+        nobody was measuring.
+      */}
       <View style={styles.ringWrap}>
-        <Svg width={96} height={96} viewBox="0 0 96 96">
-          <SvgCircle
-            cx={48}
-            cy={48}
-            r={RADIUS}
-            fill="none"
-            stroke={tokens.colors.cream[200]}
-            strokeWidth={6}
-          />
-          {!indeterminate && (
-            <SvgCircle
-              cx={48}
-              cy={48}
-              r={RADIUS}
-              fill="none"
-              stroke={tokens.colors.forest[800]}
-              strokeWidth={6}
-              strokeLinecap="round"
-              strokeDasharray={CIRCUMFERENCE}
-              strokeDashoffset={DASH_OFFSET}
-              rotation={-90}
-              origin="48, 48"
-            />
-          )}
-        </Svg>
-        <View style={styles.ringLabelAbsolute}>
-          {indeterminate ? (
-            <Animated.View style={{ transform: [{ rotate }] }}>
-              <Icon name="Loader" size={28} color={tokens.colors.forest[800]} />
-            </Animated.View>
-          ) : (
-            <Text style={styles.ringLabelText}>{ringPercent}%</Text>
-          )}
-        </View>
+        <ProgressRing value={progressProp} />
       </View>
 
       <Text style={styles.processingTitle}>{titleText}</Text>
@@ -684,22 +642,24 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: 28,
   },
+  /**
+   * Hosted in a dialog. Drops `flex: 1` and the vertical centring:
+   * the modal card hugs its content, so there is no spare height to
+   * flex into or to centre within. Everything else is unchanged, which
+   * is what lets the dialog hold the same instance as the phone.
+   */
+  embedded: {
+    flex: 0,
+    justifyContent: 'flex-start',
+    paddingVertical: tokens.space['2xl'],
+  },
+  embeddedScroll: {
+    flex: 0,
+  },
+  // Spacing only. The ring sizes and centres itself, and so does the
+  // illustration that stands in for it when the upload has failed.
   ringWrap: {
-    width: 96,
-    height: 96,
-    marginBottom: 24,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  ringLabelAbsolute: {
-    ...StyleSheet.absoluteFillObject,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  ringLabelText: {
-    fontFamily: tokens.fonts.display,
-    fontSize: 22,
-    color: tokens.textColors.primary,
+    marginBottom: tokens.space.xl,
   },
   processingTitle: {
     fontFamily: tokens.fonts.display,
@@ -902,6 +862,14 @@ export type ScannedPdfErrorScreenProps = {
    * doesn't have these (e.g. opened via deep-link). */
   fileName?: string;
   fileSizeLabel?: string;
+  /**
+   * Hosted inside a dialog rather than owning the window: drop the
+   * SafeAreaView and the header, because the dialog supplies the frame
+   * and its own close. Above Compact the upload errors open as a 480
+   * dialog over the library (§3, and the build log's "a 480 dialog
+   * over the dimmed library ... instead of a full screen").
+   */
+  embedded?: boolean;
 };
 
 export function ScannedPdfErrorScreen({
@@ -909,25 +877,36 @@ export function ScannedPdfErrorScreen({
   onBrowse,
   fileName,
   fileSizeLabel,
+  embedded = false,
 }: ScannedPdfErrorScreenProps) {
   const displayName = fileName?.trim() || 'Your PDF';
   const displaySize = fileSizeLabel?.trim();
+
+  const Frame = embedded ? View : SafeAreaView;
+  const frameProps = embedded
+    ? { style: scanStyles.embedded }
+    : {
+        style: scanStyles.safe,
+        edges: ['top', 'left', 'right', 'bottom'] as const,
+      };
+
   return (
-    <SafeAreaView style={scanStyles.safe} edges={['top', 'left', 'right', 'bottom']}>
-      {/* Header */}
-      <View style={scanStyles.header}>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Close"
-          onPress={onTryAnother}
-          style={({ pressed }) => [scanStyles.closeBtn, pressed && { opacity: 0.7 }]}
-          hitSlop={8}
-        >
-          <Icon name="X" size={14} color={tokens.textColors.secondary} />
-        </Pressable>
-        <Text style={scanStyles.headerTitle}>Can't read this file</Text>
-        <View style={scanStyles.headerSpacer} />
-      </View>
+    <Frame {...frameProps}>
+      {!embedded && (
+        <View style={scanStyles.header}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Close"
+            onPress={onTryAnother}
+            style={({ pressed }) => [scanStyles.closeBtn, pressed && { opacity: 0.7 }]}
+            hitSlop={8}
+          >
+            <Icon name="X" size={14} color={tokens.textColors.secondary} />
+          </Pressable>
+          <Text style={scanStyles.headerTitle}>Can't read this file</Text>
+          <View style={scanStyles.headerSpacer} />
+        </View>
+      )}
 
       <ScrollView
         style={scanStyles.scroll}
@@ -942,7 +921,7 @@ export function ScannedPdfErrorScreen({
 
         <Text style={scanStyles.errorTitle}>This PDF is a scanned image</Text>
         <Text style={scanStyles.errorSub}>
-          Bookflow reads text from PDFs, but this file contains scanned pages — photos of text
+          Bookflow reads text from PDFs, but this file contains scanned pages: photos of text
           that we can't extract. This is common with older or printed books.
         </Text>
 
@@ -968,7 +947,7 @@ export function ScannedPdfErrorScreen({
             num={1}
             text={
               <>
-                <Text style={scanStyles.stepTextPlain}>Convert online — paste the PDF into </Text>
+                <Text style={scanStyles.stepTextPlain}>Convert online: paste the PDF into </Text>
                 <Text style={scanStyles.stepTextBold}>Adobe Acrobat</Text>
                 <Text style={scanStyles.stepTextPlain}> or </Text>
                 <Text style={scanStyles.stepTextBold}>Smallpdf</Text>
@@ -982,10 +961,10 @@ export function ScannedPdfErrorScreen({
             num={2}
             text={
               <>
-                <Text style={scanStyles.stepTextPlain}>Find the EPUB — search for </Text>
+                <Text style={scanStyles.stepTextPlain}>Find the EPUB: search for </Text>
                 <Text style={scanStyles.stepTextBold}>"Things Fall Apart epub"</Text>
                 <Text style={scanStyles.stepTextPlain}>
-                  {' '}— publishers often offer a digital version with selectable text.
+                  {'. '}Publishers often offer a digital version with selectable text.
                 </Text>
               </>
             }
@@ -994,7 +973,7 @@ export function ScannedPdfErrorScreen({
             num={3}
             text={
               <Text style={scanStyles.stepTextPlain}>
-                Browse our free library — 200+ books are already formatted and ready to read
+                Browse our free library: 200+ books are already formatted and ready to read
                 with no upload needed.
               </Text>
             }
@@ -1020,7 +999,7 @@ export function ScannedPdfErrorScreen({
           </Pressable>
         </View>
       </ScrollView>
-    </SafeAreaView>
+    </Frame>
   );
 }
 
@@ -1046,6 +1025,14 @@ function NextStepRow({
 const scanStyles = StyleSheet.create({
   safe: {
     flex: 1,
+    backgroundColor: tokens.bgColors.canvas,
+  },
+  /**
+   * Hosted in a dialog. No `flex: 1` — the modal card sizes itself to
+   * its content up to a maxHeight, and a flexed child inside it would
+   * stretch to a height nothing has set.
+   */
+  embedded: {
     backgroundColor: tokens.bgColors.canvas,
   },
   header: {

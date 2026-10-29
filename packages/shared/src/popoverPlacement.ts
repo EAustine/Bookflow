@@ -3,12 +3,19 @@
  * docs/specs/responsive-handoff.md.
  *
  * Pure arithmetic, deliberately separated from the component that draws
- * it. The rules it encodes are the ones §10 of the brief tests for ("no
- * container runs off screen; anchored popovers fall back to
- * right-aligned without an arrow near the edge"), and the near-edge case
- * is the one that is hardest to reach by hand — on the current Library
- * header the filter button sits 58px from the window edge, so no amount
- * of tapping on a device exercises it. Here it is one assertion.
+ * it. The rules it encodes are the ones §10 of the brief tests for, and
+ * the fallback is easier to assert here than to reach by tapping.
+ *
+ * **The edge rule is about the card, not the anchor.** If the popover
+ * placed with its arrow on the trigger would cross the window gutter,
+ * it drops the arrow and aligns to the gutter instead. An earlier
+ * version asked whether the *anchor* sat within 24 of the window edge,
+ * which is a different question and gives a different answer in the
+ * case that actually matters: the Library's `+` button on a Medium
+ * tablet sits 32 from the edge, so the old rule kept the arrow and then
+ * clamped the card anyway — an arrow pointing at nothing in particular.
+ * Asking about the card catches that, and it is also the rule Figma
+ * draws (`Arrow=None`, right-aligned).
  */
 
 /** A trigger's position in window coordinates. */
@@ -24,8 +31,6 @@ export type PlacementOptions = {
   width: number;
   /** The page gutter for this size class. */
   gutter: number;
-  /** How close to the window edge counts as "near the edge". §3 says 24. */
-  edge?: number;
   /** Gap between the trigger and the card. */
   offset?: number;
   /** The arrow's width, and how far it stays from the card's corners. */
@@ -57,7 +62,6 @@ export function placePopover(
   const {
     width,
     gutter,
-    edge = 24,
     offset: gap = 8,
     arrow = 10,
     arrowInset = 12,
@@ -77,19 +81,26 @@ export function placePopover(
     };
   }
 
-  const nearRight = windowWidth - (anchor.x + anchor.width) < edge;
-  const nearLeft = anchor.x < edge;
-  const edgeAligned = nearRight || nearLeft;
+  // Where the card would sit if the arrow pointed at the trigger: the
+  // card centred on the anchor's centre.
+  const arrowed = anchor.x + anchor.width / 2 - width / 2;
 
-  // Edge-aligned or centred, the result goes through the same clamp.
+  // Does that cross a gutter? If so the arrow cannot be honoured, so
+  // drop it and align to the gutter it crossed. Both sides are checked
+  // because a trigger on the left of a narrow window overflows left.
+  const crossesRight = arrowed + width > windowWidth - gutter;
+  const crossesLeft = arrowed < gutter;
+  const edgeAligned = crossesRight || crossesLeft;
+
+  // Edge-aligned or arrowed, the result goes through the same clamp.
   // Right-aligning without it produced a negative left in a window
   // narrower than the card plus its gutters — the card ran off the
   // left edge while trying to respect the right one.
   const preferred = edgeAligned
-    ? nearRight
+    ? crossesRight
       ? windowWidth - gutter - width
       : gutter
-    : anchor.x + anchor.width / 2 - width / 2;
+    : arrowed;
   const left = clamp(preferred, gutter, windowWidth - gutter - width);
 
   // Prefer dropping below the trigger. Flip above only when below has

@@ -187,7 +187,7 @@ export function PlaybackSpeedScreen({ onBack }: { onBack: () => void }) {
                   ? 'Normal'
                   : speed < 1
                     ? 'Slower'
-                    : 'Faster — good for revisits'
+                    : 'Faster, good for revisits'
               }
               selected={Math.abs(defaultPlaybackSpeed - speed) < 0.01}
               onPress={() => setDefaultPlaybackSpeed(speed)}
@@ -506,8 +506,8 @@ const FAQ: Array<{ q: string; a: string }> = [
     a: 'Tap a word to look it up; long-press a sentence to translate or save it. Saved words and sentences live in the Highlights screen for review.',
   },
   {
-    q: 'My book failed to process — what now?',
-    a: 'Long-press the book in your library to retry processing or delete and re-upload. Scanned-PDF imports aren\'t supported yet — books need selectable text.',
+    q: 'My book failed to process. What now?',
+    a: 'Long-press the book in your library to retry processing or delete and re-upload. Scanned-PDF imports aren\'t supported yet, because books need selectable text.',
   },
 ];
 
@@ -588,7 +588,7 @@ export function SendFeedbackScreen({ onBack }: { onBack: () => void }) {
       <SubHeader title="Send feedback" onBack={onBack} />
       <ScrollView contentContainerStyle={styles.body}>
         <Text style={styles.helperCopy}>
-          Help us make Bookflow better — bug reports, feature ideas, or
+          Help us make Bookflow better: bug reports, feature ideas, or
           anything on your mind. We read everything and reply within a
           couple of days.
         </Text>

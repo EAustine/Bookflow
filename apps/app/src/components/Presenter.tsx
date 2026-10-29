@@ -58,11 +58,27 @@ export type PresenterProps = BottomSheetProps & {
    * menu wants — pass the ref of the button that opened it.
    */
   anchorRef?: React.RefObject<View | null>;
+  /**
+   * Card width for a `menu`. Defaults to the popover's 340; a context
+   * menu passes `layout/menu/width` (280). It reaches the placement
+   * maths, so the edge rule answers for the card being drawn rather
+   * than for a notional one.
+   */
+  width?: number;
 };
 
 export const Presenter = forwardRef<PresenterRef, PresenterProps>(
   function Presenter(
-    { kind, anchorRef, title, children, footer, onDismiss, enablePanDownToClose },
+    {
+      kind,
+      anchorRef,
+      width,
+      title,
+      children,
+      footer,
+      onDismiss,
+      enablePanDownToClose,
+    },
     ref,
   ) {
     const { isWide } = useSizeClass();
@@ -88,8 +104,10 @@ export const Presenter = forwardRef<PresenterRef, PresenterProps>(
             // Measure at open time, not at mount: the trigger may have
             // moved (a scrolled list, a rotated tablet) since it last
             // laid out.
-            node.measureInWindow((x, y, width, height) => {
-              setAnchor({ x, y, width, height });
+            // Named apart from the `width` prop above: the measured
+            // width here is the trigger's, not the card's.
+            node.measureInWindow((ax, ay, aw, ah) => {
+              setAnchor({ x: ax, y: ay, width: aw, height: ah });
               setOpen(true);
             });
             return;
@@ -136,6 +154,7 @@ export const Presenter = forwardRef<PresenterRef, PresenterProps>(
         <Popover
           visible={open}
           anchor={anchor}
+          width={width}
           onDismiss={close}
           title={title}
           footer={footer}

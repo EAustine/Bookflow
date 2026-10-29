@@ -92,7 +92,7 @@ export async function sendMagicLink({
       return {
         ok: false,
         message:
-          "This email already has an account. We sent you a sign-in link instead — check your inbox.",
+          "This email already has an account. We sent you a sign-in link instead, so check your inbox.",
       };
     }
     const probeMsg = probe.error.message.toLowerCase();

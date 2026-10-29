@@ -287,6 +287,24 @@ export const button = {
   },
 } as const;
 
+/**
+ * Progress ring (Figma `Progress ring` `123:57`).
+ *
+ * The centre label is Fraunces SemiBold **24/28**, which is not a step
+ * on the display scale (22, then 32) — it is this component's own size,
+ * so it lives here rather than bending `fontSizes.display`.
+ */
+export const progressRing = {
+  size: 96,
+  radius: 40,
+  strokeWidth: 6,
+  labelSize: 24,
+  labelLineHeight: 28,
+  /** The indeterminate spinner inside the ring. */
+  spinnerSize: 28,
+  spinnerDurationMs: 900,
+} as const;
+
 /** Input system tokens (per bookflow_input_system.html) */
 export const input = {
   height: {
@@ -663,6 +681,15 @@ export const layout = {
   popover: {
     width: 340,
   },
+  /**
+   * Context menu — narrower than a popover because it holds one line
+   * per action and nothing else. `Context menu / Book actions`
+   * `298:467` is drawn at 280 with no width variable bound, so this is
+   * the token that number should have had.
+   */
+  menu: {
+    width: 280,
+  },
   modal: {
     /** The desktop web dialog that stands in for an iOS alert. */
     alert: 400,
@@ -708,6 +735,7 @@ export const tokens = {
   input,
   bottomSheet,
   listRow,
+  progressRing,
   iconSize,
   iconStrokeWidth,
   motion,

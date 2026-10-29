@@ -33,12 +33,43 @@ describe('placePopover', () => {
     expect(p.left + 340).toBe(W - 32);
   });
 
-  it('keeps the arrow just outside the 24 threshold', () => {
-    // One pixel either side of the rule, because this is where a
-    // plausible off-by-one would hide.
-    expect(placePopover(buttonFromRight(23), W, H, OPTS).arrowLeft).toBeNull();
+  it('turns on whether the CARD crosses the gutter, not where the anchor is', () => {
+    // The rule asks about the card, so the threshold is a function of
+    // the card's width, not a fixed distance. Here: the card crosses
+    // the right gutter once the trigger's centre passes
+    // `1180 - 32 - 170 = 978`, which `buttonFromRight(n)` reaches at
+    // n = 182. One pixel either side, where an off-by-one would hide.
+    expect(placePopover(buttonFromRight(181), W, H, OPTS).arrowLeft).toBeNull();
     expect(
-      placePopover(buttonFromRight(24), W, H, OPTS).arrowLeft,
+      placePopover(buttonFromRight(182), W, H, OPTS).arrowLeft,
+    ).not.toBeNull();
+  });
+
+  it('right-aligns the Library + button on a Medium tablet', () => {
+    // The case the rule was changed for. At 820 the header `+` sits 32
+    // from the window edge — outside the old 24-from-the-anchor rule,
+    // so that version kept the arrow and then clamped the card anyway.
+    // Figma draws it Arrow=None, right-aligned (build log: "Add book |
+    // new popover (Arrow None, right aligned)").
+    const medium = { width: 340, gutter: 32 };
+    const plus: AnchorRect = { x: 820 - 32 - 36, y: 40, width: 36, height: 36 };
+    const p = placePopover(plus, 820, 1180, medium);
+    expect(p.arrowLeft).toBeNull();
+    expect(p.left + 340).toBe(820 - 32);
+  });
+
+  it('answers differently for a 340 popover and a 280 menu on one trigger', () => {
+    // The point of asking about the card: the same trigger gets an
+    // arrow or not depending on how wide the card is. At 820 a centre
+    // of 630 puts a 340 card over the right gutter (630 + 170 = 800 >
+    // 788) while `layout/menu/width` still fits (630 + 140 = 770). A
+    // fixed anchor threshold cannot tell these apart.
+    const trigger: AnchorRect = { x: 612, y: 40, width: 36, height: 36 };
+    expect(
+      placePopover(trigger, 820, 1180, { width: 340, gutter: 32 }).arrowLeft,
+    ).toBeNull();
+    expect(
+      placePopover(trigger, 820, 1180, { width: 280, gutter: 32 }).arrowLeft,
     ).not.toBeNull();
   });
 

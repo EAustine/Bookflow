@@ -865,7 +865,7 @@ function PdfReadingOptionsSheet() {
       <Text style={readingOptionsStyles.body}>
         Font, size, and theme settings apply to text mode. Tap{' '}
         <Text style={readingOptionsStyles.bodyEm}>Text</Text> at the top
-        of the reader to switch — your typography preferences carry over.
+        of the reader to switch. Your typography preferences carry over.
       </Text>
     </View>
   );

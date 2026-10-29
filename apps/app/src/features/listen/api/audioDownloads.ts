@@ -403,7 +403,7 @@ export async function downloadBook(book: Book, voiceId: AudioVoice): Promise<voi
       friendly =
         'Audio is temporarily unavailable (voice service limit). Try again later.';
     } else if (/network|fetch|timeout|abort|connection/i.test(message)) {
-      friendly = 'Download failed — check your connection and try again.';
+      friendly = 'Download failed. Check your connection and try again.';
     } else {
       friendly = 'Download failed. Try again.';
     }

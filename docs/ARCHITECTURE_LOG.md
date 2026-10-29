@@ -38,6 +38,80 @@ Target: `docs/ARCHITECTURE.md` · Distance to it: `docs/ARCHITECTURE_GAPS.md`
 
 ## Progress
 
+### Responsive M2b — Library overlays, upload dialog, §7 copy · 2026-10-28
+
+The rest of §4 Library. M2a gave the screen its layouts; this gives it
+its containers. Mostly conversion rather than new surface: four sheets
+become popovers, menus and modals through M1's `Presenter`, and the
+two upload screens become a 480 dialog above Compact.
+
+**The popover edge rule changed, and it is the load-bearing change.**
+`placePopover` used to ask whether the *anchor* sat within 24 of the
+window edge. The right question is about the *card*: if the popover
+placed with its arrow on the trigger would cross the window gutter,
+drop the arrow and align to the gutter. The Library's `+` on a Medium
+tablet is exactly the case that separates them — it sits 32 from the
+edge, so the old rule kept the arrow and then clamped the card anyway,
+leaving an arrow pointing at nothing. Two tests pin it, including one
+where a 340 popover and a 280 menu on the *same* trigger answer
+differently, which a fixed anchor threshold cannot express. §3 and §10
+of the brief were reworded to match.
+
+**§7 cut the two Library sheets down.** Remove book is now a title and
+one line, which deleted `RemoveBookSheetBody`'s `cover` slot — the prop
+that existed only because Library and Discover hold different book
+shapes. Both callers are now just a title, and Discover's cover styles
+went with it. Book actions lost its subtitles, cover, author, icon
+chips and chevrons; the chevrons were a standing hard-rule-3 violation
+(a chevron means "drills into more", and none of those rows do). The
+leading icons stay. Offline download is now genuinely disabled with a
+trailing "Soon" rather than tappable-with-a-toast, which is how a
+disabled row explains itself once sub-labels are gone (hard rule 4).
+
+**Discover's remove sheet was converted too**, which is wider than
+Library. Not scope creep: converting only Library's would have put the
+same destructive action behind two different containers at the same
+window width, which is the split F-26 extracted the shared body to
+close in the first place.
+
+**The progress ring's real defect was not the missing percentage** —
+it already had one. The arc was drawn from the raw fraction while the
+label was rounded, so 0.666 drew a 66.6% arc beside the text "67%".
+`ProgressRing` rounds once and feeds both. It also stopped defaulting
+to `0.65` when progress is unknown, which had been drawing a confident
+65% for an upload nobody was measuring. The failed state is now the
+`upload_failed` illustration rather than a red arc at a hardcoded 90%
+with an × through it; a ring that has stopped reporting progress
+should stop looking like one. `ProgressRing` keeps a `failed` state as
+a component state.
+
+`Modal` gained `bare` so it can host a screen that already brings its
+own padding and scrolling — `ProcessingScreen`'s failed branch *is* a
+ScrollView and would otherwise have nested inside the modal's. Worth
+recording that `padding: 0` does **not** clear it: React Native
+resolves `paddingTop` over the `padding` shorthand whichever order the
+styles flatten in, so the keys are zeroed individually.
+
+**The lint count was not the check I thought it was.** The warning
+total came back at exactly the 233 baseline while `BottomSheet`,
+`dlStatus`, `dlPct`, `BookDownload` and a `downloads` subscription had
+all gone dead — new dead code happening to offset other removals.
+Reading the per-file output, not the total, is what found them. It
+ends at 230.
+
+**The brief-section → milestone table is now in the repo**, as
+`docs/specs/responsive-milestones.md`. It was asked for during M1 so
+nothing would be lost after it, was written into the M1 plan file
+rather than the repo, and the plan file was overwritten by M2a's —
+losing exactly what it existed to protect.
+
+Deferred: the desktop **Upload drop zone**. It is web and desktop only
+and the web bundle does not resolve at HEAD (`react-native-pdf`,
+`react-native-webview`, `react-native-purchases-ui` at module load via
+the feature barrels; `spikes/web-boot/export-1.log` records it). It
+waits for the architecture migration's M4. §6's hover and focus states
+are blocked behind the same thing.
+
 ### Responsive M2a — Library layout · 2026-10-28
 
 §4 Library of the responsive brief, layout half. M2b carries the

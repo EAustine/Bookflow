@@ -14,10 +14,10 @@ import * as Clipboard from 'expo-clipboard';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   Badge,
-  BottomSheet,
   type BottomSheetRef,
   Button,
   Icon,
+  Presenter,
   RemoveBookSheetBody,
   TabBar,
   type TabKey,
@@ -161,20 +161,20 @@ function fromApiBook(b: ApiBook): DiscoverBook {
                   : 'Project Gutenberg';
   const fallbackAbout =
     source === 'standardebooks'
-      ? 'Hand-typeset public-domain edition from Standard Ebooks — free to read in your library.'
+      ? 'Hand-typeset public-domain edition from Standard Ebooks, free to read in your library.'
       : source === 'openlibrary'
-        ? 'Public-domain edition via Internet Archive — free to read in your library.'
+        ? 'Public-domain edition via Internet Archive, free to read in your library.'
         : source === 'wikisource'
-          ? 'Public-domain edition via Wikisource — EPUB generated on demand from the wiki source.'
+          ? 'Public-domain edition via Wikisource, with the EPUB generated on demand from the wiki source.'
           : source === 'feedbooks'
-            ? 'Curated public-domain edition via Feedbooks — free to read in your library.'
+            ? 'Curated public-domain edition via Feedbooks, free to read in your library.'
             : source === 'manybooks'
-              ? 'Free public-domain title via ManyBooks — free to read in your library.'
+              ? 'Free public-domain title via ManyBooks, free to read in your library.'
               : source === 'doab'
-                ? 'Open-access academic book via DOAB — free to read in your library.'
+                ? 'Open-access academic book via DOAB, free to read in your library.'
                 : source === 'oapen'
-                  ? 'Open-access scholarly book via OAPEN — free to read in your library.'
-                  : 'Public-domain title from Project Gutenberg — free to read in your library.';
+                  ? 'Open-access scholarly book via OAPEN, free to read in your library.'
+                  : 'Public-domain title from Project Gutenberg, free to read in your library.';
   return {
     id: b.id,
     title: b.title,
@@ -1252,7 +1252,15 @@ export function DiscoverScreen({
         onRemove={() => handleRemoveFromLibrary(detailBook)}
         onTabChange={onTabChange}
       />
-      <BottomSheet
+      {/*
+        Confirm modal above Compact, sheet on the phone (§3). Library's
+        remove was converted in the same change; leaving this one a
+        sheet would have put the same destructive action behind two
+        different containers at the same window width, which is the
+        split F-26 extracted this body to close.
+      */}
+      <Presenter
+        kind="confirm"
         ref={removeSheetRef}
         onDismiss={() => {
           if (!removing) {
@@ -1263,32 +1271,11 @@ export function DiscoverScreen({
       >
         <RemoveBookSheetBody
           title={removeTarget?.title ?? ''}
-          author={removeTarget?.author}
-          cover={
-            <View
-              style={[
-                s.removeSheetCover,
-                { backgroundColor: removeTarget?.coverColor ?? tokens.colors.amber[500] },
-              ]}
-            >
-              {removeTarget?.coverUrl ? (
-                <Image
-                  source={{ uri: removeTarget.coverUrl }}
-                  style={StyleSheet.absoluteFill}
-                  resizeMode="cover"
-                />
-              ) : (
-                <Text style={s.removeSheetCoverText}>
-                  {(removeTarget?.title ?? '??').slice(0, 2).toUpperCase()}
-                </Text>
-              )}
-            </View>
-          }
           removing={removing}
           onConfirm={confirmRemoveFromLibrary}
           onCancel={() => removeSheetRef.current?.dismiss()}
         />
-      </BottomSheet>
+      </Presenter>
       </>
     );
   }
@@ -1316,7 +1303,15 @@ export function DiscoverScreen({
         }}
         onTabChange={onTabChange}
       />
-      <BottomSheet
+      {/*
+        Confirm modal above Compact, sheet on the phone (§3). Library's
+        remove was converted in the same change; leaving this one a
+        sheet would have put the same destructive action behind two
+        different containers at the same window width, which is the
+        split F-26 extracted this body to close.
+      */}
+      <Presenter
+        kind="confirm"
         ref={removeSheetRef}
         onDismiss={() => {
           if (!removing) {
@@ -1327,32 +1322,11 @@ export function DiscoverScreen({
       >
         <RemoveBookSheetBody
           title={removeTarget?.title ?? ''}
-          author={removeTarget?.author}
-          cover={
-            <View
-              style={[
-                s.removeSheetCover,
-                { backgroundColor: removeTarget?.coverColor ?? tokens.colors.amber[500] },
-              ]}
-            >
-              {removeTarget?.coverUrl ? (
-                <Image
-                  source={{ uri: removeTarget.coverUrl }}
-                  style={StyleSheet.absoluteFill}
-                  resizeMode="cover"
-                />
-              ) : (
-                <Text style={s.removeSheetCoverText}>
-                  {(removeTarget?.title ?? '??').slice(0, 2).toUpperCase()}
-                </Text>
-              )}
-            </View>
-          }
           removing={removing}
           onConfirm={confirmRemoveFromLibrary}
           onCancel={() => removeSheetRef.current?.dismiss()}
         />
-      </BottomSheet>
+      </Presenter>
       </>
     );
   }
@@ -1384,7 +1358,15 @@ export function DiscoverScreen({
       refreshing={refreshing}
       onRefresh={onPullToRefresh}
     />
-      <BottomSheet
+      {/*
+        Confirm modal above Compact, sheet on the phone (§3). Library's
+        remove was converted in the same change; leaving this one a
+        sheet would have put the same destructive action behind two
+        different containers at the same window width, which is the
+        split F-26 extracted this body to close.
+      */}
+      <Presenter
+        kind="confirm"
         ref={removeSheetRef}
         onDismiss={() => {
           if (!removing) {
@@ -1395,32 +1377,11 @@ export function DiscoverScreen({
       >
         <RemoveBookSheetBody
           title={removeTarget?.title ?? ''}
-          author={removeTarget?.author}
-          cover={
-            <View
-              style={[
-                s.removeSheetCover,
-                { backgroundColor: removeTarget?.coverColor ?? tokens.colors.amber[500] },
-              ]}
-            >
-              {removeTarget?.coverUrl ? (
-                <Image
-                  source={{ uri: removeTarget.coverUrl }}
-                  style={StyleSheet.absoluteFill}
-                  resizeMode="cover"
-                />
-              ) : (
-                <Text style={s.removeSheetCoverText}>
-                  {(removeTarget?.title ?? '??').slice(0, 2).toUpperCase()}
-                </Text>
-              )}
-            </View>
-          }
           removing={removing}
           onConfirm={confirmRemoveFromLibrary}
           onCancel={() => removeSheetRef.current?.dismiss()}
         />
-      </BottomSheet>
+      </Presenter>
     </>
   );
 }
@@ -1513,8 +1474,8 @@ function HomeView({
         <SlowNetworkBanner
           label={
             isSearchSlow
-              ? 'Searching is taking longer than usual — check your connection.'
-              : 'Loading is taking longer than usual — check your connection.'
+              ? 'Searching is taking longer than usual. Check your connection.'
+              : 'Loading is taking longer than usual. Check your connection.'
           }
         />
       )}
@@ -3157,20 +3118,6 @@ const s = StyleSheet.create({
     color: tokens.colors.ink[700],
     lineHeight: 21.45,
     marginBottom: 16,
-  },
-  removeSheetCover: {
-    width: 40,
-    height: 60,
-    borderRadius: tokens.radii.xs,
-    alignItems: 'center',
-    justifyContent: 'center',
-    overflow: 'hidden',
-    flexShrink: 0,
-  },
-  removeSheetCoverText: {
-    fontFamily: tokens.fonts.display,
-    fontSize: 16,
-    color: tokens.colors.cream[50],
   },
   detailTags: {
     flexDirection: 'row',

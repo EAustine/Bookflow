@@ -185,8 +185,8 @@
     var samt=document.getElementById('stu-amt'), sper=document.getElementById('stu-per'), snote=document.getElementById('stu-note');
     if(mode==='annual'){
       ba.classList.add('on'); bm.classList.remove('on');
-      amt.textContent='$79'; per.textContent='/ year'; note.textContent='Billed annually — save 34%.';
-      samt.textContent='$39'; sper.textContent='/ year'; snote.textContent='Billed annually — save 35%.';
+      amt.textContent='$79'; per.textContent='/ year'; note.textContent='Billed annually, save 34%.';
+      samt.textContent='$39'; sper.textContent='/ year'; snote.textContent='Billed annually, save 35%.';
     } else {
       bm.classList.add('on'); ba.classList.remove('on');
       amt.textContent='$9.99'; per.textContent='/ month'; note.textContent='Billed monthly.';

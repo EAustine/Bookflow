@@ -142,7 +142,7 @@ export function SettingsScreen({
   const handleClearCache = useCallback(() => {
     Alert.alert(
       'Clear cache?',
-      'Clears cached library + Discover lists and the last-listened pointer. Your books and progress stay put — only the local cache is dropped.',
+      'Clears cached library + Discover lists and the last-listened pointer. Your books and progress stay put, and only the local cache is dropped.',
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -469,7 +469,7 @@ function StorageRow() {
                       : 0
                   }%`
                 : e.status === 'error'
-                ? e.error || 'Download failed — open the book to retry'
+                ? e.error || 'Download failed. Open the book to retry'
                 : formatBytes(e.bytes)}
             </Text>
           </View>
@@ -559,7 +559,7 @@ function NotifPermissionSheet({
 
       <Text style={styles.notifDisclosure}>
         <Text style={styles.notifDisclosureBold}>Bookflow will ask iOS for permission next. </Text>
-        We only send what you allow — daily reminder, usage warnings, product updates. You control
+        We only send what you allow: daily reminder, usage warnings, product updates. You control
         all of it in Settings.
       </Text>
 

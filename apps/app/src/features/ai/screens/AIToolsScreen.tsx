@@ -496,7 +496,7 @@ export function SummaryScreen({
           <Text style={sumStyles.errorTitle}>Summary generation failed</Text>
           <Text style={sumStyles.errorSub}>
             {errorMessage ??
-              "Claude couldn't generate a summary for this page. This is usually a temporary issue — try again in a moment."}
+              "Claude couldn't generate a summary for this page. This is usually a temporary issue, so try again in a moment."}
           </Text>
           <View style={sumStyles.errorActions}>
             <Pressable
@@ -874,7 +874,7 @@ const WholeBookCreditSheet = forwardRef<BottomSheetModal, {
           <View style={wbStyles.upsellStrip}>
             <Icon name="Moon" size={14} color={tokens.colors.forest[800]} />
             <Text style={wbStyles.upsellText}>
-              Standard plan gives you 500K credits / month — enough for summaries every day.
+              Standard plan gives you 500K credits a month, enough for summaries every day.
             </Text>
             <Pressable style={wbStyles.upsellBtn} onPress={openUpgradePaywall}>
               <Text style={wbStyles.upsellBtnLabel}>Upgrade</Text>
@@ -1164,7 +1164,7 @@ export function ChatScreen({
           <TextInput
             style={[chatStyles.inputField, isOffline && chatStyles.inputFieldDisabled]}
             placeholder={
-              isOffline ? "You're offline — Q&A unavailable" : 'Ask anything about the book…'
+              isOffline ? "You're offline, so Q&A is unavailable" : 'Ask anything about the book…'
             }
             placeholderTextColor={isOffline ? OFFLINE_COLOR : tokens.textColors.disabled}
             value={inputText}
@@ -1290,7 +1290,7 @@ function ChatErrorCard({
         <Text style={chatStyles.errorCardLabel}>Couldn't send</Text>
       </View>
       <Text style={chatStyles.errorCardBody}>
-        Your message was saved but not sent — Q&A needs a connection to reach Claude.
+        Your message was saved but not sent. Q&A needs a connection to reach Claude.
       </Text>
       <View style={chatStyles.errorCardActions}>
         <Pressable
@@ -1496,7 +1496,7 @@ function AiErrorBubble({ onRetry, onSkip }: { onRetry: () => void; onSkip: () =>
         </View>
         {/* Body */}
         <Text style={chatStyles.aiErrorBody}>
-          Claude hit an error processing your question. This is temporary — your question wasn't
+          Claude hit an error processing your question. This is temporary, and your question wasn't
           lost.
         </Text>
         {/* Inline credits chip */}

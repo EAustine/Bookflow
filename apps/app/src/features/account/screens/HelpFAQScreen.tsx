@@ -36,12 +36,12 @@ const SECTIONS: FAQSection[] = [
       {
         id: 's2',
         q: 'What file types are supported?',
-        a: 'EPUB and PDF. EPUBs look best — text reflows to your screen and font size — while PDFs render exactly as in the original file. Both work with highlights, the dictionary, and every AI tool.',
+        a: 'EPUB and PDF. EPUBs look best, because text reflows to your screen and font size, while PDFs render exactly as in the original file. Both work with highlights, the dictionary, and every AI tool.',
       },
       {
         id: 's3',
         q: 'How big can my upload be?',
-        a: 'Up to 50 MB per book. That covers almost every novel and most reference books. If you hit the limit on a large textbook, try splitting it or email us — we\'ll help.',
+        a: 'Up to 50 MB per book. That covers almost every novel and most reference books. If you hit the limit on a large textbook, try splitting it or email us and we\'ll help.',
       },
       {
         id: 's4',
@@ -51,7 +51,7 @@ const SECTIONS: FAQSection[] = [
       {
         id: 's5',
         q: 'Can I read offline?',
-        a: 'Yes — once a book is open, it caches locally so you can keep reading on a plane or with no signal. AI tools and audio narration both need a connection because they\'re generated on the fly.',
+        a: 'Yes. Once a book is open, it caches locally so you can keep reading on a plane or with no signal. AI tools and audio narration both need a connection because they\'re generated on the fly.',
       },
     ],
   },
@@ -72,12 +72,12 @@ const SECTIONS: FAQSection[] = [
       {
         id: 'r3',
         q: 'How do I save a highlight?',
-        a: 'Long-press a sentence. An action sheet appears — tap "Highlight" to save it. All your highlights for a book live in the Highlights screen, reachable from the bottom toolbar in the reader.',
+        a: 'Long-press a sentence. An action sheet appears. Tap "Highlight" to save it. All your highlights for a book live in the Highlights screen, reachable from the bottom toolbar in the reader.',
       },
       {
         id: 'r4',
         q: 'What\'s the difference between Text mode and Full mode?',
-        a: 'Text mode renders the book in our typography so you can tap words, save highlights, and use AI tools on the page. Full mode shows the publisher\'s original layout with images and styling — useful for poetry, illustrated books, or anything where the original design matters. Toggle between them with the Aa / Full pill at the top of the reader.',
+        a: 'Text mode renders the book in our typography so you can tap words, save highlights, and use AI tools on the page. Full mode shows the publisher\'s original layout with images and styling, which suits poetry, illustrated books, or anything where the original design matters. Toggle between them with the Aa / Full pill at the top of the reader.',
       },
       {
         id: 'r5',
@@ -103,7 +103,7 @@ const SECTIONS: FAQSection[] = [
       {
         id: 'l3',
         q: 'Does audio keep playing when the screen is off?',
-        a: 'Yes. Lock your device or switch apps — narration continues. A media notification appears on your lock screen so you can pause, play, or skip pages without opening the app.',
+        a: 'Yes. Lock your device or switch apps and narration continues. A media notification appears on your lock screen so you can pause, play, or skip pages without opening the app.',
       },
       {
         id: 'l4',
@@ -113,7 +113,7 @@ const SECTIONS: FAQSection[] = [
       {
         id: 'l5',
         q: 'What is bimodal mode?',
-        a: 'Bimodal mode reads aloud while highlighting the matching text on screen — great for language learning, focus, or following along with complex passages. Tap any highlighted word to look it up or save it.',
+        a: 'Bimodal mode reads aloud while highlighting the matching text on screen, which helps with language learning, focus, or following along with complex passages. Tap any highlighted word to look it up or save it.',
       },
     ],
   },
@@ -134,7 +134,7 @@ const SECTIONS: FAQSection[] = [
       {
         id: 'a3',
         q: 'Are summaries spoiler-free?',
-        a: 'Chapter summaries only cover what you\'ve read up to. Whole-book summaries do reveal the ending — we show a warning before generating one so you can choose.',
+        a: 'Chapter summaries only cover what you\'ve read up to. Whole-book summaries do reveal the ending, so we show a warning before generating one.',
       },
       {
         id: 'a4',
@@ -144,7 +144,7 @@ const SECTIONS: FAQSection[] = [
       {
         id: 'a5',
         q: 'Can the AI be wrong?',
-        a: 'Yes. AI models occasionally misinterpret or hallucinate. We ground responses in the book\'s actual text and cite the pages we used where possible, but for anything important — facts you\'d quote in an essay, instructions you\'d act on — double-check against the original passage.',
+        a: 'Yes. AI models occasionally misinterpret or hallucinate. We ground responses in the book\'s actual text and cite the pages we used where possible, but for anything important, such as facts you\'d quote in an essay or instructions you\'d act on, double-check against the original passage.',
       },
       {
         id: 'a6',
@@ -175,7 +175,7 @@ const SECTIONS: FAQSection[] = [
       {
         id: 'b4',
         q: 'How do I delete my account?',
-        a: 'You → Account & subscription → Delete account. This permanently removes your profile, books, highlights, and reading history within 30 days. The action is irreversible — back up anything you want to keep first.',
+        a: 'You → Account & subscription → Delete account. This permanently removes your profile, books, highlights, and reading history within 30 days. The action is irreversible, so back up anything you want to keep first.',
       },
       {
         id: 'b5',
@@ -200,13 +200,13 @@ const SECTIONS: FAQSection[] = [
       },
       {
         id: 'p3',
-        q: 'My magic-link sign-in email never arrived — what do I do?',
-        a: 'First, check your Spam folder — new sender domains often land there on the first email. If you find it, mark it as "Not spam" so future emails go straight to your inbox. Still nothing after 5 minutes? Try requesting another link. If that fails too, email support@getbookflow.co with the address you\'re trying to sign in with.',
+        q: 'My magic-link sign-in email never arrived. What do I do?',
+        a: 'First, check your Spam folder, because new sender domains often land there on the first email. If you find it, mark it as "Not spam" so future emails go straight to your inbox. Still nothing after 5 minutes? Try requesting another link. If that fails too, email support@getbookflow.co with the address you\'re trying to sign in with.',
       },
       {
         id: 'p4',
         q: 'How do I report a bug or request a feature?',
-        a: 'Go to You → Send feedback. The screen shows our support address — tap to copy it, then send us anything: bug reports, feature requests, or just a hello. We read every message and reply within a couple of days.',
+        a: 'Go to You → Send feedback. The screen shows our support address. Tap to copy it, then send us anything: bug reports, feature requests, or just a hello. We read every message and reply within a couple of days.',
       },
     ],
   },
@@ -367,7 +367,7 @@ export function HelpFAQScreen({
           </View>
           <Text style={styles.contactTitle}>Still need help?</Text>
           <Text style={styles.contactBody}>
-            Email our support team — we usually respond within a day.
+            Email our support team. We usually respond within a day.
           </Text>
           <Pressable
             onPress={handleContactPress}
@@ -385,7 +385,7 @@ export function HelpFAQScreen({
               color={tokens.colors.cream[50]}
             />
             <Text style={styles.contactBtnLabel}>
-              {emailCopied ? 'Copied — paste into your mail app' : supportEmail}
+              {emailCopied ? 'Copied. Paste into your mail app' : supportEmail}
             </Text>
           </Pressable>
         </View>
