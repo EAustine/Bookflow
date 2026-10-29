@@ -33,8 +33,8 @@ import {
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { WebView } from 'react-native-webview';
 import {
-  BottomSheet,
   ModeTogglePill,
+  Presenter,
   type BottomSheetRef,
   Icon,
   Text,
@@ -60,7 +60,7 @@ import {
 import { PracticeQuestionsScreen } from '~/features/ai';
 import { TranslateChapterScreen } from './TranslateChapterScreen';
 import { HighlightsScreen } from './HighlightsScreen';
-import { BookSearchScreen } from '~/features/library';
+import { BookSearchScreen } from './BookSearchScreen';
 
 export type EpubFullReaderScreenProps = {
   book: Book;
@@ -160,6 +160,9 @@ export function EpubFullReaderScreen({
   // publisher's own CSS controls typography; the sheet is a hint to
   // switch to text mode for fine-grained control.
   const readingOptionsSheetRef = useRef<BottomSheetRef>(null);
+  // The Display action, which the reading-options popover anchors to
+  // above Compact. Unused on a phone, where it stays a sheet.
+  const displayAnchorRef = useRef<View>(null);
   const [aiMode, setAIMode] = useState<'summary' | 'chat' | 'practice' | 'translate' | null>(null);
   const [showHighlights, setShowHighlights] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
@@ -683,6 +686,7 @@ export function EpubFullReaderScreen({
         pointerEvents={chromeVisible ? 'auto' : 'none'}
       >
         <View style={styles.actionBar}>
+          <View style={styles.actionBarRow}>
           <ActionItem icon="Headphones" label="Listen" primary onPress={onListen} />
           <ActionItem
             icon="Wand"
@@ -701,9 +705,11 @@ export function EpubFullReaderScreen({
           />
           <ActionItem
             icon="Settings"
-            label="Reading options"
+            label="Display"
+            anchorRef={displayAnchorRef}
             onPress={() => readingOptionsSheetRef.current?.present()}
           />
+          </View>
         </View>
       </Animated.View>
 
@@ -719,9 +725,13 @@ export function EpubFullReaderScreen({
         onAsk={() => setAIMode('chat')}
         onTranslate={() => setAIMode('translate')}
       />
-      <BottomSheet ref={readingOptionsSheetRef}>
+      <Presenter
+        kind="menu"
+        anchorRef={displayAnchorRef}
+        ref={readingOptionsSheetRef}
+      >
         <FullModeReadingOptionsSheet />
-      </BottomSheet>
+      </Presenter>
     </SafeAreaView>
   );
 }
@@ -775,15 +785,19 @@ function ActionItem({
   icon,
   label,
   primary,
+  anchorRef,
   onPress,
 }: {
   icon: 'Headphones' | 'Wand' | 'Search' | 'Notebook' | 'Settings';
   label: string;
   primary?: boolean;
+  /** Set when a wide-screen popover anchors to this action. */
+  anchorRef?: React.RefObject<View | null>;
   onPress?: () => void;
 }) {
   return (
     <Pressable
+      ref={anchorRef}
       accessibilityRole="button"
       onPress={onPress}
       style={styles.actionItem}
@@ -802,7 +816,9 @@ function ActionItem({
           color={primary ? tokens.colors.cream[50] : tokens.textColors.primary}
         />
       </View>
-      <Text style={styles.actionLabel}>{label}</Text>
+      <Text style={styles.actionLabel} numberOfLines={1}>
+        {label}
+      </Text>
     </Pressable>
   );
 }
@@ -826,7 +842,7 @@ function buildDocument(bodyHtml: string, title: string): string {
       font-size: 17px;
       line-height: 1.65;
       color: #2A2620;
-      padding: 24px 22px 96px;
+      padding: 24px 24px 96px;
       -webkit-text-size-adjust: 100%;
       word-wrap: break-word;
     }
@@ -1060,8 +1076,21 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: tokens.bgColors.canvas,
   },
+  /**
+   * §4's reading measure. Capping the native view rather than adding
+   * a `max-width` in the injected CSS: the WebView's viewport is
+   * `width=device-width`, so narrowing the view narrows the document
+   * with it, and the WebView's own background stops short of the
+   * window edge instead of running full-bleed behind a narrow column.
+   *
+   * The chrome is unaffected — both strips are positioned absolutely
+   * against the root, not against this.
+   */
   webviewWrap: {
     flex: 1,
+    width: '100%',
+    maxWidth: tokens.layout.reading.measure,
+    alignSelf: 'center',
   },
   webview: {
     flex: 1,
@@ -1154,12 +1183,19 @@ const styles = StyleSheet.create({
   // border lives on the parent bottomChrome (above) so the chrome
   // can fade in/out as one unit.
   actionBar: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    alignItems: 'center',
     paddingTop: 10,
     paddingBottom: tokens.space.xl,
     paddingHorizontal: tokens.space.lg,
+  },
+  // Capped and centred so the five actions sit under the page column
+  // rather than spreading across the whole window.
+  actionBarRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    alignItems: 'center',
+    width: '100%',
+    maxWidth: tokens.layout.reading.measure,
+    alignSelf: 'center',
   },
   actionItem: {
     alignItems: 'center',

@@ -596,7 +596,7 @@ Every mobile screen on these pages now has a tablet portrait, tablet landscape a
 | Reading options / Full mode | new popover | new popover | new popover |
 
 - Theme frames set the reader variable mode on the frame (Light 98:1, Sepia 98:2, Dark 98:3) and Theme on Reader header, Reader page and Reader action bar. Dark also switches the status bar and home indicator to Content=Light.
-- Reading options on Medium sits right aligned to the 24 gutter with Arrow=None, because the anchored position would run off the screen.
+- Reading options on Medium sits right aligned to the 32 gutter with Arrow=None, because the anchored position would run off the screen.
 - Full mode reading options uses the Popover with `Sheet / Reading options (Full mode)` as its content.
 
 ### AI tools (10 per size)
