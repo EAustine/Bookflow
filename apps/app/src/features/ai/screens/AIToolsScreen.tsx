@@ -106,15 +106,34 @@ export type AIToolsSheetProps = {
   onTranslate: () => void;
 };
 
-export const AIToolsSheet = forwardRef<BottomSheetRef, AIToolsSheetProps>(
-  function AIToolsSheet(
-    { book, pageIndex, onSummarize, onPractice, onAsk, onTranslate },
-    ref,
-  ) {
-    const modalRef = useRef<BottomSheetModal>(null);
-
+/**
+ * The tools list itself: four tools with their credit costs and the
+ * monthly credits gauge.
+ *
+ * Extracted from the sheet so the reader's side panel can host the
+ * same list — on a wide screen the tools are the panel's root, and
+ * each tool opens inside it rather than replacing the screen.
+ * `embedded` drops the sheet's own title block, because the panel
+ * supplies one.
+ */
+export function AIToolsBody({
+  book,
+  pageIndex,
+  onSummarize,
+  onPractice,
+  onAsk,
+  onTranslate,
+  onDismiss,
+  embedded = false,
+}: AIToolsSheetProps & { onDismiss?: () => void; embedded?: boolean }) {
     // Real AI-credit usage — drives the gauge + soft enforcement.
     const { used: aiUsed, refresh: refreshCredits } = useMonthlyAiUsage();
+
+    // Re-read usage whenever the list appears. The sheet used to do
+    // this from its `present()`; doing it here covers the panel too.
+    useEffect(() => {
+      refreshCredits();
+    }, [refreshCredits]);
     const { isPro } = useIsPro();
     const aiLimit = aiCreditLimit(isPro);
     const creditsExceeded = !isPro && aiUsed >= aiLimit;
@@ -122,31 +141,6 @@ export const AIToolsSheet = forwardRef<BottomSheetRef, AIToolsSheetProps>(
       aiLimit > 0 ? Math.min(100, Math.round((aiUsed / aiLimit) * 100)) : 0;
     const fmtK = (n: number) =>
       n >= 1000 ? `${Math.round(n / 1000)}K` : String(Math.max(0, Math.round(n)));
-
-    useImperativeHandle(
-      ref,
-      () => ({
-        present: () => {
-          refreshCredits(); // re-read usage each time the sheet opens
-          modalRef.current?.present();
-        },
-        dismiss: () => modalRef.current?.dismiss(),
-      }),
-      [refreshCredits],
-    );
-
-    const renderBackdrop = useCallback(
-      (props: BottomSheetBackdropProps) => (
-        <BottomSheetBackdrop
-          {...props}
-          appearsOnIndex={0}
-          disappearsOnIndex={-1}
-          opacity={tokens.bottomSheet.backdropOpacity}
-          pressBehavior="close"
-        />
-      ),
-      [],
-    );
 
     // Live page > persisted last_read_page > 0. Reading
     // `book.currentChapter` (the previous behaviour) showed a stale
@@ -162,7 +156,7 @@ export const AIToolsSheet = forwardRef<BottomSheetRef, AIToolsSheetProps>(
     const toolLabels = usePageLabels(book.id);
     // chNum retired — page strings go through `pageDisplay` so the AI
     // sheet agrees with the reader divider behind it.
-    const dismiss = () => modalRef.current?.dismiss();
+    const dismiss = () => onDismiss?.();
 
     // Launch a tool — but divert a credit-exhausted free user to the paywall
     // instead. (The edge functions record usage authoritatively; this is the
@@ -186,16 +180,10 @@ export const AIToolsSheet = forwardRef<BottomSheetRef, AIToolsSheetProps>(
     ];
 
     return (
-      <BottomSheetModal
-        ref={modalRef}
-        enableDynamicSizing
-        backdropComponent={renderBackdrop}
-        backgroundStyle={sheetStyles.bg}
-        handleIndicatorStyle={sheetStyles.indicator}
-        handleStyle={sheetStyles.handle}
-      >
-        <BottomSheetView>
-          {/* Header */}
+      <View>
+          {/* The panel supplies its own title, so the sheet's header
+              block is only for the sheet. */}
+          {!embedded && (
           <View style={sheetStyles.header}>
             <Text style={sheetStyles.title}>AI tools</Text>
             <Text style={sheetStyles.subtitle}>
@@ -203,6 +191,7 @@ export const AIToolsSheet = forwardRef<BottomSheetRef, AIToolsSheetProps>(
               {book.title}
             </Text>
           </View>
+          )}
 
           {/* Tool rows */}
           <View>
@@ -240,10 +229,51 @@ export const AIToolsSheet = forwardRef<BottomSheetRef, AIToolsSheetProps>(
                 <View style={[sheetStyles.creditsFill, { width: `${creditsPct}%` }]} />
               </View>
             </View>
-            <Text style={sheetStyles.creditsCount}>
-              {fmtK(aiUsed)} / {fmtK(aiLimit)}
+            <Text style={sheetStyles.creditsCount} numberOfLines={1}>
+              {`${fmtK(aiUsed)} / ${fmtK(aiLimit)}`}
             </Text>
           </View>
+      </View>
+    );
+}
+
+/** The phone presentation: the same list in a bottom sheet. */
+export const AIToolsSheet = forwardRef<BottomSheetRef, AIToolsSheetProps>(
+  function AIToolsSheet(props, ref) {
+    const modalRef = useRef<BottomSheetModal>(null);
+
+    useImperativeHandle(ref, () => ({
+      present: () => modalRef.current?.present(),
+      dismiss: () => modalRef.current?.dismiss(),
+    }));
+
+    const renderBackdrop = useCallback(
+      (p: BottomSheetBackdropProps) => (
+        <BottomSheetBackdrop
+          {...p}
+          appearsOnIndex={0}
+          disappearsOnIndex={-1}
+          opacity={tokens.bottomSheet.backdropOpacity}
+          pressBehavior="close"
+        />
+      ),
+      [],
+    );
+
+    return (
+      <BottomSheetModal
+        ref={modalRef}
+        enableDynamicSizing
+        backdropComponent={renderBackdrop}
+        backgroundStyle={sheetStyles.bg}
+        handleIndicatorStyle={sheetStyles.indicator}
+        handleStyle={sheetStyles.handle}
+      >
+        <BottomSheetView>
+          <AIToolsBody
+            {...props}
+            onDismiss={() => modalRef.current?.dismiss()}
+          />
         </BottomSheetView>
       </BottomSheetModal>
     );
@@ -288,9 +318,16 @@ export function SummaryScreen({
   book,
   onBack,
   pageIndex,
+  embedded = false,
 }: {
   book: Book;
   onBack: () => void;
+  /**
+   * Hosted inside a `SidePanel` (with `bare`) rather than owning the
+   * window. Drops the SafeAreaView and the header; keeps its own
+   * scroller and its pinned action bar.
+   */
+  embedded?: boolean;
   /**
    * 0-based DB page to summarize. Defaults to whatever the book's
    * persisted reading position is — close enough for the EPUB text
@@ -382,9 +419,17 @@ export function SummaryScreen({
     return null;
   })();
 
+  const Frame = embedded ? View : SafeAreaView;
+  const frameProps = embedded
+    ? { style: sumStyles.embedded }
+    : {
+        style: sumStyles.safe,
+        edges: ['top', 'left', 'right', 'bottom'] as const,
+      };
+
   return (
-    <SafeAreaView style={sumStyles.safe} edges={['top', 'left', 'right', 'bottom']}>
-      {/* Header */}
+    <Frame {...frameProps}>
+      {!embedded && (
       <View style={sumStyles.header}>
         <Pressable
           onPress={onBack}
@@ -438,6 +483,7 @@ export function SummaryScreen({
           <Icon name="Upload" size={17} color={tokens.textColors.secondary} />
         </Pressable>
       </View>
+      )}
 
       {/* Length toggle — dimmed when generation failed */}
       <View style={[sumStyles.toggle, failed && { opacity: 0.45 }]}>
@@ -581,7 +627,7 @@ export function SummaryScreen({
           wholeBookSheetRef.current?.dismiss();
         }}
       />
-    </SafeAreaView>
+    </Frame>
   );
 }
 
@@ -976,9 +1022,17 @@ type FailedMessage = { id: string; text: string };
 export function ChatScreen({
   book,
   onBack,
+  embedded = false,
 }: {
   book: Book;
   onBack: () => void;
+  /**
+   * Hosted inside a `SidePanel` with `bare`. Chat is the reason
+   * `bare` exists: a transcript that fills, scrolls to its own
+   * bottom and pins a composer under it cannot live inside a
+   * content container.
+   */
+  embedded?: boolean;
 }) {
   // Hardware-back returns to the reader (clears aiMode in the
   // parent), not to Library — see SummaryScreen above for the
@@ -1048,9 +1102,17 @@ export function ChatScreen({
     // failed message" action later if the UX feels noisy.
   }, []);
 
+  const Frame = embedded ? View : SafeAreaView;
+  const frameProps = embedded
+    ? { style: chatStyles.embedded }
+    : {
+        style: chatStyles.safe,
+        edges: ['top', 'left', 'right', 'bottom'] as const,
+      };
+
   return (
-    <SafeAreaView style={chatStyles.safe} edges={['top', 'left', 'right', 'bottom']}>
-      {/* Header */}
+    <Frame {...frameProps}>
+      {!embedded && (
       <View style={chatStyles.header}>
         <Pressable
           onPress={onBack}
@@ -1073,12 +1135,15 @@ export function ChatScreen({
             back arrow and the right edge. */}
         <View style={chatStyles.headerBtn} />
       </View>
+      )}
 
       {/* Offline bar — replaces scope banner when offline */}
       {isOffline ? (
         <View style={chatStyles.offlineBar}>
           <Icon name="WifiOff" size={14} color={OFFLINE_COLOR} />
-          <Text style={chatStyles.offlineBarText}>No connection · Q&A unavailable</Text>
+          <Text style={chatStyles.offlineBarText}>
+            You&apos;re offline. Chat needs an internet connection.
+          </Text>
         </View>
       ) : (
         <View style={chatStyles.scopeBanner}>
@@ -1195,7 +1260,7 @@ export function ChatScreen({
           </Pressable>
         </View>
       </KeyboardAvoidingView>
-    </SafeAreaView>
+    </Frame>
   );
 }
 
@@ -1670,6 +1735,10 @@ const sheetStyles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '500',
     color: tokens.textColors.secondary,
+    // The gauge beside it is `flex: 1`, so in a 380 panel this got
+    // squeezed until "0 / 50K" rendered as "0 /". It is the one piece
+    // of this footer that must not give up width.
+    flexShrink: 0,
   },
 });
 
@@ -1677,6 +1746,11 @@ const sheetStyles = StyleSheet.create({
 
 const sumStyles = StyleSheet.create({
   safe: {
+    flex: 1,
+    backgroundColor: tokens.bgColors.canvas,
+  },
+  // Hosted bare in a panel: still fills, still owns its scrolling.
+  embedded: {
     flex: 1,
     backgroundColor: tokens.bgColors.canvas,
   },
@@ -2262,6 +2336,11 @@ const wbStyles = StyleSheet.create({
 
 const chatStyles = StyleSheet.create({
   safe: {
+    flex: 1,
+    backgroundColor: tokens.bgColors.canvas,
+  },
+  // Hosted bare in a panel: still fills, still owns its scrolling.
+  embedded: {
     flex: 1,
     backgroundColor: tokens.bgColors.canvas,
   },

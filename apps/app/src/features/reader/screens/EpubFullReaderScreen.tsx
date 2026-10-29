@@ -45,6 +45,7 @@ import {
 } from '@bookflow/shared';
 import { tokens } from '~/design/tokens';
 import { useBackHandler } from '~/lib/useBackHandler';
+import { useReaderPanel } from '../hooks/useReaderPanel';
 import { useSlowOp } from '~/hooks/useSlowOp';
 import { SlowNetworkBanner } from '~/components/SlowNetworkBanner';
 import type { Book } from '~/types/book';
@@ -54,12 +55,7 @@ import { persistReadingPosition, touchLastReadAt } from '../api/useBookChapters'
 import { useReadingSession } from '../api/readingSessions';
 import {
   AIToolsSheet,
-  ChatScreen,
-  SummaryScreen,
 } from '~/features/ai';
-import { PracticeQuestionsScreen } from '~/features/ai';
-import { TranslateChapterScreen } from './TranslateChapterScreen';
-import { HighlightsScreen } from './HighlightsScreen';
 import { BookSearchScreen } from './BookSearchScreen';
 
 export type EpubFullReaderScreenProps = {
@@ -163,8 +159,6 @@ export function EpubFullReaderScreen({
   // The Display action, which the reading-options popover anchors to
   // above Compact. Unused on a phone, where it stays a sheet.
   const displayAnchorRef = useRef<View>(null);
-  const [aiMode, setAIMode] = useState<'summary' | 'chat' | 'practice' | 'translate' | null>(null);
-  const [showHighlights, setShowHighlights] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
 
   // Auto-hide chrome — same affordance as the other readers. State,
@@ -477,40 +471,23 @@ export function EpubFullReaderScreen({
   // the wait is on the network, not the app.
   const isSlowLoad = useSlowOp(showLoadingOverlay);
 
-  if (aiMode === 'summary') {
-    return <SummaryScreen book={book} pageIndex={livePageIndex} onBack={() => setAIMode(null)} />;
+  /**
+   * Full mode renders the publisher's HTML as one continuous
+   * WebView, so there are no per-page anchors to scroll to. Tapping
+   * a highlight or a page means "take me to where that is", and text
+   * mode is the surface where a page exists — so navigation hands
+   * off there rather than trying to move within this one.
+   */
+  const readerPanel = useReaderPanel({
+    book,
+    pageIndex: livePageIndex,
+    onJumpToPage: (idx) => onRequestTextMode(idx),
+  });
+
+  if (readerPanel.fullScreen) {
+    return readerPanel.fullScreen;
   }
-  if (aiMode === 'chat') {
-    return <ChatScreen book={book} onBack={() => setAIMode(null)} />;
-  }
-  if (aiMode === 'practice') {
-    return <PracticeQuestionsScreen book={book} pageIndex={livePageIndex} onBack={() => setAIMode(null)} />;
-  }
-  if (aiMode === 'translate') {
-    return <TranslateChapterScreen book={book} pageIndex={livePageIndex} onBack={() => setAIMode(null)} />;
-  }
-  if (showHighlights) {
-    return (
-      <HighlightsScreen
-        book={book}
-        onClose={() => setShowHighlights(false)}
-        // Full mode renders the publisher's HTML in one continuous
-        // WebView, so we don't have per-page anchors to scroll to
-        // inside this surface. The user's intent when tapping a
-        // highlight row is "take me to the page where I saved this"
-        // — text mode is where that page concept exists and where
-        // saved-word tinting actually renders, so we drop them
-        // there at the exact page index the highlight was saved on.
-        // The previous shape passed no `onJumpToPage`, which made
-        // the row tap a silent no-op (HighlightsScreen.handleRowPress
-        // gates on the callback being defined).
-        onJumpToPage={(idx) => {
-          setShowHighlights(false);
-          onRequestTextMode(idx);
-        }}
-      />
-    );
-  }
+
   if (showSearch) {
     // Same rationale as the Highlights handoff above: Full mode
     // can't jump-scroll to a DB page without anchor IDs in the
@@ -532,7 +509,11 @@ export function EpubFullReaderScreen({
   }
 
   return (
-    <SafeAreaView style={styles.safe} edges={['left', 'right']}>
+    <SafeAreaView
+      style={[styles.safe, readerPanel.dock && styles.safeRow]}
+      edges={['left', 'right']}
+    >
+      <View style={styles.contentColumn}>
       {isSlowLoad && (
         <SlowNetworkBanner label="Loading this book is taking longer than usual. Check your connection." />
       )}
@@ -691,7 +672,10 @@ export function EpubFullReaderScreen({
           <ActionItem
             icon="Wand"
             label="AI tools"
-            onPress={() => aiSheetRef.current?.present()}
+            onPress={() => {
+              if (readerPanel.isWide) readerPanel.open('tools');
+              else aiSheetRef.current?.present();
+            }}
           />
           <ActionItem
             icon="Search"
@@ -701,7 +685,7 @@ export function EpubFullReaderScreen({
           <ActionItem
             icon="Notebook"
             label="Highlights"
-            onPress={() => setShowHighlights(true)}
+            onPress={() => readerPanel.open('highlights')}
           />
           <ActionItem
             icon="Settings"
@@ -713,6 +697,10 @@ export function EpubFullReaderScreen({
         </View>
       </Animated.View>
 
+      </View>
+
+      {readerPanel.panel}
+
       {/* Sheets */}
       <AIToolsSheet
         ref={aiSheetRef}
@@ -720,10 +708,10 @@ export function EpubFullReaderScreen({
         // Estimated from the WebView scroll fraction so the sheet
         // shows the page the user is currently looking at.
         pageIndex={livePageIndex}
-        onSummarize={() => setAIMode('summary')}
-        onPractice={() => setAIMode('practice')}
-        onAsk={() => setAIMode('chat')}
-        onTranslate={() => setAIMode('translate')}
+        onSummarize={() => readerPanel.open('summary')}
+        onPractice={() => readerPanel.open('practice')}
+        onAsk={() => readerPanel.open('chat')}
+        onTranslate={() => readerPanel.open('translate')}
       />
       <Presenter
         kind="menu"
@@ -1072,6 +1060,9 @@ function escapeHtml(s: string): string {
 }
 
 const styles = StyleSheet.create({
+  // Only when a panel docks beside the page (§3).
+  safeRow: { flexDirection: 'row' },
+  contentColumn: { flex: 1 },
   safe: {
     flex: 1,
     backgroundColor: tokens.bgColors.canvas,
