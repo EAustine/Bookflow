@@ -720,6 +720,27 @@ export const layout = {
     /** Results is a centred single column at every wide size. */
     results: 560,
   },
+  /**
+   * The Listen tab — §4 and the build log's Listen flow.
+   *
+   * Frame values from `Listen / Tab / *`, read through the Figma
+   * connector. The two columns are not both fixed: the left is a fixed
+   * width per size class and the right takes whatever is left, which is
+   * why it measures 460 inside Expanded's 1044 and 476 inside Desktop's
+   * 1120. Only the fixed side needs a number.
+   *
+   * The 24 gap repeats `columnGap` on purpose, so the group reads as
+   * one spec rather than half a spec plus a lookup — the same call
+   * `practice.medium` makes with `gutter.medium`.
+   */
+  listen: {
+    expanded: { left: 560, gap: 24 },
+    desktop: { left: 620, gap: 24 },
+    /** Centred single columns — the tab's other three states. */
+    empty: 440,
+    resume: 560,
+    history: 720,
+  },
   /** Reader text, PDF and player columns. Aliases `readingMeasure`. */
   reading: {
     measure: 680,

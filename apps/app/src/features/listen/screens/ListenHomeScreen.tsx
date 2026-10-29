@@ -21,6 +21,7 @@ import { Pressable, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Icon, TabBar, type TabKey, Text } from '~/components';
 import { tokens } from '~/design/tokens';
+import { useSizeClass } from '~/hooks/useSizeClass';
 import type { Book } from '~/types/book';
 import { ListenNowPlayingScreen, type ListenNowPlayingScreenProps } from './ListenNowPlayingScreen';
 
@@ -55,6 +56,22 @@ export function ListenHomeScreen({
   lastListenedBook,
   onResumeListening,
 }: ListenHomeScreenProps) {
+  const { sizeClass, isWide } = useSizeClass();
+  const gutter = tokens.layout.gutter[sizeClass];
+
+  /**
+   * The page title. Every wide Empty and Resume frame carries it, and
+   * without it the idle tab reads as a different screen from the
+   * playing one. The phone frames have no room for it, so it is wide
+   * only.
+   */
+  const pageTitle = isWide ? (
+    <View style={[styles.pageHeader, { paddingHorizontal: gutter }]}>
+      <Text style={styles.pageTitle} numberOfLines={1}>
+        Listen
+      </Text>
+    </View>
+  ) : null;
   // Active path: defer to the dedicated now-playing surface, then add a
   // TabBar underneath. ListenNowPlayingScreen already wraps in its own
   // SafeAreaView so we just stack the TabBar below it.
@@ -82,65 +99,68 @@ export function ListenHomeScreen({
     const progressPercent = lastListenedBook.progressPercent ?? 0;
     return (
       <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
-        <View style={styles.resumeWrap}>
-          <Text style={styles.eyebrow}>Last session</Text>
-          <Pressable
-            onPress={() => onResumeListening(lastListenedBook)}
-            style={({ pressed }) => [
-              styles.resumeCard,
-              pressed && { opacity: 0.92 },
-            ]}
-            accessibilityRole="button"
-            accessibilityLabel={`Resume listening to ${lastListenedBook.title}`}
-          >
-            <View
-              style={[
-                styles.resumeCover,
-                { backgroundColor: lastListenedBook.coverColor },
+        {pageTitle}
+        <View style={[styles.stage, isWide && { paddingHorizontal: gutter }]}>
+          <View style={[styles.resumeWrap, isWide && styles.resumeWrapWide]}>
+            <Text style={styles.eyebrow}>Last session</Text>
+            <Pressable
+              onPress={() => onResumeListening(lastListenedBook)}
+              style={({ pressed }) => [
+                styles.resumeCard,
+                pressed && { opacity: 0.92 },
               ]}
+              accessibilityRole="button"
+              accessibilityLabel={`Resume listening to ${lastListenedBook.title}`}
             >
-              <Text style={styles.resumeCoverInitial}>
-                {lastListenedBook.title.charAt(0).toUpperCase()}
-              </Text>
-            </View>
-            <View style={styles.resumeBody}>
-              <Text style={styles.resumeTitle} numberOfLines={2}>
-                {lastListenedBook.title}
-              </Text>
-              {lastListenedBook.author ? (
-                <Text style={styles.resumeAuthor} numberOfLines={1}>
-                  {lastListenedBook.author}
+              <View
+                style={[
+                  styles.resumeCover,
+                  { backgroundColor: lastListenedBook.coverColor },
+                ]}
+              >
+                <Text style={styles.resumeCoverInitial}>
+                  {lastListenedBook.title.charAt(0).toUpperCase()}
                 </Text>
-              ) : null}
-              <View style={styles.resumeProgressTrack}>
-                <View
-                  style={[
-                    styles.resumeProgressFill,
-                    { width: `${Math.min(100, Math.max(0, progressPercent))}%` },
-                  ]}
+              </View>
+              <View style={styles.resumeBody}>
+                <Text style={styles.resumeTitle} numberOfLines={2}>
+                  {lastListenedBook.title}
+                </Text>
+                {lastListenedBook.author ? (
+                  <Text style={styles.resumeAuthor} numberOfLines={1}>
+                    {lastListenedBook.author}
+                  </Text>
+                ) : null}
+                <View style={styles.resumeProgressTrack}>
+                  <View
+                    style={[
+                      styles.resumeProgressFill,
+                      { width: `${Math.min(100, Math.max(0, progressPercent))}%` },
+                    ]}
+                  />
+                </View>
+                <Text style={styles.resumeMeta}>
+                  Page {lastReadPage + 1} · {progressPercent}% complete
+                </Text>
+              </View>
+              <View style={styles.resumePlayBubble}>
+                <Icon
+                  name="Headphones"
+                  size={16}
+                  color={tokens.colors.cream[50]}
                 />
               </View>
-              <Text style={styles.resumeMeta}>
-                Page {lastReadPage + 1} · {progressPercent}% complete
-              </Text>
-            </View>
-            <View style={styles.resumePlayBubble}>
-              <Icon
-                name="Headphones"
-                size={16}
-                color={tokens.colors.cream[50]}
-              />
-            </View>
-          </Pressable>
+            </Pressable>
 
-          <Pressable
-            onPress={onBrowseLibrary ?? (() => onTabChange('library'))}
-            style={({ pressed }) => [styles.secondaryCta, pressed && { opacity: 0.7 }]}
-            accessibilityRole="button"
-          >
-            <Icon name="Book" size={13} color={tokens.colors.forest[800]} />
-            <Text style={styles.secondaryCtaLabel}>Pick a different book</Text>
-          </Pressable>
+            <Pressable
+              onPress={onBrowseLibrary ?? (() => onTabChange('library'))}
+              style={({ pressed }) => [styles.secondaryCta, pressed && { opacity: 0.7 }]}
+              accessibilityRole="button"
+            >
+              <Icon name="Book" size={13} color={tokens.colors.forest[800]} />
+              <Text style={styles.secondaryCtaLabel}>Pick a different book</Text>
+            </Pressable>
+          </View>
         </View>
         <TabBar activeTab="listen" onChange={onTabChange} />
       </SafeAreaView>
@@ -150,28 +170,31 @@ export function ListenHomeScreen({
   // First-time / no-history empty state.
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
-      <View style={styles.emptyWrap}>
-        <View style={styles.iconBubble}>
-          <Icon
-            name="Headphones"
-            size={36}
-            color={tokens.colors.forest[800]}
-          />
-        </View>
-        <Text style={styles.title}>Nothing playing</Text>
-        <Text style={styles.sub}>
-          Pick a book from your library, then tap the headphones to start
-          listening. We&apos;ll keep your place across devices.
-        </Text>
+      {pageTitle}
+      <View style={[styles.stage, isWide && { paddingHorizontal: gutter }]}>
+        <View style={[styles.emptyWrap, isWide && styles.emptyWrapWide]}>
+          <View style={styles.iconBubble}>
+            <Icon
+              name="Headphones"
+              size={36}
+              color={tokens.colors.forest[800]}
+            />
+          </View>
+          <Text style={styles.title}>Nothing playing</Text>
+          <Text style={styles.sub}>
+            Pick a book from your library, then tap the headphones to start
+            listening. We&apos;ll keep your place across devices.
+          </Text>
 
-        <Pressable
-          onPress={onBrowseLibrary ?? (() => onTabChange('library'))}
-          style={({ pressed }) => [styles.cta, pressed && { opacity: 0.85 }]}
-          accessibilityRole="button"
-        >
-          <Icon name="Book" size={14} color={tokens.colors.cream[50]} />
-          <Text style={styles.ctaLabel}>Browse library</Text>
-        </Pressable>
+          <Pressable
+            onPress={onBrowseLibrary ?? (() => onTabChange('library'))}
+            style={({ pressed }) => [styles.cta, pressed && { opacity: 0.85 }]}
+            accessibilityRole="button"
+          >
+            <Icon name="Book" size={14} color={tokens.colors.cream[50]} />
+            <Text style={styles.ctaLabel}>Browse library</Text>
+          </Pressable>
+        </View>
       </View>
       <TabBar activeTab="listen" onChange={onTabChange} />
     </SafeAreaView>
@@ -185,6 +208,39 @@ const styles = StyleSheet.create({
   flexFill: { flex: 1 },
 
   safe: { flex: 1, backgroundColor: tokens.bgColors.canvas },
+
+  pageHeader: {
+    paddingTop: 14,
+    paddingBottom: 10,
+  },
+  pageTitle: {
+    fontFamily: tokens.fonts.display,
+    fontSize: 28,
+    lineHeight: 36,
+    color: tokens.textColors.primary,
+    letterSpacing: -0.5,
+  },
+  /** Holds the gutter so the capped wrap inside stays exactly its width. */
+  stage: { flex: 1 },
+
+  /**
+   * `emptyWrap` is 440 and `resumeWrap` 560 on every wide frame, each
+   * centred in the content area — Empty centred vertically too, Resume
+   * sitting 24 below the title.
+   */
+  emptyWrapWide: {
+    width: '100%',
+    maxWidth: tokens.layout.listen.empty,
+    alignSelf: 'center',
+    paddingHorizontal: 0,
+  },
+  resumeWrapWide: {
+    width: '100%',
+    maxWidth: tokens.layout.listen.resume,
+    alignSelf: 'center',
+    paddingHorizontal: 0,
+    paddingTop: tokens.space.xl,
+  },
 
   emptyWrap: {
     flex: 1,
@@ -204,6 +260,10 @@ const styles = StyleSheet.create({
   title: {
     fontFamily: tokens.fonts.display,
     fontSize: 24,
+    // Fraunces needs an explicit lineHeight; on Android the auto line
+    // box clips the descenders of "Nothing playing". Same fix the
+    // Now playing header already carries.
+    lineHeight: 32,
     color: tokens.textColors.primary,
     textAlign: 'center',
     letterSpacing: -0.3,

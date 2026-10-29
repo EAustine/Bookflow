@@ -38,6 +38,62 @@ Target: `docs/ARCHITECTURE.md` · Distance to it: `docs/ARCHITECTURE_GAPS.md`
 
 ## Progress
 
+### Responsive M4a — the Listen tab · 2026-10-29
+
+§4 gives Listen one sentence, but the build log's Listen flow is eight
+screens across three sizes. R-M4 split: **M4a is the tab** (Now
+playing, Empty, Resume, History), **M4b is the player** (foreground at
+680, the voice / sleep / speed popovers, the rail mini player).
+
+**Nothing in `features/listen/` was size-class aware.** The one
+`useSizeClass` call in the whole feature lived inside `MiniPlayer`, not
+inside any screen, so all four surfaces rendered phone-width content
+stretched across 1440.
+
+**The two columns are not both fixed.** The left is a fixed width per
+size class and the right takes what is left — which is why Recently
+listened measures 460 inside Expanded's 1044 and 476 inside Desktop's
+1120, numbers that look arbitrary until you see they are a remainder.
+`layout.listen` therefore stores only the fixed side (560 / 620) and
+the 24 gap; the card is `flex: 1`. Reading them off scaled renders had
+given 559 / 462 and 619 / 477 — close enough to look like four fixed
+widths and wrong enough to encode the wrong model. The frame values
+came through the Figma connector instead, which is now the rule for
+this programme.
+
+`columns` is `alignItems: 'flex-start'`: the frames show the card
+hugging its rows at 380 tall beside a 466 left column, not stretching.
+
+**Each block used to carry its own horizontal inset** — 18 on the
+cards, 22 on the section rows, so section titles never lined up with
+the cards under them. One container padding now: 18 on Compact, the
+gutter above it. The phone's section rows move 4px and gain that
+alignment.
+
+**History is 720 centred at every wide size**, including Medium, where
+the frame draws it at 720 inside a 748 content — 14 either side, inside
+the 32 gutter. Capping the list without a gutter lands on exactly that.
+
+Fixed on the way:
+
+- **`onOpenChaptersSheet` was dead.** Declared and destructured in
+  `ListenNowPlayingScreen`, never referenced, and its only producer was
+  an empty closure in `SignedInShell`. Dead since the chapters pill came
+  off, because pages are the navigation unit.
+- **The empty state's title clipped its descenders.** Fraunces 24 with
+  no `lineHeight`, so "Nothing playing" lost the tails of its g and y on
+  Android — the same bug the Now playing header already carries a
+  comment and a fix for.
+
+The idle states also gain the "Listen" title at wide sizes. Every wide
+Empty and Resume frame has it, and without it the idle tab read as a
+different screen from the playing one.
+
+Verified on the emulator at 360 / 820 / 1180 / 1440. The two idle
+states needed throwaway forced-state builds, since the test device has
+a live audio session and forcing beats generating TTS against real
+data. Gate held: 0 errors / 222 warnings, 98 tests; tokens 190 → 197.
+
 ### Responsive M3c — the practice takeover · 2026-10-29
 
 The last piece of the Reader. §4: "A practice session takes over the

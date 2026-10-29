@@ -795,7 +795,6 @@ function buildNowPlayingProps(
     onOpenVoiceSheet: () => {
       onExpandToForeground();
     },
-    onOpenChaptersSheet: () => {},
     onOpenRecent: (id: string) => {
       // Tap a recent row → switch audio to that book if it's not the
       // active one. Active-book tap is a no-op (already viewing it).
