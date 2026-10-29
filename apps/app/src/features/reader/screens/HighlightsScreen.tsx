@@ -37,12 +37,20 @@ export type HighlightsScreenProps = {
    * and we just collapse the list back to the library on tap.
    */
   onJumpToPage?: (pageIndex: number) => void;
+  /**
+   * Hosted inside a `SidePanel` rather than owning the window: drop
+   * the SafeAreaView, the header and the inner ScrollView, because
+   * the panel supplies a frame, a title, a close and its own
+   * scrolling.
+   */
+  embedded?: boolean;
 };
 
 type Filter = 'all' | 'word' | 'sentence';
 
 export function HighlightsScreen({
   book,
+  embedded = false,
   onClose,
   onJumpToPage,
 }: HighlightsScreenProps) {
@@ -104,15 +112,24 @@ export function HighlightsScreen({
     (h: Highlight) => {
       if (onJumpToPage && h.pageIndex !== null) {
         onJumpToPage(h.pageIndex);
-        onClose();
+        // Closing on tap is right for a full screen, which is in the
+        // way of the thing it just jumped to. In a panel it is wrong:
+        // the panel sits beside the page, and the point of a list of
+        // highlights is to walk them without reopening it each time.
+        if (!embedded) onClose();
       }
     },
-    [onJumpToPage, onClose],
+    [onJumpToPage, onClose, embedded],
   );
 
+  const Frame = embedded ? View : SafeAreaView;
+  const frameProps = embedded
+    ? { style: styles.embedded }
+    : { style: styles.safe, edges: ['top', 'left', 'right'] as const };
+
   return (
-    <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
-      {/* Header */}
+    <Frame {...frameProps}>
+      {!embedded && (
       <View style={styles.header}>
         <Pressable
           accessibilityRole="button"
@@ -133,6 +150,7 @@ export function HighlightsScreen({
         </View>
         <View style={styles.headerSpacer} />
       </View>
+      )}
 
       {/* Filter tabs */}
       <View style={styles.tabs}>
@@ -187,7 +205,7 @@ export function HighlightsScreen({
           ))}
         </ScrollView>
       )}
-    </SafeAreaView>
+    </Frame>
   );
 }
 
@@ -315,6 +333,15 @@ function formatRelativeShort(date: Date): string {
 }
 
 const styles = StyleSheet.create({
+  /**
+   * Hosted in a `SidePanel` with `bare`, so it keeps `flex: 1` and
+   * keeps its own ScrollView: that is what holds the filter tabs
+   * still while the list moves under them.
+   */
+  embedded: {
+    flex: 1,
+    backgroundColor: tokens.bgColors.canvas,
+  },
   safe: {
     flex: 1,
     backgroundColor: tokens.bgColors.canvas,

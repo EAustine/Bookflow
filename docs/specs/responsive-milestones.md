@@ -18,7 +18,7 @@ spelled out below.
 | §4 Library (layout) | R-M2a | ✅ Medium hero + grid, 440 master + book pane, search, offline banner |
 | §4 Library (overlays) | R-M2b | ✅ Add popover, book actions menu, remove modal, 480 upload dialog |
 | §4 Reader | R-M3a | ✅ 680 measure, inline search, action bar, Reading options popover. PDF spread deferred, see below |
-| §4 AI tools | R-M3b | Planned. Slide-over on Medium, docked panel above; practice takeover; reader Chapters panel |
+| §4 AI tools | R-M3b | ✅ Slide-over on Medium, docked on Expanded and Desktop; tools list, Pages panel. Practice takeover is R-M3c |
 | §4 Listen | R-M4 | Planned. Two-column Now playing, 680 bimodal, voice/timer/speed popovers |
 | §4 Book detail | R-M5 | Planned. Cover left, info right |
 | §4 Discover | R-M5 | Planned. Featured card sizes, two-column results, 640 request form |
@@ -44,7 +44,7 @@ with the flow that owns them.
 | "Reading options" → "Display" on the action bar | R-M3a | ✅ Bar only; the sheet keeps its title |
 | Remove book: "Remove {title}?" + one line | R-M2b | ✅ `RemoveBookSheetBody`, both callers |
 | Book actions: no subtitles, cover or author | R-M2b | ✅ |
-| Offline chat banner wording | R-M3b | Pending |
+| Offline chat banner wording | R-M3b | ✅ |
 | Discover Refreshing spinner | R-M5 | Pending |
 | Progress ring percentage, one rounded value | R-M2b | ✅ `ProgressRing` |
 | No em dashes in any UI copy | R-M2b | ✅ App and marketing site swept |
@@ -74,11 +74,13 @@ PDF renderer mounted beside the first, which doubles the cost on the
 low-end Android the product targets, or a different engine, which is a
 decision well outside a layout milestone.
 
-**Chapters ends up in two places.** Listen keeps the chapters it has
-today, which get their panel treatment in R-M4. The reader gains its
-own Chapters panel in R-M3b, opened by tapping the book title.
+**The reader's panel is a page list, not a chapter list.** Figma
+`308:11864` is a list of pages with their status and a Now tag, with
+chapter titles only as section headings where a book has them. That
+agrees with the schema migration that made pages the navigation unit,
+and with `ListenNowPlayingScreen` dropping its chapters pill for the
+same reason. Listen's own chapters are still R-M4's.
 
-**The reader's and Listen's full-screen early returns** (Highlights,
-the four AI modes, Chapters) have to become panel content before §3
-can present them. That refactor is R-M3b's main body of work, and
-Listen's is R-M4's.
+**Listen's full-screen early returns** still have to become panel
+content before §3 can present them. The reader's were R-M3b's main
+body of work; Listen's are R-M4's.

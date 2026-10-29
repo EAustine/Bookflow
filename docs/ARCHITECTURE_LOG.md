@@ -38,6 +38,72 @@ Target: `docs/ARCHITECTURE.md` · Distance to it: `docs/ARCHITECTURE_GAPS.md`
 
 ## Progress
 
+### Responsive M3b — the reader's panels · 2026-10-29
+
+The five overlays that were whole-tree early returns become
+`SidePanel` content: slide-over on Medium, **docked** on Expanded and
+Desktop. First use of docking at all — M1 built the mode and left
+`Presenter` presenting every wide class as a slide-over "until the
+reader".
+
+**`useReaderPanel` is a hook, not a component**, because a docked
+panel is a layout sibling: nothing can render it *over* the reader, so
+the host has to place it. All three readers had their own `aiMode` +
+`showHighlights` and their own copies of the same five early returns;
+they share one definition now. The reader already carried three
+separate copies of its action bar, which is what that duplication
+looks like when it is left alone.
+
+**The panel has one level of its own navigation.** The AI tools list
+is its root and the four tools open inside it, so `PanelView`
+replaced the separate flags — they could not express "open, showing a
+tool, with a way back to the list".
+
+**Four things the exploration found that the brief does not show.**
+`SidePanel` already wrapped children in a `ScrollView`, so every
+conversion was a nested-scroller bug as written; its body has no
+`flex: 1`, so a flexed child collapses the way `scanStyles.embedded`
+documents; Chat's `KeyboardAvoidingView` + flex-1 transcript + pinned
+composer cannot live in a content container at all; and
+`closeOverlayPreservingPosition` is now Compact-only, because above
+Compact nothing unmounts.
+
+So `SidePanel` gained **`bare`** — same name and meaning as the
+`bare` M2b gave `Modal` — and every view that owns a scroller and
+pins something under it uses it. Only the two plain lists are
+scrolled by the panel.
+
+**The page list is a page list.** Figma `308:11864` is pages with
+their status and a Now tag, chapter titles only as section headings.
+That agrees with the schema migration that made pages the navigation
+unit, rather than reversing the decision `ListenNowPlayingScreen`
+recorded when it dropped its chapters pill. It also means no empty
+state: a book always has pages, including the one M3a found with no
+chapter titles at all.
+
+**Three defects the device found that reading would not have.** The
+credits count rendered as "0 /" — `{a} / {b}` across a JSX line break
+lost the second expression, and a template string fixed it. Opening a
+tool left no way back to the list, because the hosted screen's own
+back button is suppressed with its header and the panel header had
+only a close; `SidePanel` gained `onBack`. And the Full-mode readers
+opened the sheet instead of the panel, because the condition asked
+whether a panel was already open rather than whether the screen was
+wide.
+
+Verified on the emulator at 360, 820, 1180 and 1440. The phone is
+unchanged: full screens for the tools, a sheet for the list. At 820
+the panel slides over a scrim and the reader keeps its width. At 1180
+it docks at 380 and the reading column shrinks to fit what is left; at
+1440 it docks and the column keeps the full 680. The tools list opens
+a tool and comes back. The Pages panel tracks the reader live —
+jumping to page 5 moved the Now tag and turned 1 to 4 Finished with
+the panel still open, which is the point of docking.
+
+Not verified on device: Highlights in a panel (the test book has
+none), the practice config phase, and the chat composer. They compile
+and follow the same `embedded` shape as the three that were checked.
+
 ### Responsive M3a — the Reader · 2026-10-29
 
 §4 Reader's layout and chrome. M3b takes the panel system: the four

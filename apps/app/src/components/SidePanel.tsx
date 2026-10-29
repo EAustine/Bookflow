@@ -36,6 +36,26 @@ export type SidePanelProps = {
   title?: string;
   children: ReactNode;
   footer?: ReactNode;
+  /** One node beside the close X, for a screen that had a header action. */
+  headerAction?: ReactNode;
+  /**
+   * Shows a back chevron before the title.
+   *
+   * For a panel with a root: the reader's AI tools list opens each
+   * tool *inside* the panel, and the hosted screen's own back button
+   * is suppressed along with its header, so without this there is no
+   * way back to the list — only a close.
+   */
+  onBack?: () => void;
+  /**
+   * Hand the body to `children` without a ScrollView.
+   *
+   * For content that must own its own scrolling: a chat transcript
+   * that pins a composer below it and scrolls to the bottom cannot
+   * live inside a content container. Same meaning as `Modal`'s
+   * `bare`, so the two containers stay learnable together.
+   */
+  bare?: boolean;
 };
 
 export function SidePanel({
@@ -45,9 +65,19 @@ export function SidePanel({
   title,
   children,
   footer,
+  headerAction,
+  onBack,
+  bare = false,
 }: SidePanelProps) {
   const body = (
-    <PanelBody title={title} footer={footer} onDismiss={onDismiss}>
+    <PanelBody
+      title={title}
+      footer={footer}
+      headerAction={headerAction}
+      onBack={onBack}
+      bare={bare}
+      onDismiss={onDismiss}
+    >
       {children}
     </PanelBody>
   );
@@ -79,11 +109,17 @@ function PanelBody({
   title,
   children,
   footer,
+  headerAction,
+  onBack,
+  bare,
   onDismiss,
 }: {
   title?: string;
   children: ReactNode;
   footer?: ReactNode;
+  headerAction?: ReactNode;
+  onBack?: () => void;
+  bare?: boolean;
   onDismiss: () => void;
 }) {
   const insets = useSafeAreaInsets();
@@ -95,9 +131,24 @@ function PanelBody({
       ]}
     >
       <View style={styles.header}>
+        {onBack && (
+          <Pressable
+            onPress={onBack}
+            accessibilityRole="button"
+            accessibilityLabel="Back"
+            hitSlop={8}
+          >
+            <Icon
+              name="ArrowLeft"
+              size={tokens.iconSize.sm}
+              color={tokens.textColors.secondary}
+            />
+          </Pressable>
+        )}
         <Text style={styles.title} numberOfLines={1}>
           {title ?? ''}
         </Text>
+        {headerAction}
         <Pressable
           onPress={onDismiss}
           accessibilityRole="button"
@@ -111,12 +162,19 @@ function PanelBody({
           />
         </Pressable>
       </View>
-      <ScrollView
-        contentContainerStyle={styles.body}
-        showsVerticalScrollIndicator={false}
-      >
-        {children}
-      </ScrollView>
+      {bare ? (
+        // `flex: 1` so the child fills the panel the way it filled a
+        // screen. The scrolled path deliberately has none: a flexed
+        // child of a content container collapses to nothing.
+        <View style={styles.bareBody}>{children}</View>
+      ) : (
+        <ScrollView
+          contentContainerStyle={styles.body}
+          showsVerticalScrollIndicator={false}
+        >
+          {children}
+        </ScrollView>
+      )}
       {footer && <View style={styles.footer}>{footer}</View>}
     </View>
   );
@@ -156,6 +214,11 @@ const styles = StyleSheet.create({
   body: {
     paddingHorizontal: tokens.bottomSheet.paddingX,
     paddingBottom: tokens.space.lg,
+  },
+  // The hosted screen owns its whole interior, including its own
+  // horizontal padding — same contract as `Modal`'s `bare`.
+  bareBody: {
+    flex: 1,
   },
   footer: {
     paddingHorizontal: tokens.bottomSheet.paddingX,

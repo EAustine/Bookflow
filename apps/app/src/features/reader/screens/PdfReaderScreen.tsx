@@ -44,13 +44,9 @@ import { useBackHandler } from '~/lib/useBackHandler';
 import { useReadingSession } from '../api/readingSessions';
 import {
   AIToolsSheet,
-  ChatScreen,
-  SummaryScreen,
 } from '~/features/ai';
-import { PracticeQuestionsScreen } from '~/features/ai';
-import { TranslateChapterScreen } from './TranslateChapterScreen';
-import { HighlightsScreen } from './HighlightsScreen';
 import { BookSearchScreen } from './BookSearchScreen';
+import { useReaderPanel } from '../hooks/useReaderPanel';
 import { ReaderScreen } from './ReaderScreen';
 
 export type PdfReaderScreenProps = {
@@ -149,8 +145,6 @@ export function PdfReaderScreen({
   // The Display action, which the reading-options popover anchors to
   // above Compact. Unused on a phone, where it stays a sheet.
   const displayAnchorRef = useRef<View>(null);
-  const [aiMode, setAIMode] = useState<'summary' | 'chat' | 'practice' | 'translate' | null>(null);
-  const [showHighlights, setShowHighlights] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
   // "Aa" / Text mode: swaps the rendered PDF view for the paginated text
   // reader on the same chapter. Lets the user tap-look-up words, long-
@@ -459,94 +453,42 @@ export function PdfReaderScreen({
     close();
   };
 
-  if (aiMode === 'summary') {
-    // Map the user's current PDF page (1-based) to the corresponding DB
-    // page index proportionally. Each PDF page produces ~ totalDbPages/
-    // totalPdfPages DB-page slices on ingest; this picks the first
-    // slice from the current PDF page, which is good enough for the
-    // single-page summary (Step 5 will let the user select a range).
+  /**
+   * The DB page the AI tools act on. Each PDF page produces roughly
+   * `totalDbPages / totalPdfPages` slices on ingest; this picks the
+   * first slice of the page on screen, which is what the tools used
+   * to compute three separate times in this file.
+   */
+  const toolPageIndex = (() => {
     const pdfPages = totalPages || 1;
     const dbPages = book.totalPages ?? 0;
-    const estimatedPageIndex =
-      dbPages > 0
-        ? Math.min(
-            dbPages - 1,
-            Math.max(0, Math.floor(((currentPage - 1) / pdfPages) * dbPages)),
-          )
-        : 0;
-    return (
-      <SummaryScreen
-        book={book}
-        pageIndex={estimatedPageIndex}
-        onBack={() => closeOverlayPreservingPosition(() => setAIMode(null))}
-      />
+    if (dbPages <= 0) return 0;
+    return Math.min(
+      dbPages - 1,
+      Math.max(0, Math.floor(((currentPage - 1) / pdfPages) * dbPages)),
     );
-  }
-  if (aiMode === 'chat') {
-    return (
-      <ChatScreen
-        book={book}
-        onBack={() => closeOverlayPreservingPosition(() => setAIMode(null))}
-      />
+  })();
+
+  /** The inverse: a DB page index back to a PDF page to navigate to. */
+  const jumpToDbPage = (pageIndex: number) => {
+    const total = book.totalPages || totalPages || 1;
+    const dbPages = book.totalPages || 1;
+    jumpToPdfPage(
+      Math.max(1, Math.min(total, Math.round(((pageIndex + 1) / dbPages) * total))),
     );
+  };
+
+  const readerPanel = useReaderPanel({
+    book,
+    pageIndex: toolPageIndex,
+    onJumpToPage: jumpToDbPage,
+  });
+
+
+  if (readerPanel.fullScreen) {
+    return readerPanel.fullScreen;
   }
-  if (aiMode === 'practice' || aiMode === 'translate') {
-    // Same PDF-page → DB-page mapping as the Summary path so the
-    // tool operates on the slice the user is currently viewing.
-    const pdfPages = totalPages || 1;
-    const dbPages = book.totalPages ?? 0;
-    const estimatedPageIndex =
-      dbPages > 0
-        ? Math.min(
-            dbPages - 1,
-            Math.max(0, Math.floor(((currentPage - 1) / pdfPages) * dbPages)),
-          )
-        : 0;
-    if (aiMode === 'practice') {
-      return (
-        <PracticeQuestionsScreen
-          book={book}
-          pageIndex={estimatedPageIndex}
-          onBack={() => closeOverlayPreservingPosition(() => setAIMode(null))}
-        />
-      );
-    }
-    return (
-      <TranslateChapterScreen
-        book={book}
-        pageIndex={estimatedPageIndex}
-        onBack={() => closeOverlayPreservingPosition(() => setAIMode(null))}
-      />
-    );
-  }
-  if (showHighlights) {
-    return (
-      <HighlightsScreen
-        book={book}
-        onClose={() =>
-          closeOverlayPreservingPosition(() => setShowHighlights(false))
-        }
-        onJumpToPage={(pageIndex) => {
-          setShowHighlights(false);
-          // page_index in DB is 0-based DB-page index. We approximate
-          // the corresponding PDF page proportionally; an exact mapping
-          // would use pages.pdf_page_number, which is a follow-up.
-          const total = book.totalPages || totalPages || 1;
-          const dbPages = book.totalPages || 1;
-          const targetPage = Math.max(
-            1,
-            Math.min(total, Math.round(((pageIndex + 1) / dbPages) * total)),
-          );
-          // Imperative jump from the Highlights drill-in — must
-          // route through jumpToPdfPage so `pdfNavTarget` updates
-          // and the native PDF view actually navigates. A bare
-          // setCurrentPage wouldn't propagate to the Pdf prop now
-          // that the controlled-page is decoupled.
-          jumpToPdfPage(targetPage);
-        }}
-      />
-    );
-  }
+
   if (showSearch) {
     return (
       <BookSearchScreen
@@ -636,7 +578,11 @@ export function PdfReaderScreen({
   }
 
   return (
-    <SafeAreaView style={styles.safe} edges={['left', 'right']}>
+    <SafeAreaView
+      style={[styles.safe, readerPanel.dock && styles.safeRow]}
+      edges={['left', 'right']}
+    >
+      <View style={styles.contentColumn}>
       <View style={styles.pdfArea}>
         {pdfSource ? (
           <Pdf
@@ -816,7 +762,10 @@ export function PdfReaderScreen({
           <ActionItem
             icon="Wand"
             label="AI tools"
-            onPress={() => aiSheetRef.current?.present()}
+            onPress={() => {
+              if (readerPanel.isWide) readerPanel.open('tools');
+              else aiSheetRef.current?.present();
+            }}
           />
           <ActionItem
             icon="Search"
@@ -826,7 +775,7 @@ export function PdfReaderScreen({
           <ActionItem
             icon="Notebook"
             label="Highlights"
-            onPress={() => setShowHighlights(true)}
+            onPress={() => readerPanel.open('highlights')}
           />
           <ActionItem
             icon="Settings"
@@ -837,6 +786,10 @@ export function PdfReaderScreen({
           </View>
         </View>
       </Animated.View>
+
+      </View>
+
+      {readerPanel.panel}
 
       {/* The old `tapToShow` Pressable was a 56-pt bottom strip used
           to summon the chrome back. That's been replaced by
@@ -852,20 +805,11 @@ export function PdfReaderScreen({
         // Map the user's current PDF page → DB page index so the
         // sheet's "Page N · {title}" label matches the page they're
         // looking at, not the persisted last-read.
-        pageIndex={(() => {
-          const pdfPages = totalPages || 1;
-          const dbPages = book.totalPages ?? 0;
-          return dbPages > 0
-            ? Math.min(
-                dbPages - 1,
-                Math.max(0, Math.floor(((currentPage - 1) / pdfPages) * dbPages)),
-              )
-            : 0;
-        })()}
-        onSummarize={() => setAIMode('summary')}
-        onPractice={() => setAIMode('practice')}
-        onAsk={() => setAIMode('chat')}
-        onTranslate={() => setAIMode('translate')}
+        pageIndex={toolPageIndex}
+        onSummarize={() => readerPanel.open('summary')}
+        onPractice={() => readerPanel.open('practice')}
+        onAsk={() => readerPanel.open('chat')}
+        onTranslate={() => readerPanel.open('translate')}
       />
       <Presenter
         kind="menu"
@@ -987,6 +931,9 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: tokens.bgColors.canvas,
   },
+  // Only when a panel docks beside the page (§3).
+  safeRow: { flexDirection: 'row' },
+  contentColumn: { flex: 1 },
   pdfArea: {
     flex: 1,
     alignItems: 'center',

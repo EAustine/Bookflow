@@ -38,10 +38,18 @@ export type TranslateChapterScreenProps = {
   initialLanguage?: string;
   onBack: () => void;
   onShare?: () => void;
+  /**
+   * Hosted inside a `SidePanel` (with `bare`) rather than owning the
+   * window. Drops the SafeAreaView and the header; keeps its own
+   * scroller and its pinned page nav, which is the whole reason the
+   * panel hosts it bare.
+   */
+  embedded?: boolean;
 };
 
 export function TranslateChapterScreen({
   book,
+  embedded = false,
   pageIndex,
   initialLanguage,
   onBack,
@@ -124,9 +132,17 @@ export function TranslateChapterScreen({
     COMMON_LANGUAGES.find((l) => l.code === targetLanguage)?.label ??
     titleCase(targetLanguage);
 
+  const Frame = embedded ? View : SafeAreaView;
+  const frameProps = embedded
+    ? { style: styles.embedded }
+    : {
+        style: styles.safe,
+        edges: ['top', 'left', 'right', 'bottom'] as const,
+      };
+
   return (
-    <SafeAreaView style={styles.safe} edges={['top', 'left', 'right', 'bottom']}>
-      {/* Header */}
+    <Frame {...frameProps}>
+      {!embedded && (
       <View style={styles.header}>
         <Pressable
           onPress={onBack}
@@ -159,6 +175,7 @@ export function TranslateChapterScreen({
           />
         </Pressable>
       </View>
+      )}
 
       {/* Language picker — horizontal scrolling chips. Tapping a chip
           swaps the target and re-runs the hook (server cache covers
@@ -281,7 +298,7 @@ export function TranslateChapterScreen({
           />
         </Pressable>
       </View>
-    </SafeAreaView>
+    </Frame>
   );
 }
 
@@ -334,6 +351,11 @@ function titleCase(s: string): string {
 }
 
 const styles = StyleSheet.create({
+  // Hosted bare in a panel: still fills, still scrolls itself.
+  embedded: {
+    flex: 1,
+    backgroundColor: tokens.bgColors.canvas,
+  },
   safe: {
     flex: 1,
     backgroundColor: tokens.bgColors.canvas,

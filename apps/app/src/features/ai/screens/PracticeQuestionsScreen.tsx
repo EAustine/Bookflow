@@ -7,7 +7,7 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Badge, BottomSheet, Icon, Text, type BottomSheetRef } from '~/components';
+import { Badge, Icon, Presenter, Text, type BottomSheetRef } from '~/components';
 import { tokens } from '~/design/tokens';
 import { formatNetworkError } from '~/lib/networkErrors';
 import { useBackHandler } from '~/lib/useBackHandler';
@@ -99,6 +99,12 @@ function scoreLabel(pct: number): string {
 // ─── Main screen ──────────────────────────────────────────────────────────────
 
 export type PracticeQuestionsScreenProps = {
+  /**
+   * Hosted inside a `SidePanel`. Only the config phase is panel
+   * content — a running session takes over the screen, which M3c
+   * turns into the two-column layout §4 asks for.
+   */
+  embedded?: boolean;
   book: Book;
   onBack: () => void;
   /**
@@ -108,7 +114,7 @@ export type PracticeQuestionsScreenProps = {
   pageIndex?: number;
 };
 
-export function PracticeQuestionsScreen({ book, onBack, pageIndex }: PracticeQuestionsScreenProps) {
+export function PracticeQuestionsScreen({ book, onBack, pageIndex, embedded = false }: PracticeQuestionsScreenProps) {
   // Hardware-back routes to the reader (clears aiMode in the parent)
   // rather than falling through to the reader's own useBackHandler,
   // which would otherwise take the user out to Library.
@@ -252,6 +258,7 @@ export function PracticeQuestionsScreen({ book, onBack, pageIndex }: PracticeQue
     return (
       <ConfigScreen
         book={book}
+        embedded={embedded}
         pageIndex={resolvedPageIndex}
         defaultPageIndex={defaultPageIndex}
         onPageIndexChange={setResolvedPageIndex}
@@ -368,6 +375,7 @@ function ConfigScreen({
   onConfig,
   onGenerate,
   onClose,
+  embedded = false,
 }: {
   book: Book;
   pageIndex: number;
@@ -378,20 +386,38 @@ function ConfigScreen({
   onConfig: React.Dispatch<React.SetStateAction<QuizConfig>>;
   onGenerate: () => void;
   onClose: () => void;
+  /**
+   * Hosted inside a `SidePanel` (with `bare`). Drops the SafeAreaView
+   * and the header; keeps its own scroller and its pinned Generate
+   * button.
+   */
+  embedded?: boolean;
 }) {
   const pageNum = pageIndex + 1;
   const isCurrentPage = pageIndex === defaultPageIndex;
   const totalPages = Math.max(1, book.totalPages || 1);
   const pickerRef = useRef<BottomSheetRef>(null);
+  // The page row the picker anchors to above Compact.
+  const pickerAnchorRef = useRef<View>(null);
+
+  const Frame = embedded ? View : SafeAreaView;
+  const frameProps = embedded
+    ? { style: styles.embedded }
+    : {
+        style: styles.safe,
+        edges: ['top', 'left', 'right', 'bottom'] as const,
+      };
 
   return (
-    <SafeAreaView style={styles.safe} edges={['top', 'left', 'right', 'bottom']}>
+    <Frame {...frameProps}>
+      {!embedded && (
       <PQHeader
         title="Practice questions"
         sub={book.title}
         onClose={onClose}
         right={<View style={{ width: 30 }} />}
       />
+      )}
 
       <ScrollView
         style={styles.scroll}
@@ -401,6 +427,7 @@ function ConfigScreen({
         {/* Page */}
         <SectionBlock label="Page">
           <Pressable
+            ref={pickerAnchorRef}
             style={styles.chapterRow}
             onPress={() => pickerRef.current?.present()}
             accessibilityRole="button"
@@ -471,7 +498,12 @@ function ConfigScreen({
         </Pressable>
       </View>
 
-      <BottomSheet ref={pickerRef} title="Pick a page">
+      <Presenter
+        kind="menu"
+        anchorRef={pickerAnchorRef}
+        ref={pickerRef}
+        title="Pick a page"
+      >
         <PagePickerBody
           totalPages={totalPages}
           selectedIndex={pageIndex}
@@ -481,8 +513,8 @@ function ConfigScreen({
             pickerRef.current?.dismiss();
           }}
         />
-      </BottomSheet>
-    </SafeAreaView>
+      </Presenter>
+    </Frame>
   );
 }
 
@@ -1184,6 +1216,11 @@ function SourceChip({ source }: { source: string }) {
 // ─── Styles ───────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
+  // Hosted bare in a panel: still fills, still scrolls itself.
+  embedded: {
+    flex: 1,
+    backgroundColor: tokens.bgColors.canvas,
+  },
   safe: {
     flex: 1,
     backgroundColor: tokens.bgColors.canvas,

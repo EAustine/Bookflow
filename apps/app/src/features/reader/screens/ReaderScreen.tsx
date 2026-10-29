@@ -35,14 +35,13 @@ import {
   ListRow,
   Text,
 } from '~/components';
-import { AIToolsSheet, SummaryScreen, ChatScreen } from '~/features/ai';
+import { AIToolsSheet } from '~/features/ai';
 import { ReaderSkeleton } from '~/ui/SkeletonScreens';
-import { PracticeQuestionsScreen } from '~/features/ai';
-import { TranslateChapterScreen } from './TranslateChapterScreen';
 import { formatNetworkError } from '~/lib/networkErrors';
 import { reprocessBook } from '~/features/library';
-import { pageDisplayText, pdfIndexOf, windowStartFor } from '@bookflow/shared';
+import { pageDisplayShort, pageDisplayText, pdfIndexOf, windowStartFor } from '@bookflow/shared';
 import { tokens } from '~/design/tokens';
+import { useSizeClass } from '~/hooks/useSizeClass';
 import { useBackHandler } from '~/lib/useBackHandler';
 import { useSlowOp } from '~/hooks/useSlowOp';
 import { SlowNetworkBanner } from '~/components/SlowNetworkBanner';
@@ -52,7 +51,7 @@ import { lookupWord, type WordLookup } from '../api/dictionary';
 import { supabase } from '~/lib/supabase';
 import { useReadingSession } from '../api/readingSessions';
 import { saveHighlight, useBookHighlights, type Highlight } from '../api/highlights';
-import { HighlightsScreen } from './HighlightsScreen';
+import { useReaderPanel } from '../hooks/useReaderPanel';
 import { HighlightedText, InReaderSearchHeader } from './InReaderSearchHeader';
 import {
   TRANSLATION_LANGUAGE_LABELS,
@@ -509,8 +508,11 @@ export function ReaderScreen({
 
   const [tappedWord, setTappedWord] = useState<string | null>(null);
   const [selectedSentence, setSelectedSentence] = useState<string | null>(null);
-  const [aiMode, setAIMode] = useState<'summary' | 'chat' | 'practice' | 'translate' | null>(null);
-  const [showHighlights, setShowHighlights] = useState(false);
+  // §3: the panel slides over on Medium and docks on Expanded and
+  // Desktop. The reader hosts it itself rather than through
+  // `Presenter`, because a docked panel is a layout sibling and
+  // `Presenter` only renders overlays.
+  const { isWide } = useSizeClass();
   const typoSheetRef = useRef<BottomSheetRef>(null);
   // The Display action in the bottom bar. The reading-options popover
   // anchors to it above Compact; on a phone it stays a sheet and the
@@ -1190,6 +1192,37 @@ export function ReaderScreen({
    * the reader bulk-fetches every page up front — so this is a filter,
    * not a query.
    */
+  /**
+   * The page list the Pages panel renders. Built here because the
+   * chapter derivation already lives in this file for the in-chapter
+   * search scope — one definition of what a chapter is, not two.
+   * A heading is printed only when a page starts a chapter that has
+   * a title, so a book without titles is simply a flat list.
+   */
+  const pageRows = useMemo(() => {
+    let lastHeading: string | null = null;
+    return allPages
+      .slice()
+      .sort((a, b) => a.page_index - b.page_index)
+      .map((row) => {
+        const title = deriveChapter(row).title;
+        const heading = title && title !== lastHeading ? title : null;
+        if (title) lastHeading = title;
+        return {
+          pageIndex: row.page_index,
+          label: pageDisplayShort(row.page_index, row.page_label),
+          heading,
+        };
+      });
+  }, [allPages]);
+
+  const readerPanel = useReaderPanel({
+    book,
+    pageIndex,
+    onJumpToPage: jumpToPage,
+    pageRows,
+  });
+
   const chapterScope = useMemo(() => {
     const current = pageContentMap.get(pageIndex);
     if (!current) return { pages: [] as PageRow[], label: '' };
@@ -1541,80 +1574,26 @@ export function ReaderScreen({
     );
   }
 
-  // Every overlay in this screen is rendered via an early-return
-  // `if (...) return <Overlay />`, which UNMOUNTS the FlatList
-  // while the overlay is up. On close the FlatList remounts fresh
-  // at offset 0 — leaving the user (who was reading page 38 before
-  // tapping Highlights / Search / AI tools) staring at page 1. The
-  // reader's `pageIndex` state survives the toggle, but the
-  // FlatList doesn't know to scroll there until something arms the
-  // restore loop.
-  //
-  // `closeOverlayPreservingPosition` calls `jumpToPage(pageIndex)`
-  // synchronously inside the close callback. That mutates
-  // `restoreTargetRef` BEFORE React commits the new render — so
-  // by the time the remounted FlatList's first onContentSizeChange
-  // fires, the target is already armed and the loop lands the user
-  // back where they were. No visible flash of page 1.
-  const closeOverlayPreservingPosition = (close: () => void) => {
-    jumpToPage(pageIndex);
-    close();
-  };
+  // Compact keeps its full screens; the hook hands back the right one.
+  if (readerPanel.fullScreen) {
+    return readerPanel.fullScreen;
+  }
 
-  if (aiMode === 'summary') {
-    return (
-      <SummaryScreen
-        book={book}
-        pageIndex={pageIndex}
-        onBack={() => closeOverlayPreservingPosition(() => setAIMode(null))}
-      />
-    );
-  }
-  if (aiMode === 'chat') {
-    return (
-      <ChatScreen
-        book={book}
-        onBack={() => closeOverlayPreservingPosition(() => setAIMode(null))}
-      />
-    );
-  }
-  if (aiMode === 'practice') {
-    return (
-      <PracticeQuestionsScreen
-        book={book}
-        pageIndex={pageIndex}
-        onBack={() => closeOverlayPreservingPosition(() => setAIMode(null))}
-      />
-    );
-  }
-  if (aiMode === 'translate') {
-    return (
-      <TranslateChapterScreen
-        book={book}
-        pageIndex={pageIndex}
-        onBack={() => closeOverlayPreservingPosition(() => setAIMode(null))}
-      />
-    );
-  }
-  if (showHighlights) {
-    return (
-      <HighlightsScreen
-        book={book}
-        onClose={() =>
-          closeOverlayPreservingPosition(() => setShowHighlights(false))
-        }
-        onJumpToPage={(idx) => {
-          jumpToPage(idx);
-          setShowHighlights(false);
-        }}
-      />
-    );
-  }
   return (
     <SafeAreaView
-      style={[styles.safe, { backgroundColor: palette.bg }]}
+      style={[
+        styles.safe,
+        readerPanel.dock && styles.safeRow,
+        { backgroundColor: palette.bg },
+      ]}
       edges={['left', 'right']}
     >
+      {/*
+        The content column. It is a column inside a row only when a
+        panel is docked beside it — the rest of the time the row does
+        nothing and this is the tree it always was.
+      */}
+      <View style={styles.contentColumn}>
       {/* Header — fades with auto-hide. paddingTop is the system status
           bar inset; without it the back button collides with the iPhone
           notch/Dynamic Island. We use useSafeAreaInsets directly rather
@@ -1659,6 +1638,7 @@ export function ReaderScreen({
             // other renderer happens to remember.
             if (m === 'full' && onRequestFullMode) onRequestFullMode(pageIndex);
           }}
+          onOpenPages={isWide ? () => readerPanel.open('pages') : undefined}
           pointerEvents={autoHide && !chromeVisible ? 'none' : 'auto'}
         />
         )}
@@ -1964,10 +1944,15 @@ export function ReaderScreen({
         <ActionBar
           palette={palette}
           onListen={onListen}
-          onAITools={() => aiSheetRef.current?.present()}
+          onAITools={() => {
+            // Wide: the tools list is the panel's root. Phone: the
+            // sheet it has always been.
+            if (readerPanel.isWide) readerPanel.open('tools');
+            else aiSheetRef.current?.present();
+          }}
           onReadingOptions={() => typoSheetRef.current?.present()}
           displayAnchorRef={displayAnchorRef}
-          onHighlights={() => setShowHighlights(true)}
+          onHighlights={() => readerPanel.open('highlights')}
           onSearch={() => {
             // Text mode searches in place (§4). Full mode still opens
             // the whole-book screen, because neither the PDF view nor
@@ -2018,15 +2003,19 @@ export function ReaderScreen({
         </>
       )}
 
+      </View>
+
+      {readerPanel.panel}
+
       {/* AI tools sheet */}
       <AIToolsSheet
         ref={aiSheetRef}
         book={book}
         pageIndex={pageIndex}
-        onSummarize={() => setAIMode('summary')}
-        onPractice={() => setAIMode('practice')}
-        onAsk={() => setAIMode('chat')}
-        onTranslate={() => setAIMode('translate')}
+        onSummarize={() => readerPanel.open('summary')}
+        onPractice={() => readerPanel.open('practice')}
+        onAsk={() => readerPanel.open('chat')}
+        onTranslate={() => readerPanel.open('translate')}
       />
 
       {/* Typography sheet */}
@@ -2066,6 +2055,7 @@ function ReaderHeader({
   book,
   palette,
   theme,
+  onOpenPages,
   mode,
   onBack,
   onModeChange,
@@ -2077,6 +2067,8 @@ function ReaderHeader({
   mode: ReaderMode;
   onBack: () => void;
   onModeChange: (mode: ReaderMode) => void;
+  /** Tapping the title opens the page list. Unset on a phone. */
+  onOpenPages?: () => void;
   pointerEvents?: 'none' | 'auto';
 }) {
   // Title sits to the left next to the back button. Search lives in
@@ -2100,14 +2092,21 @@ function ReaderHeader({
         <Icon name="ArrowLeft" size={18} color={palette.text} />
       </Pressable>
 
-      <View style={styles.headerTitleLeft}>
+      {/* The title is the way into the page list (Figma 308:11864). */}
+      <Pressable
+        style={styles.headerTitleLeft}
+        accessibilityRole="button"
+        accessibilityLabel="Pages"
+        onPress={onOpenPages}
+        disabled={!onOpenPages}
+      >
         <Text
           style={[styles.headerBookTitle, { color: palette.text }]}
           numberOfLines={1}
         >
           {book.title}
         </Text>
-      </View>
+      </Pressable>
 
       <View style={styles.headerActions}>
         <ModeTogglePill
@@ -3621,6 +3620,10 @@ function SizeSlider({
 
 const styles = StyleSheet.create({
   safe: { flex: 1 },
+  // Only when a panel docks: the content gives up the width rather
+  // than being covered by it (§3).
+  safeRow: { flexDirection: 'row' },
+  contentColumn: { flex: 1 },
 
   // Continuous-scroll reader
   pagerWrap: {
