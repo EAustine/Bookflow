@@ -6,8 +6,9 @@ import {
   BottomSheet,
   type BottomSheetRef,
   Icon,
-  type IconName,
   ListRow,
+  Presenter,
+  type PresenterRef,
   ReminderTimePicker,
   SubHeader,
   Text,
@@ -37,7 +38,7 @@ const WARN_BORDER = tokens.colors.warnBorder;
 // ─── Props ────────────────────────────────────────────────────────────────────
 
 export type SettingsScreenProps = {
-  onBack: () => void;
+  onBack?: () => void;
   /**
    * Drill-in handlers, wired to routes by `app/you/settings.tsx` in M2.
    *
@@ -68,11 +69,8 @@ export function SettingsScreen({
   // with the toggle flipped (the hook listens for foreground
   // returns). `request()` triggers the system prompt; `openSettings`
   // jumps to the OS app-settings page for users who declined once.
-  const {
-    granted: osNotifGranted,
-    request: requestOsPermission,
-    openSettings: openOsSettings,
-  } = useNotificationPermission();
+  const { granted: osNotifGranted, request: requestOsPermission } =
+    useNotificationPermission();
   const [view, setView] = useState<
     'home' | 'reading' | 'voice' | 'speed' | 'language'
   >('home');
@@ -111,7 +109,7 @@ export function SettingsScreen({
   const speedHint = `${defaultPlaybackSpeed}×`;
   const translationHint = TRANSLATION_LANGUAGE_LABELS[translationLanguage];
 
-  const notifSheetRef = useRef<BottomSheetRef>(null);
+  const notifSheetRef = useRef<PresenterRef>(null);
   const reminderTimeSheetRef = useRef<BottomSheetRef>(null);
 
   async function handleNotifToggle(
@@ -341,10 +339,19 @@ export function SettingsScreen({
         </ScrollView>
       </SafeAreaView>
 
-      <BottomSheet ref={notifSheetRef}>
+      {/* §4 System states draws this as "the sheet in a 440 dialog", which
+          is what `kind="confirm"` gives it. Converted here rather than
+          waiting for R-M8: Sign out sits two rows above it and already
+          opens as a 440 modal, and two containers for two confirms at
+          one window width is the thing that got the Discover
+          remove-confirm converted alongside Library's. */}
+      <Presenter kind="confirm" ref={notifSheetRef}>
         <NotifPermissionSheet onAllow={() => notifSheetRef.current?.dismiss()} onDismiss={() => notifSheetRef.current?.dismiss()} />
-      </BottomSheet>
+      </Presenter>
 
+      {/* Still a sheet: the reminder time picker is in none of the 43
+          You frames, so there is no wide container to match. Recorded
+          rather than guessed at. */}
       <BottomSheet ref={reminderTimeSheetRef}>
         <ReminderTimePicker
           hour={reminderHour}
@@ -595,16 +602,6 @@ const styles = StyleSheet.create({
     paddingBottom: tokens.space['2xl'],
   },
 
-  // Sub-header
-  backBtn: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-    backgroundColor: tokens.bgColors.surface,
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexShrink: 0,
-  },
 
   // Section block
   sectionBlock: {
@@ -663,24 +660,6 @@ const styles = StyleSheet.create({
   // (Reminder time picker styles moved to the shared
   // ReminderTimePicker component in src/components.)
 
-  // Storage row
-  storageBarRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 7,
-  },
-  storageTrack: {
-    flex: 1,
-    height: 4,
-    backgroundColor: tokens.colors.cream[200],
-    borderRadius: 2,
-    overflow: 'hidden',
-  },
-  storageFill: {
-    height: '100%',
-    backgroundColor: tokens.colors.amber[500],
-    borderRadius: 2,
-  },
   storageRemoveAll: {
     fontFamily: tokens.fonts.uiMedium,
     fontSize: 12,
@@ -840,12 +819,6 @@ const styles = StyleSheet.create({
     fontFamily: tokens.fonts.ui,
     fontSize: 11,
     color: tokens.colors.ink[400],
-  },
-  notifChangeBtn: {
-    fontFamily: tokens.fonts.uiMedium,
-    fontSize: 11,
-    fontWeight: '500',
-    color: tokens.colors.forest[800],
   },
   notifDisclosure: {
     fontFamily: tokens.fonts.ui,

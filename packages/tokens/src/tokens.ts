@@ -799,6 +799,19 @@ export const layout = {
      */
     gutterCompact: 20,
   },
+  /**
+   * You & Settings. Tablet portrait is one centred column; above it the
+   * master is `pane.master` (440) and the page sits beside it.
+   *
+   * `detail` is the page's own width, not the pane's. The pane fills
+   * what is left of the content area and the column is left aligned
+   * inside it, after the divider and one gutter — the frames put it at
+   * 33 on Expanded and 41 on Desktop, which is `1 + gutter[sizeClass]`.
+   */
+  you: {
+    medium: 600,
+    detail: 560,
+  },
   /** Reader text, PDF and player columns. Aliases `readingMeasure`. */
   reading: {
     measure: 680,

@@ -35,6 +35,22 @@ export type ListRowProps = Omit<PressableProps, 'children' | 'style'> & {
   drillsInto?: boolean;
   toggle?: ListRowToggle;
   selected?: boolean;
+  /**
+   * The row whose page the detail pane is showing — Figma's
+   * `List row (selected)`, a `bg/accent-muted` fill across the row.
+   *
+   * **Not `selected`**, which draws a trailing check: that is a picker
+   * answering "is this the chosen value", and this answers "is this
+   * what you are looking at". A master row needs the second and the
+   * two are not interchangeable, which is why `LibraryScreen` grew its
+   * own row rather than use this one. Added in M6 so You's master
+   * could stay on the canonical component.
+   *
+   * Composites under `pressed`, so pressing an active row still gives
+   * feedback. Passing the fill through `containerStyle` instead does
+   * not, because that prop lands last in the style array.
+   */
+  active?: boolean;
   trailingElement?: React.ReactNode;
   /**
    * Sub-label line clamp. One by default so rows stay a predictable
@@ -57,6 +73,7 @@ export function ListRow({
   drillsInto = false,
   toggle,
   selected,
+  active = false,
   trailingElement,
   sublabelLines = 1,
   containerStyle,
@@ -91,6 +108,7 @@ export function ListRow({
           minHeight: tokens.listRow.minHeight[size],
           paddingHorizontal: tokens.listRow.paddingX,
         },
+        active && styles.active,
         pressed && !disabled && styles.pressed,
         disabled && styles.disabled,
         containerStyle,
@@ -166,6 +184,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: tokens.listRow.gap,
+  },
+  active: {
+    backgroundColor: tokens.bgColors.accentMuted,
   },
   pressed: {
     backgroundColor: tokens.colors.cream[100],

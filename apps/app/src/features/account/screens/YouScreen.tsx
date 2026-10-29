@@ -15,26 +15,28 @@
  *     never fire on tap).
  *   - Plan-card meters auto-promote their fill to amber at ≥80% usage so
  *     users get a soft "running low" cue without a dark-pattern nudge.
+ *
+ * Responsive shape (M6, §4 "You & Settings"):
+ *   - **Compact** keeps the router. A row calls the shell's handler and
+ *     the page pushes over the whole shell, as it always has.
+ *   - **Medium** is one 600 column, centred, and the page replaces home
+ *     inside it with the Sub header's back button.
+ *   - **Expanded and Desktop** are master and detail: the 440 master is
+ *     always this screen's own body, and the page fills a 560 column in
+ *     the pane beside it. The back button is gone there because the
+ *     master is the way out, so a page is always open — §8 leaves a
+ *     separate wide You home out for exactly that reason, and the
+ *     default is Reading display.
+ *
+ * So above Compact the tab renders the pages itself rather than letting
+ * them push. They are the same components the routes mount, given a
+ * different container and no `onBack` — not a second copy.
  */
 
-import {
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-  type ReactNode,
-} from 'react';
-import {
-  Image,
-  Pressable,
-  RefreshControl,
-  ScrollView,
-  StyleSheet,
-  View,
-} from 'react-native';
-import { pollBalanceAfterPurchase, type PurchasedBalances } from '~/features/ai';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import { RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
+import { pollBalanceAfterPurchase } from '~/features/ai';
 import { AccountScreen } from './AccountScreen';
-import { TopupBalanceBlock } from '~/features/billing';
 import { HelpFAQScreen } from './HelpFAQScreen';
 import { SettingsScreen } from './SettingsScreen';
 import { DefaultVoiceScreen, NotificationsScreen, ReadingDisplayScreen, SendFeedbackScreen, TranslationLanguageScreen } from './YouDrillScreens';
@@ -45,23 +47,25 @@ import {
 } from '~/stores/readerStore';
 import { VOICE_OPTIONS } from '~/features/listen';
 import {
-  Badge,
-  BottomSheet,
-  type BottomSheetRef,
-  Button,
   ConfirmSheetBody,
-  Icon,
-  ListRow,
+  Presenter,
+  type PresenterRef,
   TabBar,
   type TabKey,
-  Text,
 } from '~/components';
+import { useSizeClass } from '~/hooks/useSizeClass';
+import { YouHomeBody } from '../components';
+import {
+  YOU_DEFAULT_PAGE,
+  type YouPage,
+  type YouPlan,
+  type YouProfile,
+} from '../types';
 import { BuyCreditsSheet, type BuyCreditsSheetRef } from '~/features/billing';
 import { tokens } from '~/design/tokens';
 import {
   presentPaywall,
   openManageSubscription,
-  useProSubscriptionDetails,
   ENTITLEMENT_PRO,
 } from '~/features/billing';
 
@@ -69,27 +73,15 @@ import {
 // TYPES
 // ============================================================================
 
-export type YouProfile = {
-  name: string;
-  email: string;
-  /** Resolved public URL of the user's profile picture (from the
-   *  `avatars` bucket). Null when the user hasn't uploaded one;
-   *  UI falls back to the colored-initials chip in that case. */
-  avatarUrl?: string | null;
-};
-
-export type YouPlanName = 'Free' | 'Standard' | 'Premium';
-
-export type YouPlan = {
-  name: YouPlanName;
-  meters: {
-    audio: { used: number; total: number }; // minutes
-    aiCredits: { used: number; total: number }; // tokens
-    books: { used: number; total: number };
-  };
-  /** Purchased top-up balances, shown below the meters. */
-  balances: PurchasedBalances;
-};
+// `YouProfile`, `YouPlan` and `YouPlanName` moved to `../types` in M6 so
+// the extracted components could use them without importing back into
+// this screen. Re-exported here because every call site imports them
+// from the feature barrel, which re-exports this file.
+export type {
+  YouPlan,
+  YouPlanName,
+  YouProfile,
+} from '../types';
 
 export type YouScreenProps = {
   profile: YouProfile;
@@ -117,14 +109,6 @@ export type YouScreenProps = {
   defaultVoiceHint?: string;
   translationLanguageHint?: string;
   appVersion?: string;
-  /**
-   * Fired whenever YouScreen pushes / pops a sub-view (Account &
-   * subscription, Settings, Reading display, etc.). App.tsx uses
-   * this to hide the global mini-player overlay while the user is
-   * deep in their settings — same pattern as `onReaderOpenChange`
-   * on LibraryScreen. Top-level "home" view emits `false`.
-   */
-  onSubViewOpenChange?: (open: boolean) => void;
   /** Pull-to-refresh — re-reads the plan-card meters, balances, and stats. */
   onRefresh?: () => Promise<void> | void;
 };
@@ -159,7 +143,6 @@ export function YouScreen({
   defaultVoiceHint = DEFAULTS.defaultVoiceHint,
   translationLanguageHint = DEFAULTS.translationLanguageHint,
   appVersion = DEFAULTS.appVersion,
-  onSubViewOpenChange,
   onRefresh,
 }: YouScreenProps) {
   const [refreshing, setRefreshing] = useState(false);
@@ -197,28 +180,74 @@ export function YouScreen({
     void openManageSubscription();
   }, []);
 
-  const sheetRef = useRef<BottomSheetRef>(null);
+  const sheetRef = useRef<PresenterRef>(null);
   const buyCreditsRef = useRef<BuyCreditsSheetRef>(null);
   const [signingOut, setSigningOut] = useState(false);
-  const [view, setView] = useState<
-    | 'home'
-    | 'account'
-    | 'settings'
-    | 'reading'
-    | 'voice'
-    | 'language'
-    | 'notifications'
-    | 'help'
-    | 'feedback'
-  >('home');
 
-  // Notify the parent shell when the You tab enters/leaves a drill-in
-  // sub-view so the global mini-player overlay can hide. Effect-based
-  // so the callback fires both directions without wrapping every
-  // setView call site.
+  const { sizeClass, isWide } = useSizeClass();
+  /**
+   * Master and detail, not just "has a rail". Medium keeps one column
+   * and swaps the page in; only Expanded and Desktop show both at once.
+   * Library draws the same distinction by falling through its Compact
+   * and Medium branches.
+   */
+  const masterDetail = sizeClass === 'expanded' || sizeClass === 'desktop';
+
+  const [page, setPage] = useState<YouPage>(
+    masterDetail ? YOU_DEFAULT_PAGE : 'home',
+  );
+
+  /**
+   * There is no wide You home, so arriving at — or resizing into —
+   * Expanded has to open something. Resizing the other way keeps
+   * whatever is open and lets it grow a back button, which is the less
+   * surprising half: the user loses the master, not their place.
+   */
   useEffect(() => {
-    onSubViewOpenChange?.(view !== 'home');
-  }, [view, onSubViewOpenChange]);
+    if (masterDetail && page === 'home') setPage(YOU_DEFAULT_PAGE);
+  }, [masterDetail, page]);
+
+  /**
+   * Opening a page. Above Compact this screen renders it, so the row
+   * sets local state; on Compact the shell's router handler pushes it.
+   * Same inversion as `LibraryScreen`'s master rows, which choose
+   * between filling the pane and replacing the screen on `isWide`.
+   */
+  const openPage = useCallback(
+    (next: YouPage) => () => {
+      if (isWide) {
+        setPage(next);
+        return;
+      }
+      // Compact: hand it to the shell's router. The `?? setPage`
+      // fallbacks are what made the M2 route migration additive, and
+      // they still cover a caller that mounts this screen standalone.
+      const route = {
+        home: undefined,
+        account: onAccountAndSubscription,
+        settings: onSettings,
+        reading: onReadingDisplay,
+        voice: onDefaultVoice,
+        language: onTranslationLanguage,
+        notifications: onNotifications,
+        help: onHelp,
+        feedback: onSendFeedback,
+      }[next];
+      if (route) route();
+      else setPage(next);
+    },
+    [
+      isWide,
+      onAccountAndSubscription,
+      onSettings,
+      onReadingDisplay,
+      onDefaultVoice,
+      onTranslationLanguage,
+      onNotifications,
+      onHelp,
+      onSendFeedback,
+    ],
+  );
 
   // Live preference labels for the trailing hints in the Reading
   // section. Reading the store here means the hint reflects the
@@ -256,166 +285,169 @@ export function YouScreen({
     }
   }, [onSignOut, signingOut]);
 
-  if (view === 'settings') {
-    return <SettingsScreen onBack={() => setView('home')} />;
+  /**
+   * The open page. The same components the routes mount, with `onBack`
+   * only where there is somewhere to go back to: Medium replaces home
+   * so it gets one, and above Medium the master is still beside it so
+   * it does not. Edit profile is the exception and lives inside
+   * `AccountScreen`, which keeps its own back button at every size
+   * because the master has no row for it.
+   */
+  const back = masterDetail ? undefined : () => setPage('home');
+  let pageNode: ReactNode = null;
+  switch (page) {
+    case 'home':
+      break;
+    case 'settings':
+      pageNode = (
+        <SettingsScreen
+          onBack={back}
+          onReadingDisplay={openPage('reading')}
+          onDefaultVoice={openPage('voice')}
+          onTranslationLanguage={openPage('language')}
+        />
+      );
+      break;
+    case 'reading':
+      pageNode = <ReadingDisplayScreen onBack={back} />;
+      break;
+    case 'voice':
+      pageNode = <DefaultVoiceScreen onBack={back} />;
+      break;
+    case 'language':
+      pageNode = <TranslationLanguageScreen onBack={back} />;
+      break;
+    case 'notifications':
+      pageNode = <NotificationsScreen onBack={back} />;
+      break;
+    case 'help':
+      // HelpFAQScreen (search-enabled, 30 questions across 6 sections)
+      // replaces the previous 5-question HelpScreen stub in
+      // YouDrillScreens. Same onBack contract so the navigation
+      // shape is unchanged.
+      pageNode = <HelpFAQScreen onBack={back} />;
+      break;
+    case 'feedback':
+      pageNode = <SendFeedbackScreen onBack={back} />;
+      break;
+    case 'account':
+      pageNode = (
+        <AccountScreen
+          profile={profile}
+          plan={plan}
+          onBack={back}
+          onSignOut={onSignOut}
+          onUpgrade={handleUpgrade}
+        />
+      );
+      break;
   }
-  if (view === 'reading') {
-    return <ReadingDisplayScreen onBack={() => setView('home')} />;
-  }
-  if (view === 'voice') {
-    return <DefaultVoiceScreen onBack={() => setView('home')} />;
-  }
-  if (view === 'language') {
-    return <TranslationLanguageScreen onBack={() => setView('home')} />;
-  }
-  if (view === 'notifications') {
-    return <NotificationsScreen onBack={() => setView('home')} />;
-  }
-  if (view === 'help') {
-    // HelpFAQScreen (search-enabled, 30 questions across 6 sections)
-    // replaces the previous 5-question HelpScreen stub in
-    // YouDrillScreens. Same onBack contract so the navigation
-    // shape is unchanged.
-    return <HelpFAQScreen onBack={() => setView('home')} />;
-  }
-  if (view === 'feedback') {
-    return <SendFeedbackScreen onBack={() => setView('home')} />;
-  }
-  if (view === 'account') {
-    return (
-      <AccountScreen
+
+  const home = (
+    <ScrollView
+      style={styles.scroll}
+      contentContainerStyle={styles.scrollContent}
+      showsVerticalScrollIndicator={false}
+      refreshControl={
+        onRefresh ? (
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={handlePullRefresh}
+            tintColor={tokens.colors.forest[800]}
+            colors={[tokens.colors.forest[800]]}
+          />
+        ) : undefined
+      }
+    >
+      <YouHomeBody
         profile={profile}
         plan={plan}
-        onBack={() => setView('home')}
-        onSignOut={onSignOut}
+        openPage={openPage}
+        activePage={masterDetail ? page : null}
+        onBuyCredits={() => buyCreditsRef.current?.present()}
+        onSignOut={presentSignOutSheet}
         onUpgrade={handleUpgrade}
+        onManagePlan={handleManage}
+        readingHint={liveReadingHint}
+        voiceHint={liveVoiceHint}
+        languageHint={liveLanguageHint}
+        appVersion={appVersion}
       />
+    </ScrollView>
+  );
+
+  /**
+   * Compact: the page, when one is open at all, replaces the whole
+   * screen including the tab bar — the shape the router already gives
+   * every drill-in, kept for the fallback path.
+   */
+  let stage: ReactNode;
+  if (!isWide) {
+    stage = pageNode ?? (
+      <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
+        {home}
+        <TabBar activeTab="you" onChange={onTabChange} />
+      </SafeAreaView>
+    );
+  } else if (!masterDetail) {
+    // Medium: one 600 column, centred in the content area the shell
+    // leaves beside the rail. The page swaps in for home.
+    //
+    // The safe area is applied per child, not around the stage. Every
+    // page component brings its own `SafeAreaView` — they were all
+    // top-level screens before this — and `react-native-safe-area-
+    // context` does not subtract an inset a parent already applied, so
+    // wrapping them adds the status bar twice. Measured on device: the
+    // Sub header sat 24 low. `LibraryBookPane` avoids this by having
+    // no safe area of its own; these pages cannot, because the router
+    // still mounts them bare on Compact.
+    stage = (
+      <View style={styles.stage}>
+        <View style={styles.mediumColumn}>
+          {pageNode ?? (
+            <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
+              {home}
+            </SafeAreaView>
+          )}
+        </View>
+      </View>
+    );
+  } else {
+    // Expanded and Desktop: 440 master, then the pane. The detail owns
+    // the hairline between them, matching `LibraryBookPane`, and insets
+    // its 560 column by the page gutter — which is what puts the column
+    // at 33 on Expanded and 41 on Desktop.
+    stage = (
+      <View style={styles.stage}>
+        <View style={styles.masterDetail}>
+          <SafeAreaView style={styles.master} edges={['top', 'left']}>
+            {home}
+          </SafeAreaView>
+          <View
+            style={[
+              styles.detail,
+              { paddingLeft: tokens.layout.gutter[sizeClass] },
+            ]}
+          >
+            <View style={styles.detailColumn}>{pageNode}</View>
+          </View>
+        </View>
+      </View>
     );
   }
 
   return (
     <>
-      <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
-        <ScrollView
-          style={styles.scroll}
-          contentContainerStyle={styles.scrollContent}
-          showsVerticalScrollIndicator={false}
-          refreshControl={
-            onRefresh ? (
-              <RefreshControl
-                refreshing={refreshing}
-                onRefresh={handlePullRefresh}
-                tintColor={tokens.colors.forest[800]}
-                colors={[tokens.colors.forest[800]]}
-              />
-            ) : undefined
-          }
-        >
-          <PageHeader />
-          <ProfileHeader
-            profile={profile}
-            onPress={onAccountAndSubscription ?? (() => setView('account'))}
-          />
-          <PlanCard
-            plan={plan}
-            onUpgrade={handleUpgrade}
-            onManage={handleManage}
-          />
+      {stage}
 
-          <SettingsSection label="Reading">
-            <ListRow
-              leadingIcon="TextSize"
-              label="Reading display"
-              hint={liveReadingHint}
-              drillsInto
-              onPress={onReadingDisplay ?? (() => setView('reading'))}
-            />
-            <Divider />
-            <ListRow
-              leadingIcon="Microphone"
-              label="Default voice"
-              hint={liveVoiceHint}
-              drillsInto
-              onPress={onDefaultVoice ?? (() => setView('voice'))}
-            />
-            <Divider />
-            <ListRow
-              leadingIcon="Globe"
-              label="Translation language"
-              hint={liveLanguageHint}
-              drillsInto
-              onPress={onTranslationLanguage ?? (() => setView('language'))}
-            />
-          </SettingsSection>
-
-          <SettingsSection label="Account">
-            <ListRow
-              leadingIcon="User"
-              label="Account & subscription"
-              drillsInto
-              onPress={onAccountAndSubscription ?? (() => setView('account'))}
-            />
-            <Divider />
-            <ListRow
-              leadingIcon="CreditCard"
-              label="Buy credits"
-              hint="AI + audio top-ups"
-              drillsInto
-              onPress={() => buyCreditsRef.current?.present()}
-            />
-            <Divider />
-            <ListRow
-              leadingIcon="Settings"
-              label="Settings"
-              drillsInto
-              onPress={onSettings ?? (() => setView('settings'))}
-            />
-            <Divider />
-            <ListRow
-              leadingIcon="Bell"
-              label="Notifications"
-              drillsInto
-              onPress={onNotifications ?? (() => setView('notifications'))}
-            />
-            <Divider />
-            <ListRow
-              leadingIcon="Logout"
-              label="Sign out"
-              destructive
-              onPress={presentSignOutSheet}
-            />
-          </SettingsSection>
-
-          <SettingsSection label="Support">
-            <ListRow
-              leadingIcon="HelpCircle"
-              label="Help & FAQ"
-              drillsInto
-              onPress={onHelp ?? (() => setView('help'))}
-            />
-            <Divider />
-            <ListRow
-              leadingIcon="MessageCircle"
-              label="Send feedback"
-              drillsInto
-              onPress={onSendFeedback ?? (() => setView('feedback'))}
-            />
-          </SettingsSection>
-
-          <Text variant="body-xs" color="disabled" align="center" style={styles.versionFooter}>
-            {appVersion}
-          </Text>
-        </ScrollView>
-        <TabBar activeTab="you" onChange={onTabChange} />
-      </SafeAreaView>
-
-      <BottomSheet ref={sheetRef} enablePanDownToClose={!signingOut}>
+      {/* Confirm modal (440) above Compact, sheet on the phone (§3). */}
+      <Presenter kind="confirm" ref={sheetRef} enablePanDownToClose={!signingOut}>
         <SignOutSheetBody
           onConfirm={confirmSignOut}
           onCancel={dismissSheet}
           loading={signingOut}
         />
-      </BottomSheet>
+      </Presenter>
 
       <BuyCreditsSheet
         ref={buyCreditsRef}
@@ -423,398 +455,6 @@ export function YouScreen({
       />
     </>
   );
-}
-
-// ============================================================================
-// PAGE HEADER
-// ============================================================================
-
-function PageHeader() {
-  return (
-    <View style={styles.pageHeader}>
-      <Text variant="display-md">You</Text>
-    </View>
-  );
-}
-
-// ============================================================================
-// PROFILE HEADER (tappable card)
-// ============================================================================
-
-function ProfileHeader({
-  profile,
-  onPress,
-}: {
-  profile: YouProfile;
-  onPress: () => void;
-}) {
-  const initials = getInitials(profile.name, profile.email);
-  // Mirrors AccountScreen's ProfileSection — render the avatar
-  // image when present, fall back to initials when the URL is null
-  // OR the Image element fails to load (broken signed URL, stale
-  // cache, missing object). The `console.warn` on failure tells us
-  // the exact URL that broke so we can debug the storage / RLS
-  // configuration without guessing.
-  const [avatarLoadFailed, setAvatarLoadFailed] = useState(false);
-  const showImage = !!profile.avatarUrl && !avatarLoadFailed;
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={`${profile.name}, ${profile.email}. Account and subscription`}
-      onPress={onPress}
-      style={({ pressed }) => [
-        styles.profileCard,
-        pressed && { backgroundColor: tokens.bgColors.raised },
-      ]}
-    >
-      <View style={styles.avatar}>
-        {showImage ? (
-          <Image
-            key={profile.avatarUrl ?? 'no-avatar'}
-            source={{ uri: profile.avatarUrl ?? undefined }}
-            style={styles.avatarImage}
-            resizeMode="cover"
-            onError={(e) => {
-              console.warn(
-                '[avatar/you] failed to load',
-                profile.avatarUrl,
-                e.nativeEvent?.error,
-              );
-              setAvatarLoadFailed(true);
-            }}
-            onLoad={() => setAvatarLoadFailed(false)}
-          />
-        ) : (
-          <Text style={styles.avatarText}>{initials}</Text>
-        )}
-      </View>
-      <View style={styles.profileMeta}>
-        <Text variant="heading-sm" numberOfLines={1}>
-          {profile.name}
-        </Text>
-        <Text variant="body-sm" color="muted" numberOfLines={1}>
-          {profile.email}
-        </Text>
-      </View>
-      <View style={styles.chevronCircle}>
-        <Icon name="ChevronRight" size={16} color={tokens.textColors.subtle} />
-      </View>
-    </Pressable>
-  );
-}
-
-/**
- * Up to two initials. Falls back to the first 1-2 chars of the email's
- * local part if the name is empty (e.g. a fresh signup before profile
- * is filled).
- */
-function getInitials(name: string, email: string): string {
-  const trimmed = name.trim();
-  if (trimmed) {
-    const parts = trimmed.split(/\s+/).slice(0, 2);
-    const initials = parts.map((p) => p[0]?.toUpperCase() ?? '').join('');
-    if (initials) return initials;
-  }
-  const local = email.split('@')[0] ?? '';
-  return local.slice(0, 2).toUpperCase() || '·';
-}
-
-// ============================================================================
-// PLAN CARD
-// ============================================================================
-
-function PlanCard({
-  plan,
-  onUpgrade,
-  onManage,
-}: {
-  plan: YouPlan;
-  onUpgrade: () => void;
-  onManage: () => void;
-}) {
-  // Subscribers get the richer two-section card; free users keep the
-  // compact meters + upgrade CTA.
-  if (plan.name !== 'Free') {
-    return <ProPlanCard plan={plan} onManage={onManage} />;
-  }
-
-  const audioPct = pct(plan.meters.audio.used, plan.meters.audio.total);
-  const aiPct = pct(plan.meters.aiCredits.used, plan.meters.aiCredits.total);
-  const booksPct = pct(plan.meters.books.used, plan.meters.books.total);
-
-  return (
-    <View style={styles.planCard}>
-      <View style={styles.planHeader}>
-        <Text style={styles.planLabel}>YOUR PLAN</Text>
-        <Badge kind="plan" label={plan.name} />
-      </View>
-
-      <View style={styles.meters}>
-        <Meter
-          name="Audio"
-          value={`${plan.meters.audio.used} / ${plan.meters.audio.total} min`}
-          percent={audioPct}
-        />
-        <Meter
-          name="AI credits"
-          value={`${formatTokens(plan.meters.aiCredits.used)} / ${formatTokens(
-            plan.meters.aiCredits.total,
-          )} tokens`}
-          percent={aiPct}
-        />
-        <Meter
-          name="Books"
-          value={`${plan.meters.books.used} / ${plan.meters.books.total}`}
-          percent={booksPct}
-        />
-      </View>
-
-      <TopupBalanceBlock balances={plan.balances} onDark />
-
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel="Upgrade to Standard"
-        onPress={onUpgrade}
-        style={({ pressed }) => [
-          styles.upgradeBtn,
-          pressed && { backgroundColor: tokens.colors.amber[200] },
-        ]}
-      >
-        <Icon name="Sparkles" size={14} color={tokens.colors.forest[900]} />
-        <Text style={styles.upgradeBtnLabel}>Upgrade to Standard</Text>
-      </Pressable>
-    </View>
-  );
-}
-
-// ─── Pro plan card — two-section hero design ──────────────────────────────
-
-function ProPlanCard({
-  plan,
-  onManage,
-}: {
-  plan: YouPlan;
-  onManage: () => void;
-}) {
-  const { renewalLabel, priceLabel } = useProSubscriptionDetails();
-  const renewsLine =
-    renewalLabel && priceLabel
-      ? `Renews ${renewalLabel} · ${priceLabel}`
-      : priceLabel
-        ? `Active · ${priceLabel}`
-        : renewalLabel
-          ? `Renews ${renewalLabel}`
-          : 'Active subscription';
-
-  const aiUsed = plan.meters.aiCredits.used;
-  const aiTotal = plan.meters.aiCredits.total;
-  const aiPct =
-    aiTotal > 0 && aiTotal !== Infinity
-      ? Math.min(100, (aiUsed / aiTotal) * 100)
-      : 0;
-
-  return (
-    <View style={styles.proCard}>
-      {/* Top — dark forest hero */}
-      <View style={styles.proTop}>
-        <View style={styles.proLabelRow}>
-          <Text style={styles.proEyebrow}>Your plan</Text>
-          <Badge kind="active" label="Active" />
-        </View>
-        <Text style={styles.proNameHero}>{plan.name}</Text>
-        <Text style={styles.proRenews}>{renewsLine}</Text>
-      </View>
-
-      {/* Bottom — cream usage meters */}
-      <View style={styles.proBottom}>
-        <Text style={styles.proUsageLabel}>This month</Text>
-
-        <View style={styles.proUsageRows}>
-          <ProUsageRow
-            icon={
-              <Icon name="Headphones" size={14} color={tokens.colors.ink[500]} />
-            }
-            name="Audio"
-            unlimited={plan.meters.audio.total === Infinity}
-            value={`${plan.meters.audio.used} / ${plan.meters.audio.total} min`}
-          />
-          <ProUsageRow
-            icon={
-              <Icon name="Books" size={14} color={tokens.colors.ink[500]} />
-            }
-            name="Books"
-            unlimited={plan.meters.books.total === Infinity}
-            value={`${plan.meters.books.used} / ${plan.meters.books.total}`}
-          />
-          <ProUsageRow
-            icon={
-              <Icon name="Sparkles" size={14} color={tokens.colors.ink[500]} />
-            }
-            name="AI credits"
-            value={`${formatTokens(aiUsed)} / ${formatTokens(aiTotal)}`}
-            percent={aiPct}
-            resetLabel={nextResetLabel()}
-          />
-        </View>
-
-        <TopupBalanceBlock balances={plan.balances} />
-
-        <View style={styles.proDivider} />
-
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Manage plan"
-          onPress={onManage}
-          style={({ pressed }) => [styles.manageRow, pressed && { opacity: 0.6 }]}
-        >
-          <View style={styles.manageLeft}>
-            <Icon name="Settings" size={16} color={tokens.colors.ink[500]} />
-            <Text style={styles.manageText}>Manage plan</Text>
-          </View>
-          <Icon
-            name="ChevronRight"
-            size={14}
-            color={tokens.textColors.subtle}
-          />
-        </Pressable>
-      </View>
-    </View>
-  );
-}
-
-function ProUsageRow({
-  icon,
-  name,
-  value,
-  unlimited,
-  percent,
-  resetLabel,
-}: {
-  icon: ReactNode;
-  name: string;
-  value?: string;
-  unlimited?: boolean;
-  percent?: number;
-  resetLabel?: string;
-}) {
-  return (
-    <View style={styles.proUsageRow}>
-      <View style={styles.proUsageRowTop}>
-        <View style={styles.proUsageName}>
-          {icon}
-          <Text style={styles.proUsageNameText}>{name}</Text>
-        </View>
-        {unlimited ? (
-          <Badge kind="unlimited" label="Unlimited" />
-        ) : (
-          <Text style={styles.proUsageValue}>{value}</Text>
-        )}
-      </View>
-      {percent !== undefined && (
-        <>
-          <View style={styles.proUsageTrack}>
-            <View
-              style={[
-                styles.proUsageFill,
-                { width: `${Math.max(0, Math.min(100, percent))}%` },
-              ]}
-            />
-          </View>
-          {resetLabel ? (
-            <Text style={styles.proUsageTrackLabel}>{resetLabel}</Text>
-          ) : null}
-        </>
-      )}
-    </View>
-  );
-}
-
-/** "Resets Jul 1" — the first of next month, when monthly allowances roll. */
-function nextResetLabel(): string {
-  try {
-    const d = new Date();
-    const next = new Date(d.getFullYear(), d.getMonth() + 1, 1);
-    return `Resets ${next.toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric',
-    })}`;
-  } catch {
-    return 'Resets monthly';
-  }
-}
-
-function Meter({
-  name,
-  value,
-  percent,
-}: {
-  name: string;
-  value: string;
-  percent: number;
-}) {
-  // Uniform muted-forest fill across every meter (audio / AI / books) so they
-  // read as one consistent set, rather than one bar flipping amber at ≥80%.
-  const fillColor = tokens.colors.forest[200];
-  const clamped = Math.max(0, Math.min(100, percent));
-
-  // There is deliberately no `unlimited` branch here. The free plan card
-  // is the only caller and all three of its meters have finite totals;
-  // the unlimited treatment belongs to `ProUsageRow`'s
-  // Badge kind="unlimited", which is canonical. (F-32.)
-  return (
-    <View style={styles.meterRow}>
-      <View style={styles.meterMeta}>
-        <Text style={styles.meterName}>{name}</Text>
-        <Text style={styles.meterValue}>{value}</Text>
-      </View>
-      <View style={styles.meterTrack}>
-        <View
-          style={[
-            styles.meterFill,
-            { width: `${clamped}%`, backgroundColor: fillColor },
-          ]}
-        />
-      </View>
-    </View>
-  );
-}
-
-function pct(used: number, total: number): number {
-  if (total <= 0) return 0;
-  return (used / total) * 100;
-}
-
-function formatTokens(n: number): string {
-  if (n >= 1000) {
-    const k = n / 1000;
-    return Number.isInteger(k) ? `${k}K` : `${k.toFixed(1)}K`;
-  }
-  return String(n);
-}
-
-// ============================================================================
-// SETTINGS SECTION
-// ============================================================================
-
-function SettingsSection({
-  label,
-  children,
-}: {
-  label: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <View style={styles.settingsSection}>
-      <Text variant="label-sm" color="subtle" style={styles.sectionLabel}>
-        {label}
-      </Text>
-      <View style={styles.listGroup}>{children}</View>
-    </View>
-  );
-}
-
-function Divider() {
-  return <View style={styles.divider} />;
 }
 
 // ============================================================================
@@ -852,292 +492,48 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: tokens.bgColors.canvas,
   },
+  /** The same box without a safe area — children apply their own. */
+  stage: {
+    flex: 1,
+    backgroundColor: tokens.bgColors.canvas,
+  },
   scroll: { flex: 1 },
   scrollContent: {
     paddingBottom: tokens.space.xl,
   },
-
-  // Page header
-  pageHeader: {
-    paddingHorizontal: tokens.space.lg,
-    paddingTop: tokens.space.lg,
-    paddingBottom: tokens.space.md,
-  },
-
-  // Profile header card
-  profileCard: {
-    marginHorizontal: tokens.space.lg,
-    marginBottom: tokens.space.lg,
-    backgroundColor: tokens.bgColors.surface,
-    borderRadius: tokens.radii['2xl'],
-    padding: tokens.space.lg,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: tokens.space.md,
-  },
-  avatar: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
-    backgroundColor: tokens.colors.forest[800],
-    alignItems: 'center',
-    justifyContent: 'center',
-    overflow: 'hidden',
-  },
-  avatarImage: {
-    width: 52,
-    height: 52,
-  },
-  avatarText: {
-    fontFamily: tokens.fonts.display,
-    fontSize: 20,
-    lineHeight: 24,
-    color: tokens.colors.cream[50],
-  },
-  profileMeta: {
+  /**
+   * Tablet portrait: one centred column. The frames put it at 600 in
+   * a 748 content area, i.e. 74 either side, which is what centring a
+   * 600 cap produces without naming the margin.
+   */
+  mediumColumn: {
     flex: 1,
-    minWidth: 0,
-    gap: 2,
+    width: '100%',
+    maxWidth: tokens.layout.you.medium,
+    alignSelf: 'center',
   },
-  chevronCircle: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+  masterDetail: {
+    flex: 1,
+    flexDirection: 'row',
+  },
+  master: {
+    width: tokens.layout.pane.master,
+  },
+  /**
+   * The hairline belongs to the detail, not the master — the same way
+   * `LibraryBookPane` carries its own `borderLeft`. There is no gap
+   * between the columns; the divider is the whole separation.
+   */
+  detail: {
+    flex: 1,
+    borderLeftWidth: StyleSheet.hairlineWidth,
+    borderLeftColor: tokens.borderColors.subtle,
     backgroundColor: tokens.bgColors.canvas,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
-
-  // Plan card
-  planCard: {
-    marginHorizontal: tokens.space.lg,
-    marginBottom: tokens.space.xl,
-    backgroundColor: tokens.colors.forest[800],
-    borderRadius: tokens.radii['2xl'],
-    padding: tokens.space.lg,
+  /** Left aligned after the gutter, not centred in the pane. */
+  detailColumn: {
+    flex: 1,
+    width: '100%',
+    maxWidth: tokens.layout.you.detail,
   },
-  planHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: tokens.space.md,
-  },
-  planLabel: {
-    fontFamily: tokens.fonts.uiMedium,
-    fontSize: 11,
-    lineHeight: 16,
-    fontWeight: '500',
-    letterSpacing: 0.9,
-    color: tokens.colors.forest[200],
-  },
-  meters: {
-    gap: tokens.space.md,
-    marginBottom: tokens.space.md,
-  },
-  meterRow: {
-    gap: 5,
-  },
-  meterMeta: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  meterName: {
-    fontFamily: tokens.fonts.uiMedium,
-    fontSize: 12,
-    lineHeight: 16,
-    fontWeight: '500',
-    color: tokens.colors.forest[200],
-  },
-  meterValue: {
-    fontFamily: tokens.fonts.ui,
-    fontSize: 11,
-    lineHeight: 16,
-    color: tokens.colors.forest[200],
-    opacity: 0.75,
-  },
-  meterTrack: {
-    height: 4,
-    backgroundColor: tokens.overlay.onDark.track,
-    borderRadius: 2,
-    overflow: 'hidden',
-  },
-  meterFill: {
-    height: '100%',
-    borderRadius: 2,
-  },
-  // Unlimited (Pro) meter row — no track; a chip on the right instead.
-  upgradeBtn: {
-    height: 40,
-    borderRadius: tokens.radii.md,
-    backgroundColor: tokens.colors.amber[500],
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: tokens.space.xs,
-  },
-  upgradeBtnLabel: {
-    fontFamily: tokens.fonts.uiMedium,
-    fontSize: 14,
-    lineHeight: 20,
-    fontWeight: '500',
-    color: tokens.colors.forest[900],
-  },
-
-  // ─── Pro plan card (two-section hero) ──────────────────────────────
-  proCard: {
-    marginHorizontal: tokens.space.lg,
-    marginBottom: tokens.space.xl,
-    borderRadius: tokens.radii['2xl'],
-    overflow: 'hidden',
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: tokens.colors.ink[200],
-  },
-  proTop: {
-    backgroundColor: tokens.colors.forest[800],
-    paddingHorizontal: tokens.space.lg,
-    paddingVertical: tokens.space.md,
-  },
-  proLabelRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 12,
-  },
-  proEyebrow: {
-    fontFamily: tokens.fonts.uiMedium,
-    fontSize: 10,
-    fontWeight: '500',
-    letterSpacing: 1,
-    textTransform: 'uppercase',
-    color: tokens.colors.forest[400],
-  },
-  proNameHero: {
-    fontFamily: tokens.fonts.display,
-    fontSize: 28,
-    lineHeight: 31,
-    letterSpacing: -0.5,
-    color: tokens.colors.cream[50],
-    marginBottom: 4,
-  },
-  proRenews: {
-    fontFamily: tokens.fonts.ui,
-    fontSize: 12,
-    lineHeight: 16,
-    color: tokens.colors.forest[200],
-  },
-  proBottom: {
-    backgroundColor: tokens.colors.cream[100],
-    paddingHorizontal: tokens.space.lg,
-    paddingTop: tokens.space.md,
-    paddingBottom: 18,
-  },
-  proUsageLabel: {
-    fontFamily: tokens.fonts.uiMedium,
-    fontSize: 10,
-    fontWeight: '500',
-    letterSpacing: 0.8,
-    textTransform: 'uppercase',
-    color: tokens.colors.ink[400],
-    marginBottom: 12,
-  },
-  proUsageRows: {
-    gap: 12,
-    marginBottom: 16,
-  },
-  proUsageRow: {
-    gap: 5,
-  },
-  proUsageRowTop: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  proUsageName: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 7,
-  },
-  proUsageNameText: {
-    fontFamily: tokens.fonts.uiMedium,
-    fontSize: 13,
-    fontWeight: '500',
-    color: tokens.colors.ink[700],
-  },
-  proUsageValue: {
-    fontFamily: tokens.fonts.uiMedium,
-    fontSize: 12,
-    fontWeight: '500',
-    color: tokens.colors.forest[800],
-  },
-  proUsageTrack: {
-    height: 4,
-    backgroundColor: tokens.colors.ink[100],
-    borderRadius: 2,
-    overflow: 'hidden',
-  },
-  proUsageFill: {
-    height: '100%',
-    borderRadius: 2,
-    backgroundColor: tokens.colors.forest[800],
-  },
-  proUsageTrackLabel: {
-    fontFamily: tokens.fonts.ui,
-    fontSize: 10,
-    color: tokens.colors.ink[400],
-    marginTop: 2,
-  },
-  proDivider: {
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: tokens.colors.ink[200],
-    marginBottom: 14,
-  },
-  manageRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  manageLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  manageText: {
-    fontFamily: tokens.fonts.uiMedium,
-    fontSize: 13,
-    fontWeight: '500',
-    color: tokens.colors.ink[700],
-  },
-
-  // Settings sections
-  settingsSection: {
-    marginBottom: tokens.space.xl,
-  },
-  sectionLabel: {
-    paddingHorizontal: tokens.space.lg,
-    marginBottom: tokens.space.xs,
-  },
-  listGroup: {
-    marginHorizontal: tokens.space.lg,
-    backgroundColor: tokens.bgColors.canvas,
-    borderRadius: tokens.radii.xl,
-    overflow: 'hidden',
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: tokens.borderColors.subtle,
-  },
-  divider: {
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: tokens.borderColors.subtle,
-    marginLeft: tokens.space.lg + 32 + tokens.listRow.gap,
-    // Aligns the divider with the start of row content (icon-bg width 32 +
-    // row gap), so the leading icon column reads as a continuous strip.
-  },
-
-  // Version footer
-  versionFooter: {
-    paddingTop: tokens.space.sm,
-    paddingHorizontal: tokens.space.lg,
-  },
-
-  // Sign-out sheet body
 });

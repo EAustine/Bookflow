@@ -16,9 +16,8 @@ import {
 } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Icon, Text } from '~/components';
+import { Icon, SubHeader, Text } from '~/components';
 import { tokens } from '~/design/tokens';
-import { useBackHandler } from '~/lib/useBackHandler';
 
 type FAQ = { id: string; q: string; a: string };
 type FAQSection = { id: string; title: string; faqs: FAQ[] };
@@ -213,7 +212,7 @@ const SECTIONS: FAQSection[] = [
 ];
 
 export type HelpFAQScreenProps = {
-  onBack: () => void;
+  onBack?: () => void;
   onContactSupport?: () => void;
   supportEmail?: string;
 };
@@ -223,12 +222,6 @@ export function HelpFAQScreen({
   onContactSupport,
   supportEmail = 'support@getbookflow.co',
 }: HelpFAQScreenProps) {
-  // Route Android hardware-back to the in-screen back affordance so
-  // pressing back doesn't skip past this screen and exit the app.
-  useBackHandler(() => {
-    onBack();
-    return true;
-  });
   const [query, setQuery] = useState('');
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   // Footer "support email" button: tapping it copies the address to
@@ -278,14 +271,12 @@ export function HelpFAQScreen({
 
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
-      {/* Header */}
-      <View style={styles.header}>
-        <Pressable onPress={onBack} hitSlop={8} style={styles.backBtn} accessibilityLabel="Back">
-          <Icon name="ArrowLeft" size={18} color={tokens.textColors.primary} />
-        </Pressable>
-        <Text style={styles.headerTitle}>Help & FAQ</Text>
-        <View style={styles.backBtn} />
-      </View>
+      {/* The last hand-rolled header in the flow. It was the centred
+          pattern F-30 removed everywhere else — 18px arrow, balancing
+          spacer — and survived because this screen landed after that
+          consolidation. On SubHeader as of M6, which also gets it the
+          hidden back button the wide detail pane needs. */}
+      <SubHeader title="Help & FAQ" onBack={onBack} />
 
       <ScrollView
         style={styles.scroll}
@@ -397,26 +388,6 @@ export function HelpFAQScreen({
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: tokens.bgColors.canvas },
 
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderBottomWidth: 0.5,
-    borderBottomColor: tokens.borderColors.subtle,
-  },
-  backBtn: {
-    width: 32,
-    height: 32,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  headerTitle: {
-    fontFamily: tokens.fonts.display,
-    fontSize: 16,
-    color: tokens.textColors.primary,
-  },
 
   scroll: { flex: 1 },
   scrollContent: { paddingBottom: 32 },

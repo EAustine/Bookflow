@@ -15,9 +15,8 @@ import { File as FsFile } from 'expo-file-system';
 import * as ImagePicker from 'expo-image-picker';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
-  BottomSheet,
-  type BottomSheetRef,
-  Button,
+  Presenter,
+  type PresenterRef,
   ConfirmSheetBody,
   Icon,
   ListRow,
@@ -44,7 +43,7 @@ import { PRIVACY_POLICY_URL, TERMS_OF_SERVICE_URL } from '~/lib/legalUrls';
 export type AccountScreenProps = {
   profile: YouProfile;
   plan: YouPlan;
-  onBack: () => void;
+  onBack?: () => void;
   onSignOut: () => Promise<void> | void;
   onUpgrade: () => void;
   onExportData?: () => void;
@@ -60,8 +59,8 @@ export function AccountScreen({
   onUpgrade,
   onExportData,
 }: AccountScreenProps) {
-  const signOutSheetRef = useRef<BottomSheetRef>(null);
-  const deleteSheetRef = useRef<BottomSheetRef>(null);
+  const signOutSheetRef = useRef<PresenterRef>(null);
+  const deleteSheetRef = useRef<PresenterRef>(null);
   const [signingOut, setSigningOut] = useState(false);
   const [view, setView] = useState<'home' | 'edit-profile'>('home');
   const [exporting, setExporting] = useState(false);
@@ -294,7 +293,15 @@ export function AccountScreen({
         </ScrollView>
       </SafeAreaView>
 
-      <BottomSheet ref={signOutSheetRef} enablePanDownToClose={!signingOut}>
+      {/* Both are Confirm modals (440) above Compact and sheets on the
+          phone (§3). The wide frames centre them over the whole window,
+          scrim across the rail, which is what `Presenter` already does
+          for the Library and Discover remove-book confirms. */}
+      <Presenter
+        kind="confirm"
+        ref={signOutSheetRef}
+        enablePanDownToClose={!signingOut}
+      >
         <SignOutBody
           loading={signingOut}
           onConfirm={confirmSignOut}
@@ -302,9 +309,13 @@ export function AccountScreen({
             if (!signingOut) signOutSheetRef.current?.dismiss();
           }}
         />
-      </BottomSheet>
+      </Presenter>
 
-      <BottomSheet ref={deleteSheetRef} enablePanDownToClose={!deleting}>
+      <Presenter
+        kind="confirm"
+        ref={deleteSheetRef}
+        enablePanDownToClose={!deleting}
+      >
         <DeleteAccountBody
           loading={deleting}
           onConfirm={() => void handleDeleteAccount()}
@@ -312,7 +323,7 @@ export function AccountScreen({
             if (!deleting) deleteSheetRef.current?.dismiss();
           }}
         />
-      </BottomSheet>
+      </Presenter>
     </>
   );
 }
@@ -332,6 +343,13 @@ function EditProfileScreen({
   onBack,
 }: {
   profile: YouProfile;
+  /**
+   * Required, unlike every other page in the flow. The master has no
+   * Edit profile row — the build log's "Edit profile has no row" — so
+   * above Medium this button is the only way out and the page would be
+   * a dead end without it. It returns to Account & subscription, not
+   * to You home.
+   */
   onBack: () => void;
 }) {
   // Android hardware back is handled by <SubHeader> below, which
@@ -1146,10 +1164,6 @@ function RowDivider() {
   return <View style={styles.rowDivider} />;
 }
 
-// ─── List row ─────────────────────────────────────────────────────────────────
-
-import type { IconName } from '~/components/Icon';
-
 /**
  * Account-screen list row. Visually distinct from the shared
  * `~/components/ListRow` (different prop shape, supports the
@@ -1227,16 +1241,6 @@ const styles = StyleSheet.create({
     paddingBottom: tokens.space['2xl'],
   },
 
-  // Sub-header
-  backBtn: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: tokens.bgColors.surface,
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexShrink: 0,
-  },
 
   // Profile section
   profileSection: {

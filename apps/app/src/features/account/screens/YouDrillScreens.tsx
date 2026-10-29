@@ -60,7 +60,7 @@ const THEME_OPTIONS: Array<{ id: ReaderTheme; label: string; bg: string; fg: str
   { id: 'dark', label: 'Dark', bg: '#1A1F1B', fg: '#E8E5DC' },
 ];
 
-export function ReadingDisplayScreen({ onBack }: { onBack: () => void }) {
+export function ReadingDisplayScreen({ onBack }: { onBack?: () => void }) {
   const fontFamily = useReaderStore((s) => s.fontFamily);
   const setFontFamily = useReaderStore((s) => s.setFontFamily);
   const fontSize = useReaderStore((s) => s.fontSize);
@@ -164,7 +164,7 @@ export function ReadingDisplayScreen({ onBack }: { onBack: () => void }) {
 
 // ─── Default playback speed ──────────────────────────────────────────────────
 
-export function PlaybackSpeedScreen({ onBack }: { onBack: () => void }) {
+export function PlaybackSpeedScreen({ onBack }: { onBack?: () => void }) {
   const defaultPlaybackSpeed = useReaderStore((s) => s.defaultPlaybackSpeed);
   const setDefaultPlaybackSpeed = useReaderStore(
     (s) => s.setDefaultPlaybackSpeed,
@@ -201,7 +201,7 @@ export function PlaybackSpeedScreen({ onBack }: { onBack: () => void }) {
 
 // ─── Default voice ───────────────────────────────────────────────────────────
 
-export function DefaultVoiceScreen({ onBack }: { onBack: () => void }) {
+export function DefaultVoiceScreen({ onBack }: { onBack?: () => void }) {
   const defaultVoiceId = useReaderStore((s) => s.defaultVoiceId);
   const setDefaultVoiceId = useReaderStore((s) => s.setDefaultVoiceId);
 
@@ -294,7 +294,7 @@ export function DefaultVoiceScreen({ onBack }: { onBack: () => void }) {
 
 // ─── Translation language ────────────────────────────────────────────────────
 
-export function TranslationLanguageScreen({ onBack }: { onBack: () => void }) {
+export function TranslationLanguageScreen({ onBack }: { onBack?: () => void }) {
   const translationLanguage = useReaderStore((s) => s.translationLanguage);
   const setTranslationLanguage = useReaderStore((s) => s.setTranslationLanguage);
 
@@ -344,7 +344,7 @@ export function TranslationLanguageScreen({ onBack }: { onBack: () => void }) {
  * the App root) takes care of scheduling/cancelling the OS-side
  * reminder whenever the toggle, hour, or permission changes.
  */
-export function NotificationsScreen({ onBack }: { onBack: () => void }) {
+export function NotificationsScreen({ onBack }: { onBack?: () => void }) {
   const reminder = useReaderStore((s) => s.notifReminderOn);
   const setReminder = useReaderStore((s) => s.setNotifReminderOn);
   const reminderHour = useReaderStore((s) => s.notifReminderHour);
@@ -511,7 +511,7 @@ const FAQ: Array<{ q: string; a: string }> = [
   },
 ];
 
-export function HelpScreen({ onBack }: { onBack: () => void }) {
+export function HelpScreen({ onBack }: { onBack?: () => void }) {
   const [open, setOpen] = useState<number | null>(null);
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'left', 'right', 'bottom']}>
@@ -553,7 +553,7 @@ export function HelpScreen({ onBack }: { onBack: () => void }) {
 
 // ─── Send feedback ───────────────────────────────────────────────────────────
 
-export function SendFeedbackScreen({ onBack }: { onBack: () => void }) {
+export function SendFeedbackScreen({ onBack }: { onBack?: () => void }) {
   // The whole screen is a hand-off — we don't collect feedback in
   // the app, we just surface the support email and let the user
   // reach us from wherever they normally email from. Reasons:
@@ -715,12 +715,6 @@ function ToggleRow({
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: tokens.bgColors.canvas },
-  backBtn: {
-    width: 36,
-    height: 36,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
 
   body: {
     paddingHorizontal: 16,
@@ -963,29 +957,6 @@ const styles = StyleSheet.create({
     fontFamily: tokens.fonts.ui,
     fontSize: 12,
     color: tokens.textColors.muted,
-  },
-  submitBtn: {
-    backgroundColor: tokens.colors.forest[800],
-    borderRadius: 12,
-    paddingVertical: 14,
-    alignItems: 'center',
-  },
-  submitBtnDisabled: { opacity: 0.5 },
-  submitBtnLabel: {
-    fontFamily: tokens.fonts.uiMedium,
-    fontSize: 14,
-    fontWeight: '500',
-    color: tokens.colors.cream[50],
-  },
-  errorMsg: {
-    fontFamily: tokens.fonts.ui,
-    fontSize: 13,
-    color: tokens.colors.warn,
-  },
-  successMsg: {
-    fontFamily: tokens.fonts.ui,
-    fontSize: 13,
-    color: tokens.colors.forest[700],
   },
 
   footnote: {

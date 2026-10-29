@@ -22,7 +22,7 @@ spelled out below.
 | §4 Listen | R-M4a, R-M4b | ✅ The tab in M4a; the player in M4b. Split below |
 | §4 Book detail | R-M5a | ✅ Cover left, info capped at 680, inline wrapping actions, More like this |
 | §4 Discover | R-M5b | ✅ Gutter pass, Featured card sizes with the Reading nook art, two-column results, 640 request form |
-| §4 You & Settings | R-M6 | Planned. 440 You column as master |
+| §4 You & Settings | R-M6 | ✅ 600 centred at Medium; 440 master + 560 detail above; two confirms to 440 modals |
 | §4 Monetisation | R-M7 | Planned. Buy credits Large modal, paywall |
 | §4 System states | R-M8 | Planned. Skeletons per layout, toast over content, crash in the lane |
 | §5 Components | with the flow that uses each | Library's are done; the rest land with their flow |
@@ -166,6 +166,98 @@ skeletons are local grey blocks where `Skeleton` exists — neither is a
 surface M5b rewrote. Also untouched: seven unused exports in
 `discoverApi`, two `console.log`s on the Wikisource fetch, and three
 stale comments.
+
+## R-M6 — You & Settings
+
+✅ The last of §4. **43 wide frames that are two containers:** a 600
+column centred at Medium, and the 440 master plus a 560 detail column
+above it. Every drill-in page inherits one of them, which is why this
+stayed one milestone where Listen and Discover split.
+
+- **No gutter pass.** You & Settings already used 16 everywhere and the
+  frames draw 16 everywhere — 408 in the 440 master, 568 in the 600
+  column, 528 in the 560 detail. Unlike Discover, there was nothing to
+  reconcile. The work was containers.
+- **The detail column is left aligned, not centred.** The frames put it
+  33 from the master edge on Expanded and 41 on Desktop, which is
+  `1 + gutter[sizeClass]`: a hairline plus the page gutter. The pane
+  keeps whatever is left over. The hairline belongs to the detail, the
+  way `LibraryBookPane` carries its own `borderLeft`.
+- **Reading display opens on arrival** above Medium. §8 leaves a
+  separate wide You home out on purpose because the master is always
+  visible, so something has to be open, and the build log's prototype
+  flow names it. Resizing up from a Medium home opens it; resizing down
+  keeps the open page and gives it back its back button.
+- **The rail stays on every You surface.** `railHidden` carried
+  `youSubViewOpen`, and the drill-ins are router pushes onto the root
+  stack, so a sub-page covered the whole shell. Above Compact the tab
+  now renders its pages inside the content column — the same
+  components the routes mount, with no `onBack` — and the flag is gone
+  from `SignedInShell` and `App.tsx`. It was dead anyway for seven of
+  the eight pages, because `view` stayed `'home'` when a route pushed.
+- **`ListRow` gained `active`**, the `bg/accent-muted` fill Figma draws
+  as `List row (selected)`. Its existing `selected` is a trailing
+  check — a picker answering "is this the chosen value", not a master
+  row answering "is this what you are looking at". `LibraryScreen` grew
+  its own row rather than use it; now it does not have to.
+- **`SubHeader`'s `onBack` is optional**, which is Figma's hidden
+  `backBtn` layer. Not a size-class test: it asks whether the master
+  offers a way back. **Edit profile is the exception** — it has no
+  master row, so it keeps its button at every size, and its back
+  returns to Account & subscription rather than You home.
+- **Sign out (two copies), Delete account and the notification
+  permission sheet** are now `Presenter kind="confirm"` — 440, centred
+  over the window with the scrim across the rail. The notification one
+  is §4 System states' row, pulled forward rather than left as the only
+  bottom sheet on a screen whose Sign out row already opened a modal.
+- **`HelpFAQScreen` is on `SubHeader`**, closing the last F-30 holdout.
+  It had kept the centred 18px-arrow header the consolidation removed
+  everywhere else, because it landed afterwards.
+
+Extracted to `features/account/components/`: `YouHomeBody` (one body
+for home, the Medium column and the master), `PlanCard`,
+`SettingsSection`, and the shared types to `features/account/types.ts`.
+
+**Two bugs the device found, not the typechecker:**
+
+- **Nested `SafeAreaView` double-applies the inset.** The page
+  components each bring their own — they were all top-level screens —
+  and `react-native-safe-area-context` does not subtract what a parent
+  already applied, so wrapping the stage in one put the Sub header 24
+  low. The safe area is now applied per child. `LibraryBookPane` dodges
+  this by having none of its own; these pages cannot, because the
+  router still mounts them bare on Compact.
+- **Android under-measures tracked, weighted text.** "YOUR PLAN" in the
+  plan card broke after "YOUR" at 440 and 600 but never on the phone,
+  on a card 80dp narrower — it only appears at density 160, which is
+  how the tablet widths are tested. Pinned with `flexShrink: 0` and
+  `numberOfLines`.
+
+**Carried from M6**, all recorded rather than guessed at:
+
+- **Two plan cards.** Figma uses one `Plan card` instance on both
+  surfaces, at 408 in the master and 528 in the detail. The code has
+  two different designs — You's dark forest card with meters, and
+  `AccountScreen`'s light `subCard` with an eyebrow stack, an Upgrade
+  pill and a feature list. Collapsing them means choosing one and
+  redrawing the other, which is a design call, not a layout one.
+- **Three section cards.** `SettingsSection` (You), `sectionGroup`
+  (Account) and `sectionBlock` (Settings) have label sizes 10, 11 and
+  12 against Figma's `Label/MD` at 12. The *rhythm* difference is real
+  — the frames use 24/4 above the master's labels and 18/10 above the
+  detail's — but the three label sizes are drift. Only You's moved,
+  because only You's was rebuilt.
+- **`ReminderTimePicker` is still a bottom sheet.** It appears in none
+  of the 43 frames, so there is no wide container to match it to.
+- **`BuyCreditsSheet`** stays a sheet until R-M7, which draws it as a
+  Large modal. The five native `Alert`s (clear cache, remove downloads,
+  remove profile photo) are R-M8's.
+- **`HelpScreen`** in `YouDrillScreens` is implemented, exported and
+  imported by nothing; `HelpFAQScreen` replaced it.
+
+**Not verified:** Delete account's confirm path calls the
+`delete-account` edge function against production. The modal was opened
+and cancelled at 1180; the destructive path was not run. Sign out's was.
 
 ## Follow-up: translate word pop-over content
 
