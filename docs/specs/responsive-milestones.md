@@ -23,7 +23,7 @@ spelled out below.
 | §4 Book detail | R-M5a | ✅ Cover left, info capped at 680, inline wrapping actions, More like this |
 | §4 Discover | R-M5b | ✅ Gutter pass, Featured card sizes with the Reading nook art, two-column results, 640 request form |
 | §4 You & Settings | R-M6 | ✅ 600 centred at Medium; 440 master + 560 detail above; two confirms to 440 modals |
-| §4 Monetisation | R-M7 | Planned. Buy credits Large modal, paywall |
+| §4 Monetisation | R-M7 | ✅ Buy credits as a 640 modal, Top-up balance as a You page, the banner into the column. Paywall is RevenueCat's |
 | §4 System states | R-M8 | Planned. Skeletons per layout, toast over content, crash in the lane |
 | §5 Components | with the flow that uses each | Library's are done; the rest land with their flow |
 | §6 Hover and focus | R-M9 | **Blocked on the web bundle.** See below |
@@ -40,7 +40,7 @@ with the flow that owns them.
 
 | Change | Milestone | State |
 |---|---|---|
-| Free tier, Standard $9.99 / $79, Student $4.99 | R-M7 | Pending. Code still has 60 min, 5 books, $6.99 |
+| Free tier, Standard $9.99 / $79, Student $4.99 | **its own piece of work**, split out of R-M7 | Pending. Caps (60 min, 5 books) are in the code; prices are not — they come from the store |
 | "Reading options" → "Display" on the action bar | R-M3a | ✅ Bar only; the sheet keeps its title |
 | Remove book: "Remove {title}?" + one line | R-M2b | ✅ `RemoveBookSheetBody`, both callers |
 | Book actions: no subtitles, cover or author | R-M2b | ✅ |
@@ -258,6 +258,115 @@ for home, the Medium column and the master), `PlanCard`,
 **Not verified:** Delete account's confirm path calls the
 `delete-account` edge function against production. The modal was opened
 and cancelled at 1180; the destructive path was not run. Sign out's was.
+
+## R-M7 — Monetisation
+
+✅ **27 of the 30 frames.** The other three are the Paywall, and
+Figma's own annotation on the page says why they are not code:
+
+> Every upgrade path in the app calls `presentPaywall()` →
+> `RevenueCatUI.presentPaywallIfNeeded()`. That UI is configured in the
+> RevenueCat dashboard and rendered by their SDK, it is not in this
+> repo, so there is no source of truth to replicate here.
+
+The code agrees. Both in-app paywalls were deleted in F-34 — 1,622
+lines across four files — and `SoftWarningBanner`'s own header calls
+itself "the only live paywall surface in the repo". The three frames
+are the source for `REVENUECAT_PAYWALL_BUILD_SHEET.md`, now in
+`docs/specs/`.
+
+- **Buy credits is a 640 Large modal** above Compact, through
+  `Presenter kind="task"` — the size `Modal`'s own header already named
+  buying credits as being for. The card row needed no size-class
+  branch: `cardBody` is `flex: 1` and `priceCol` does not shrink, so at
+  640 the body takes 454, the description stops wrapping and the price
+  and Buy stay right, which is what the frame draws.
+- **Its ref keeps its own type.** `present(initialKind)` takes the tab
+  to open on and `PresenterRef` is `BottomSheetRef`, whose `present`
+  takes nothing. The existing `useImperativeHandle` wrapper sets the
+  tab and delegates, so the shared contract did not move.
+- **One buy modal per tab, not five.** `TopupBalanceBlock` mounted its
+  own at each of its four call sites and `YouScreen` mounted another,
+  so a free You tab held five at once and the detail pane added two
+  more. It takes an `onBuy` now and falls back to its own sheet only
+  where no host offers one.
+- **Top-up balance is a You page**, the container M6 built. There was
+  none: "Buy credits" was the only `drillsInto` row in its group that
+  did not drill into anything, so its chevron promised a page that did
+  not exist. Figma draws the page at every size, phone included, so the
+  row now opens it everywhere and the modal is reached from inside.
+- **The soft warning banner moved into the column.**
+  `LibraryScreen.tsx` claimed "the wide branch renders its own copy,
+  inside the column" — it did not. There was one unguarded mount
+  outside every size-class branch, where `OfflineBanner` on the next
+  line was correctly gated, so on wide classes it spanned the whole
+  shell and on the phone it sat *above* the Library header, where every
+  frame including the phone's own puts it below. It renders per branch
+  now, between the header and the stats card.
+
+**One addition the frames do not draw.** `Top-up row` carries a Buy
+link only in its empty state — the frame shows one empty row and one
+full — so routing "Buy credits" to the page would strand anyone who
+already holds both balances on a page with no way to buy. Before M7
+that row opened the modal directly, so buying was always one tap. The
+page gets a "Buy more credits" button to keep it one tap. Confined to
+the new surface, so the four plan-card mounts stay exactly as drawn.
+
+**Found on device:** `Button` spreads `{...rest}` after its `style`
+prop, and `ButtonProps` extends `PressableProps`, so a caller passing
+`style` replaces the whole computed button and it renders as bare text.
+Wrapped in a `View` instead. Worth a guard on the component.
+
+**Carried from M7:**
+
+- **`Modal`'s height cap is `winH − gutter*2`** — 64 at Expanded, 80 at
+  Desktop — where every modal frame draws a flat **24 top and bottom**.
+  At Desktop that would scroll a modal the frames show fitting. The one
+  surface that reaches the cap is the Paywall, which is RevenueCat's,
+  so this is measured and written down rather than changed on the
+  strength of a frame that cannot be exercised here.
+- **The Desktop 400 web dialog** for "Upgrade coming soon" and "No
+  purchases found". Native keeps `Alert.alert` at every size, which is
+  what the 270 frames draw for Medium and Expanded. The Desktop
+  treatment is web-only and waits for R-M9.
+- **The card list at 640 was verified in a throwaway forced build.**
+  The `topups` offering is not configured in the dashboard, so
+  `getTopupPackages()` returns `[]` and the modal shows its unavailable
+  state — which did get verified live, at 640. No purchase was run.
+
+## Pricing and caps — split out of R-M7
+
+Not a layout change, so it is its own piece of work. What it has to
+cover, from the M7 census:
+
+**Prices are not in the code.** Every subscription and top-up price is
+read from the store through `product.priceString`. Changing what the
+app charges is App Store Connect, Play Console and RevenueCat offering
+work, and the app will show it the moment the store does. The only
+hardcoded price is a dead `$4.99/mo` hint on the student row, which
+opens a support email and has no product behind it.
+
+**The caps are the real job, and they are scattered.** "60 min / 5
+books / 50K credits" is not one constant: the client holds three copies
+of 60 and two of 50K, the edge functions hold their own fallbacks, and
+the SQL carries both the defaults and two stale `coalesce`s — including
+a `coalesce(audio_seconds_limit, 5400)` in `record_audio_usage` still
+carrying the retired 90-minute default, three migrations after 0025
+lowered it to 3600. The canonical `FREE_PLAN_LIMITS` is not even
+imported by the shell that feeds the plan meters, which keeps its own
+copy.
+
+**Decided, so it is not lost:** existing free users already over the
+new 2-book cap **keep their books** and simply cannot add more until
+they are under it, and **the book limit needs a server check**. Today
+it is the one cap with no server authority at all — two client-side
+gates and nothing in the edge functions or the schema, so a patched
+client or the share-extension path is unbounded.
+
+**Also found, worth fixing while in there:** Pro audio has three
+different answers in three layers — `Infinity` on the meter, 3000
+minutes in `readingStats`, and 180,000 seconds in `generate-audio`. A
+Pro user who reached 50 hours would see "Unlimited" and a hard 402.
 
 ## Follow-up: translate word pop-over content
 

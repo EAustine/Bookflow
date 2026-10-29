@@ -87,14 +87,32 @@ function formatMinutes(n: number): string {
 export function TopupBalanceBlock({
   balances,
   onDark = false,
+  onBuy,
 }: {
   balances: PurchasedBalances;
   /** True on a dark surface (the dark free plan card) → dark forest panel;
    * false on cream cards (Pro card bottom, Account) → light green panel. */
   onDark?: boolean;
+  /**
+   * Opens the buy flow, when the host already has one mounted.
+   *
+   * Without it this block mounts its own `BuyCreditsSheet`, which it
+   * did at all four of its call sites — and since the You tab mounts
+   * one of its own as well, a free user's You tab held **five** at
+   * once, with the detail pane adding two more. They cost little as
+   * bottom sheets; as Large modals they are five RN `Modal`s in one
+   * tree. Hosts that pass this own exactly one.
+   */
+  onBuy?: (kind: TopupKind) => void;
 }) {
   const buyRef = useRef<BuyCreditsSheetRef>(null);
-  const openBuy = useCallback((kind: TopupKind) => buyRef.current?.present(kind), []);
+  const openBuy = useCallback(
+    (kind: TopupKind) => {
+      if (onBuy) onBuy(kind);
+      else buyRef.current?.present(kind);
+    },
+    [onBuy],
+  );
   const c = themeColors(onDark);
 
   return (
@@ -121,10 +139,12 @@ export function TopupBalanceBlock({
           c={c}
         />
       </View>
-      <BuyCreditsSheet
-        ref={buyRef}
-        onPurchased={() => pollBalanceAfterPurchase(balances.refresh)}
-      />
+      {!onBuy && (
+        <BuyCreditsSheet
+          ref={buyRef}
+          onPurchased={() => pollBalanceAfterPurchase(balances.refresh)}
+        />
+      )}
     </View>
   );
 }

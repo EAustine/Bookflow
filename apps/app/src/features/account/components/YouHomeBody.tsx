@@ -18,6 +18,7 @@
 import { useState } from 'react';
 import { Image, Pressable, StyleSheet, View } from 'react-native';
 import { Icon, ListRow, Text } from '~/components';
+import type { TopupKind } from '~/features/billing';
 import { tokens } from '~/design/tokens';
 import type { YouPage, YouPlan, YouProfile } from '../types';
 import { PlanCard } from './PlanCard';
@@ -34,7 +35,8 @@ export type YouHomeBodyProps = {
    * alongside home.
    */
   activePage: YouPage | null;
-  onBuyCredits: () => void;
+  /** Opens the one buy modal the tab mounts. */
+  onBuyCredits: (kind?: TopupKind) => void;
   onSignOut: () => void;
   onUpgrade: () => void;
   onManagePlan: () => void;
@@ -62,7 +64,12 @@ export function YouHomeBody({
     <>
       <PageHeader />
       <ProfileHeader profile={profile} onPress={openPage('account')} />
-      <PlanCard plan={plan} onUpgrade={onUpgrade} onManage={onManagePlan} />
+      <PlanCard
+        plan={plan}
+        onUpgrade={onUpgrade}
+        onManage={onManagePlan}
+        onBuy={onBuyCredits}
+      />
 
       <SettingsSection label="Reading">
         <ListRow
@@ -107,7 +114,8 @@ export function YouHomeBody({
           label="Buy credits"
           hint="AI + audio top-ups"
           drillsInto
-          onPress={onBuyCredits}
+          active={activePage === 'topup'}
+          onPress={openPage('topup')}
         />
         <SettingsDivider />
         <ListRow

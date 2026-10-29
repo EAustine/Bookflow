@@ -7,5 +7,7 @@
 export { BuyCreditsSheet } from './screens/BuyCreditsSheet';
 export type { BuyCreditsSheetRef } from './screens/BuyCreditsSheet';
 export { TopupBalanceBlock } from './screens/TopupBalanceBlock';
+export { TopupBalancePage } from './screens/TopupBalancePage';
+export type { TopupBalancePageProps } from './screens/TopupBalancePage';
 export * from './api/revenuecat';
 export * from './api/freePlanUsage';

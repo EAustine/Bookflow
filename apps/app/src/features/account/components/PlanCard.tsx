@@ -22,7 +22,11 @@
 
 import type { ReactNode } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
-import { TopupBalanceBlock, useProSubscriptionDetails } from '~/features/billing';
+import {
+  TopupBalanceBlock,
+  useProSubscriptionDetails,
+  type TopupKind,
+} from '~/features/billing';
 import { Badge, Icon, Text } from '~/components';
 import { tokens } from '~/design/tokens';
 import type { YouPlan } from '../types';
@@ -31,13 +35,15 @@ export type PlanCardProps = {
   plan: YouPlan;
   onUpgrade: () => void;
   onManage: () => void;
+  /** Threaded to the top-up block so the tab hosts one buy modal. */
+  onBuy?: (kind: TopupKind) => void;
 };
 
-export function PlanCard({ plan, onUpgrade, onManage }: PlanCardProps) {
+export function PlanCard({ plan, onUpgrade, onManage, onBuy }: PlanCardProps) {
   // Subscribers get the richer two-section card; free users keep the
   // compact meters + upgrade CTA.
   if (plan.name !== 'Free') {
-    return <ProPlanCard plan={plan} onManage={onManage} />;
+    return <ProPlanCard plan={plan} onManage={onManage} onBuy={onBuy} />;
   }
 
   const audioPct = pct(plan.meters.audio.used, plan.meters.audio.total);
@@ -73,7 +79,7 @@ export function PlanCard({ plan, onUpgrade, onManage }: PlanCardProps) {
         />
       </View>
 
-      <TopupBalanceBlock balances={plan.balances} onDark />
+      <TopupBalanceBlock balances={plan.balances} onDark onBuy={onBuy} />
 
       <Pressable
         accessibilityRole="button"
@@ -96,9 +102,11 @@ export function PlanCard({ plan, onUpgrade, onManage }: PlanCardProps) {
 function ProPlanCard({
   plan,
   onManage,
+  onBuy,
 }: {
   plan: YouPlan;
   onManage: () => void;
+  onBuy?: (kind: TopupKind) => void;
 }) {
   const { renewalLabel, priceLabel } = useProSubscriptionDetails();
   const renewsLine =
@@ -161,7 +169,7 @@ function ProPlanCard({
           />
         </View>
 
-        <TopupBalanceBlock balances={plan.balances} />
+        <TopupBalanceBlock balances={plan.balances} onBuy={onBuy} />
 
         <View style={styles.proDivider} />
 

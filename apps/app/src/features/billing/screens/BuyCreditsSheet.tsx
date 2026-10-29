@@ -9,7 +9,7 @@ import {
 } from 'react';
 import { ActivityIndicator, Alert, Pressable, StyleSheet, View } from 'react-native';
 import type { PurchasesPackage } from 'react-native-purchases';
-import { BottomSheet, type BottomSheetRef, Icon, Text } from '~/components';
+import { Icon, Presenter, type PresenterRef, Text } from '~/components';
 import { tokens } from '~/design/tokens';
 import { toast } from '~/lib/toast';
 import { getTopupPackages, purchaseTopup, topupMetaFor, type TopupKind, type TopupMeta } from '../api/revenuecat';
@@ -81,6 +81,12 @@ function shortLabel(meta: TopupMeta): string {
   return `${meta.units >= 1000 ? `${Math.round(meta.units / 1000)}K` : meta.units} pack`;
 }
 
+/**
+ * Deliberately not `PresenterRef`. That is `BottomSheetRef`, whose
+ * `present` takes no argument, and this one needs the tab to open on —
+ * the audio "Buy" link opens the audio packs. The wrapper below sets
+ * the tab and delegates, so the shared contract stays as it is.
+ */
 export type BuyCreditsSheetRef = {
   /** Open the sheet, optionally to a specific tab ('audio' | 'ai'). */
   present: (initialKind?: TopupKind) => void;
@@ -94,7 +100,7 @@ export type BuyCreditsSheetProps = {
 
 export const BuyCreditsSheet = forwardRef<BuyCreditsSheetRef, BuyCreditsSheetProps>(
   function BuyCreditsSheet({ onPurchased }, ref) {
-  const innerRef = useRef<BottomSheetRef>(null);
+  const innerRef = useRef<PresenterRef>(null);
   useImperativeHandle(
     ref,
     () => ({
@@ -205,7 +211,15 @@ export const BuyCreditsSheet = forwardRef<BuyCreditsSheetRef, BuyCreditsSheetPro
   const selectedId = selected[tab] ?? group?.defaultId;
 
   return (
-    <BottomSheet ref={innerRef}>
+    /*
+     * A Large modal (640) above Compact, a sheet on the phone (§3).
+     * `Modal`'s own header names buying credits as what Large is for.
+     * The card row needs no size-class branch: `cardBody` is `flex: 1`
+     * and `priceCol` does not shrink, so at 640 the body takes 454, the
+     * description stops wrapping, and the price and Buy stay right —
+     * which is what the frame draws.
+     */
+    <Presenter kind="task" ref={innerRef}>
       <View style={styles.header}>
         <Text style={styles.title}>Buy credits</Text>
         <Text style={styles.sub}>
@@ -271,7 +285,7 @@ export const BuyCreditsSheet = forwardRef<BuyCreditsSheetRef, BuyCreditsSheetPro
           </Text>
         </>
       )}
-    </BottomSheet>
+    </Presenter>
   );
 });
 

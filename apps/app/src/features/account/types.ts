@@ -49,6 +49,7 @@ export type YouPage =
   | 'voice'
   | 'language'
   | 'notifications'
+  | 'topup'
   | 'help'
   | 'feedback';
 
