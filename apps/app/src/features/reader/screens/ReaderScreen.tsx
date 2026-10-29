@@ -1413,10 +1413,10 @@ export function ReaderScreen({
             No text available
           </Text>
           <Text style={[styles.notFoundBody, { color: palette.muted }]}>
-            We couldn{`’`}t extract readable text from this book — the
-            file is likely a scanned image or its processing didn{`’`}t
-            finish. You can retry now — scanned PDFs use OCR on this
-            pass{onRequestFullMode
+            We couldn{`’`}t extract readable text from this book. The
+            file is likely a scanned image, or its processing didn{`’`}t
+            finish. You can retry now (scanned PDFs use OCR on this
+            pass){onRequestFullMode
               ? ', or switch to Full mode to read the original layout.'
               : '.'}
           </Text>
@@ -1580,7 +1580,7 @@ export function ReaderScreen({
           the link and we should tell them so they don't think the
           app is broken. */}
       {isOpenSlow && (
-        <SlowNetworkBanner label="Loading this book is taking longer than usual — check your connection." />
+        <SlowNetworkBanner label="Loading this book is taking longer than usual. Check your connection." />
       )}
 
       {/* Virtualised continuous-scroll reading area. FlatList renders

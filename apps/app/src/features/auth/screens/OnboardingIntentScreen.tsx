@@ -48,19 +48,19 @@ const INTENTS: readonly IntentDef[] = [
     id: 'focus_accessibility',
     icon: 'Brain',
     label: 'Improve focus or accessibility',
-    sublabel: 'Reading is hard for me — I want it to be easier.',
+    sublabel: 'Reading is hard for me. I want it to be easier.',
   },
   {
     id: 'listen_on_the_go',
     icon: 'Headphones',
     label: 'Listen on the go',
-    sublabel: 'I want my books to come with me — commute, walks, gym.',
+    sublabel: 'I want my books to come with me: commute, walks, gym.',
   },
   {
     id: 'exploring',
     icon: 'Compass',
     label: 'Just exploring',
-    sublabel: 'Not sure yet — show me around.',
+    sublabel: 'Not sure yet. Show me around.',
   },
 ] as const;
 

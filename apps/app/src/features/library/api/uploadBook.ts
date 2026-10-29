@@ -473,7 +473,7 @@ export function useBookUpload(): UseBookUploadResult {
         failureReason: reason,
         errorMessage:
           reason === 'scanned_pdf'
-            ? "This PDF looks like scanned images — Bookflow can't extract text from it."
+            ? "This PDF looks like scanned images, so Bookflow can't extract text from it."
             : reason
             ? `Processing failed: ${reason}`
             : invokeError.message ?? 'Could not start processing.',
@@ -515,7 +515,7 @@ export function useBookUpload(): UseBookUploadResult {
         errorMessage:
           status === 'failed'
             ? reason === 'scanned_pdf'
-              ? "This PDF looks like scanned images — Bookflow can't extract text from it."
+              ? "This PDF looks like scanned images, so Bookflow can't extract text from it."
               : 'Processing failed.'
             : null,
       }));

@@ -36,7 +36,7 @@ export function SlowNetworkBanner({
         color={tokens.colors.warn}
       />
       <Text style={styles.text} numberOfLines={2}>
-        {label ?? "This is taking longer than usual — check your connection."}
+        {label ?? "This is taking longer than usual. Check your connection."}
       </Text>
       {onRetry && (
         <Pressable

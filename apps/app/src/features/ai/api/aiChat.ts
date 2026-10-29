@@ -262,7 +262,7 @@ function errorCodeToMessage(code: string): string {
     case 'book_not_processed':
       return "This book hasn't been processed yet. Long-press it in the library and tap Re-process.";
     case 'message_too_long':
-      return 'Your question is too long — try keeping it under a few sentences.';
+      return 'Your question is too long. Try keeping it under a few sentences.';
     case 'unauthorized':
       return 'You need to be signed in to chat.';
     case 'server_misconfigured':

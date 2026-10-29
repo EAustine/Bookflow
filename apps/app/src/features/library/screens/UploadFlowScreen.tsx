@@ -921,7 +921,7 @@ export function ScannedPdfErrorScreen({
 
         <Text style={scanStyles.errorTitle}>This PDF is a scanned image</Text>
         <Text style={scanStyles.errorSub}>
-          Bookflow reads text from PDFs, but this file contains scanned pages — photos of text
+          Bookflow reads text from PDFs, but this file contains scanned pages: photos of text
           that we can't extract. This is common with older or printed books.
         </Text>
 
@@ -947,7 +947,7 @@ export function ScannedPdfErrorScreen({
             num={1}
             text={
               <>
-                <Text style={scanStyles.stepTextPlain}>Convert online — paste the PDF into </Text>
+                <Text style={scanStyles.stepTextPlain}>Convert online: paste the PDF into </Text>
                 <Text style={scanStyles.stepTextBold}>Adobe Acrobat</Text>
                 <Text style={scanStyles.stepTextPlain}> or </Text>
                 <Text style={scanStyles.stepTextBold}>Smallpdf</Text>
@@ -961,10 +961,10 @@ export function ScannedPdfErrorScreen({
             num={2}
             text={
               <>
-                <Text style={scanStyles.stepTextPlain}>Find the EPUB — search for </Text>
+                <Text style={scanStyles.stepTextPlain}>Find the EPUB: search for </Text>
                 <Text style={scanStyles.stepTextBold}>"Things Fall Apart epub"</Text>
                 <Text style={scanStyles.stepTextPlain}>
-                  {' '}— publishers often offer a digital version with selectable text.
+                  {'. '}Publishers often offer a digital version with selectable text.
                 </Text>
               </>
             }
@@ -973,7 +973,7 @@ export function ScannedPdfErrorScreen({
             num={3}
             text={
               <Text style={scanStyles.stepTextPlain}>
-                Browse our free library — 200+ books are already formatted and ready to read
+                Browse our free library: 200+ books are already formatted and ready to read
                 with no upload needed.
               </Text>
             }

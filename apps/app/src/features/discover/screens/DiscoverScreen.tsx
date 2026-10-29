@@ -161,20 +161,20 @@ function fromApiBook(b: ApiBook): DiscoverBook {
                   : 'Project Gutenberg';
   const fallbackAbout =
     source === 'standardebooks'
-      ? 'Hand-typeset public-domain edition from Standard Ebooks — free to read in your library.'
+      ? 'Hand-typeset public-domain edition from Standard Ebooks, free to read in your library.'
       : source === 'openlibrary'
-        ? 'Public-domain edition via Internet Archive — free to read in your library.'
+        ? 'Public-domain edition via Internet Archive, free to read in your library.'
         : source === 'wikisource'
-          ? 'Public-domain edition via Wikisource — EPUB generated on demand from the wiki source.'
+          ? 'Public-domain edition via Wikisource, with the EPUB generated on demand from the wiki source.'
           : source === 'feedbooks'
-            ? 'Curated public-domain edition via Feedbooks — free to read in your library.'
+            ? 'Curated public-domain edition via Feedbooks, free to read in your library.'
             : source === 'manybooks'
-              ? 'Free public-domain title via ManyBooks — free to read in your library.'
+              ? 'Free public-domain title via ManyBooks, free to read in your library.'
               : source === 'doab'
-                ? 'Open-access academic book via DOAB — free to read in your library.'
+                ? 'Open-access academic book via DOAB, free to read in your library.'
                 : source === 'oapen'
-                  ? 'Open-access scholarly book via OAPEN — free to read in your library.'
-                  : 'Public-domain title from Project Gutenberg — free to read in your library.';
+                  ? 'Open-access scholarly book via OAPEN, free to read in your library.'
+                  : 'Public-domain title from Project Gutenberg, free to read in your library.';
   return {
     id: b.id,
     title: b.title,
@@ -1474,8 +1474,8 @@ function HomeView({
         <SlowNetworkBanner
           label={
             isSearchSlow
-              ? 'Searching is taking longer than usual — check your connection.'
-              : 'Loading is taking longer than usual — check your connection.'
+              ? 'Searching is taking longer than usual. Check your connection.'
+              : 'Loading is taking longer than usual. Check your connection.'
           }
         />
       )}

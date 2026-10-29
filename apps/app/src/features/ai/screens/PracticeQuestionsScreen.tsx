@@ -409,7 +409,7 @@ function ConfigScreen({
             <View style={{ flex: 1 }}>
               <Text style={styles.chapterTitle}>
                 Page {pageNum}
-                {isCurrentPage ? ' — Current page' : ''}
+                {isCurrentPage ? ' · Current page' : ''}
               </Text>
               <Text style={styles.chapterSub}>
                 Tap to change · {totalPages} pages total
@@ -744,7 +744,7 @@ function MCQBody({
             >
               {answer?.isCorrect
                 ? 'Correct!'
-                : `Incorrect — the answer is ${question.options[question.correctIdx].letter}`}
+                : `Incorrect. The answer is ${question.options[question.correctIdx].letter}`}
             </Text>
           </View>
           <Text style={styles.feedbackBody}>{question.feedback}</Text>
@@ -818,7 +818,7 @@ function ShortAnswerBody({
               <Icon name="Check" size={11} color={tokens.colors.cream[50]} />
             </View>
             <Text style={[styles.gradingVerdict, { color: C.warn }]}>
-              Mostly correct — partial credit
+              Mostly correct, partial credit
             </Text>
           </View>
 
@@ -891,7 +891,7 @@ function ResultsScreen({
         <Pressable style={styles.resultsClose} onPress={onDone} hitSlop={8}>
           <Icon name="X" size={14} color={tokens.textColors.secondary} />
         </Pressable>
-        <Text style={styles.resultsHeaderTitle}>Results — Page {pageIndex + 1}</Text>
+        <Text style={styles.resultsHeaderTitle}>Results · Page {pageIndex + 1}</Text>
         <View style={{ width: 30 }} />
       </View>
 
@@ -940,7 +940,7 @@ function ResultsScreen({
         {/* Review list */}
         {missed.length > 0 && (
           <>
-            <Text style={styles.reviewLabel}>Review — missed &amp; partial</Text>
+            <Text style={styles.reviewLabel}>Review: missed &amp; partial</Text>
             <View style={styles.reviewList}>
               {missed.map((q) => {
                 const g = q.type === 'short' ? 'partial' : 'incorrect';
@@ -1178,7 +1178,7 @@ function SegGroup({
 
 function SourceChip({ source }: { source: string }) {
   // The "Source — " prefix is this screen's copy, not Badge's business.
-  return <Badge kind="source" label={`Source — ${source}`} />;
+  return <Badge kind="source" label={`Source: ${source}`} />;
 }
 
 // ─── Styles ───────────────────────────────────────────────────────────────────

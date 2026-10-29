@@ -280,7 +280,7 @@ function HighlightRow({
 function EmptyState({ filter, totalCount }: { filter: Filter; totalCount: number }) {
   const sub =
     totalCount === 0
-      ? 'Tap a word for the dictionary, or long-press a sentence — saved items appear here.'
+      ? 'Tap a word for the dictionary, or long-press a sentence. Saved items appear here.'
       : filter === 'word'
       ? "You haven't saved any words for this book yet."
       : "You haven't saved any sentences for this book yet.";

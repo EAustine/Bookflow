@@ -99,7 +99,7 @@ export function ListenHistoryScreen({
           />
           <Text style={styles.emptyTitle}>No listening history yet</Text>
           <Text style={styles.emptySub}>
-            Tap a book from your Library and hit Listen — it&apos;ll show up here.
+            Tap a book from your Library and hit Listen, and it&apos;ll show up here.
           </Text>
         </View>
       ) : (

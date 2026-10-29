@@ -94,7 +94,7 @@ async function confirmAndDownload(book: Book, voiceId: AudioVoice): Promise<void
     body =
       `“${book.title}” is about ${est.totalMinutes} min of audio. ` +
       `${est.cachedPages} of ${est.totalPages} pages are already available, so downloading ` +
-      `generates about ${newLabel} of new narration — this uses your monthly audio allowance.`;
+      `generates about ${newLabel} of new narration. This uses your monthly audio allowance.`;
   } else {
     body =
       'This generates audio for the whole book, which uses your monthly audio allowance.';
@@ -488,7 +488,7 @@ export function LibraryScreen({
         return 'Books will appear in your library as they finish processing.';
       }
       const currentName = upload.state.fileName ?? 'this book';
-      return `Working on ${currentName} — feel free to keep going in the background.`;
+      return `Working on ${currentName}. Feel free to keep going in the background.`;
     }
     if (upload.state.phase === 'uploading') return 'Sending the file to your library.';
     if (upload.state.phase === 'processing') {

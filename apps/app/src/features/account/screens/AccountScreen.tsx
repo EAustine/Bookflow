@@ -137,7 +137,7 @@ export function AccountScreen({
     const mailto = `mailto:${email}?subject=${encodeURIComponent(
       'Student verification',
     )}&body=${encodeURIComponent(
-      "Hi Bookflow — I'd like the student rate. My school (.edu) email is: ",
+      "Hi Bookflow, I'd like the student rate. My school (.edu) email is: ",
     )}`;
     try {
       if (await Linking.canOpenURL(mailto)) {

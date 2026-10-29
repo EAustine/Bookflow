@@ -240,7 +240,7 @@ export async function scheduleDailyReadingReminder(
       identifier: DAILY_REMINDER_ID,
       content: {
         title: 'Time to read',
-        body: 'Pick up where you left off — even ten minutes counts.',
+        body: 'Pick up where you left off. Even ten minutes counts.',
         // Sound: true uses the default OS sound; iOS rejects custom
         // sounds without a separate aiff bundled in the app, which
         // isn't worth the build complexity for a reading reminder.
@@ -367,7 +367,7 @@ export async function scheduleStreakWarning(
       identifier: STREAK_WARNING_ID,
       content: {
         title: "Don't break your streak",
-        body: 'A few minutes of reading still counts — pick up where you left off.',
+        body: 'A few minutes of reading still counts, so pick up where you left off.',
         sound: true,
       },
       trigger: {
@@ -435,7 +435,7 @@ export async function fireBookReadyNotification(opts: {
     await notificationsModule.scheduleNotificationAsync({
       content: {
         title: 'Book ready to read',
-        body: `${opts.title} just finished processing — tap to open it.`,
+        body: `${opts.title} just finished processing. Tap to open it.`,
         sound: true,
         data: { bookId: opts.bookId, kind: 'book-ready' },
       },

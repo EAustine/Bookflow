@@ -531,7 +531,7 @@ export function EpubFullReaderScreen({
   return (
     <SafeAreaView style={styles.safe} edges={['left', 'right']}>
       {isSlowLoad && (
-        <SlowNetworkBanner label="Loading this book is taking longer than usual — check your connection." />
+        <SlowNetworkBanner label="Loading this book is taking longer than usual. Check your connection." />
       )}
       {/*
         The WebView used to be wrapped in a <Pressable onPress={showChrome}>
