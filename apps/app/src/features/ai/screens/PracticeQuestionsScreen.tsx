@@ -1,5 +1,7 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
+  ActivityIndicator,
+  Modal as RNModal,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -8,7 +10,13 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Badge, Icon, Presenter, Text, type BottomSheetRef } from '~/components';
+import { pageDisplayText } from '@bookflow/shared';
 import { tokens } from '~/design/tokens';
+import { useSizeClass } from '~/hooks/useSizeClass';
+// The passage and its printed label. `ai → reader` already exists for
+// `usePageLabels` in AIToolsScreen; this adds a second consumer of the
+// same barrel rather than a new edge between the features.
+import { usePage, usePageLabels } from '~/features/reader';
 import { formatNetworkError } from '~/lib/networkErrors';
 import { useBackHandler } from '~/lib/useBackHandler';
 import type { Book } from '~/types/book';
@@ -27,6 +35,11 @@ const C = {
   warnBg: tokens.colors.warnBg,
 };
 
+/** The phases that take the screen over, rather than sitting in a panel. */
+function phaseIsSession(phase: string): boolean {
+  return phase === 'quiz' || phase === 'results';
+}
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type MCQOption = { letter: string; text: string };
@@ -38,7 +51,8 @@ type MCQQuestion = {
   options: MCQOption[];
   correctIdx: number;
   feedback: string;
-  source: string;
+  /** The page the question came from, for the citation chip. */
+  sourcePageIndex: number;
 };
 
 type ShortQuestion = {
@@ -47,7 +61,8 @@ type ShortQuestion = {
   text: string;
   modelAnswer: string;
   feedback: string;
-  source: string;
+  /** The page the question came from, for the citation chip. */
+  sourcePageIndex: number;
 };
 
 type Question = MCQQuestion | ShortQuestion;
@@ -105,6 +120,12 @@ export type PracticeQuestionsScreenProps = {
    * turns into the two-column layout §4 asks for.
    */
   embedded?: boolean;
+  /**
+   * Fires when the session starts or ends, so a host that presents
+   * this in a panel can get out of the way — §4's session "takes over
+   * the screen".
+   */
+  onSessionChange?: (active: boolean) => void;
   book: Book;
   onBack: () => void;
   /**
@@ -114,7 +135,13 @@ export type PracticeQuestionsScreenProps = {
   pageIndex?: number;
 };
 
-export function PracticeQuestionsScreen({ book, onBack, pageIndex, embedded = false }: PracticeQuestionsScreenProps) {
+export function PracticeQuestionsScreen({
+  book,
+  onBack,
+  pageIndex,
+  embedded = false,
+  onSessionChange,
+}: PracticeQuestionsScreenProps) {
   // Hardware-back routes to the reader (clears aiMode in the parent)
   // rather than falling through to the reader's own useBackHandler,
   // which would otherwise take the user out to Library.
@@ -125,6 +152,10 @@ export function PracticeQuestionsScreen({ book, onBack, pageIndex, embedded = fa
   const [phase, setPhase] = useState<'config' | 'loading' | 'quiz' | 'results' | 'error'>(
     'config',
   );
+  const inSession = phaseIsSession(phase);
+  useEffect(() => {
+    onSessionChange?.(inSession);
+  }, [inSession, onSessionChange]);
   const [config, setConfig] = useState<QuizConfig>({ count: 5, qType: 'mcq', order: 'sequential' });
   const [activeQuestions, setActiveQuestions] = useState<Question[]>([]);
   // The full original question set, separate from `activeQuestions`
@@ -201,7 +232,7 @@ export function PracticeQuestionsScreen({ book, onBack, pageIndex, embedded = fa
       })),
       correctIdx: q.correctIndex,
       feedback: q.explanation,
-      source: `p. ${resolvedPageIndex + 1}`,
+      sourcePageIndex: resolvedPageIndex,
     }));
 
     if (config.order === 'random') qs = [...qs].sort(() => Math.random() - 0.5);
@@ -310,6 +341,7 @@ export function PracticeQuestionsScreen({ book, onBack, pageIndex, embedded = fa
   if (phase === 'quiz') {
     const question = activeQuestions[questionIdx];
     return (
+      <Takeover active={embedded}>
       <QuestionScreen
         key={question.id}
         book={book}
@@ -324,6 +356,7 @@ export function PracticeQuestionsScreen({ book, onBack, pageIndex, embedded = fa
         onNext={advance}
         onClose={onBack}
       />
+      </Takeover>
     );
   }
 
@@ -342,6 +375,7 @@ export function PracticeQuestionsScreen({ book, onBack, pageIndex, embedded = fa
   const pct = Math.round((rawScore / total) * 100);
 
   return (
+    <Takeover active={embedded}>
     <ResultsScreen
       book={book}
       pageIndex={resolvedPageIndex}
@@ -359,6 +393,7 @@ export function PracticeQuestionsScreen({ book, onBack, pageIndex, embedded = fa
       onRetryAll={retryAll}
       onDone={onBack}
     />
+    </Takeover>
   );
 }
 
@@ -601,6 +636,24 @@ function PagePickerBody({
   );
 }
 
+/**
+ * §4: "A practice session takes over the screen." Config lives in the
+ * reader's side panel, but once questions are running the session is
+ * not panel content — at 380 the two columns simply overflow it.
+ *
+ * So when this screen is mounted inside the panel, the session phases
+ * escape into a full-screen modal. Mounted on a phone it is already a
+ * whole screen and this does nothing.
+ */
+function Takeover({ active, children }: { active: boolean; children: ReactNode }) {
+  if (!active) return <>{children}</>;
+  return (
+    <RNModal visible animationType="fade" onRequestClose={() => {}}>
+      {children}
+    </RNModal>
+  );
+}
+
 // ─── Question screen (MCQ + short answer) ─────────────────────────────────────
 
 function QuestionScreen({
@@ -630,6 +683,51 @@ function QuestionScreen({
 }) {
   const isLast = questionIdx === total - 1;
   const isAnswered = !!answer;
+  const { sizeClass, isWide } = useSizeClass();
+  const labels = usePageLabels(book.id);
+  const sourceLabel = pageDisplayText(
+    question.sourcePageIndex,
+    labels[question.sourcePageIndex] ?? null,
+  );
+
+  // §4: two columns above Medium, stacked on Medium, and the phone
+  // keeps the single column it has always had. `twoUp` is the only
+  // thing that changes the shape; everything below is the same tree.
+  const twoUp = isWide && sizeClass !== 'medium';
+  const cols =
+    sizeClass === 'desktop'
+      ? tokens.layout.practice.desktop
+      : tokens.layout.practice.expanded;
+
+  const questionPane = (
+    <>
+      <Text style={styles.questionText}>{question.text}</Text>
+
+      {question.type === 'mcq' ? (
+        <MCQBody
+          question={question}
+          sourceLabel={sourceLabel}
+          answer={answer?.type === 'mcq' ? answer : undefined}
+          onAnswer={onAnswer}
+        />
+      ) : (
+        <ShortAnswerBody
+          question={question}
+          sourceLabel={sourceLabel}
+          answer={answer?.type === 'short' ? answer : undefined}
+          onAnswer={onAnswer}
+        />
+      )}
+
+      {isAnswered && (
+        <Pressable style={styles.nextBtn} onPress={onNext}>
+          <Text style={styles.nextBtnLabel}>
+            {isLast ? 'See results' : 'Next question'} →
+          </Text>
+        </Pressable>
+      )}
+    </>
+  );
 
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'left', 'right', 'bottom']}>
@@ -650,9 +748,14 @@ function QuestionScreen({
 
       <ScrollView
         style={styles.scroll}
-        contentContainerStyle={styles.questionBody}
+        contentContainerStyle={[
+          styles.questionBody,
+          isWide && styles.questionBodyWide,
+          isWide && sizeClass === 'medium' && styles.questionBodyMedium,
+        ]}
         showsVerticalScrollIndicator={false}
       >
+        {/* The dots span both columns, so they stay outside the row. */}
         <ProgressDots
           current={questionIdx}
           total={total}
@@ -660,31 +763,69 @@ function QuestionScreen({
           questions={activeQuestions}
         />
 
-        <Text style={styles.questionText}>{question.text}</Text>
-
-        {question.type === 'mcq' ? (
-          <MCQBody
-            question={question}
-            answer={answer?.type === 'mcq' ? answer : undefined}
-            onAnswer={onAnswer}
-          />
+        {twoUp ? (
+          <View style={[styles.sessionRow, { gap: cols.gap }]}>
+            <View style={{ width: cols.question }}>{questionPane}</View>
+            <View style={{ width: cols.source }}>
+              <SourcePane book={book} pageIndex={pageIndex} />
+            </View>
+          </View>
         ) : (
-          <ShortAnswerBody
-            question={question}
-            answer={answer?.type === 'short' ? answer : undefined}
-            onAnswer={onAnswer}
-          />
-        )}
-
-        {isAnswered && (
-          <Pressable style={styles.nextBtn} onPress={onNext}>
-            <Text style={styles.nextBtnLabel}>
-              {isLast ? 'See results' : 'Next question'} →
-            </Text>
-          </Pressable>
+          <>
+            {questionPane}
+            {isWide && <SourcePane book={book} pageIndex={pageIndex} />}
+          </>
         )}
       </ScrollView>
     </SafeAreaView>
+  );
+}
+
+/**
+ * The page the questions came from, beside the question itself.
+ *
+ * New surface: nothing in the app held this before. `PracticeQuestion`
+ * is question + options + correctIndex + explanation, and
+ * `generate-practice` reads the page content, feeds it to the model
+ * and returns none of it — so the passage is fetched here, one page,
+ * matching the one page the questions were generated from.
+ *
+ * It renders in the reading face rather than the UI face, because it
+ * is the book's words and not the app's.
+ */
+function SourcePane({ book, pageIndex }: { book: Book; pageIndex: number }) {
+  const { data: page, loading } = usePage(book.id, pageIndex);
+  const labels = usePageLabels(book.id);
+
+  const paragraphs = useMemo(() => {
+    const content = page?.content?.trim();
+    if (!content) return [];
+    return content
+      .split(/\n{2,}/)
+      .map((p) => p.trim())
+      .filter(Boolean);
+  }, [page?.content]);
+
+  return (
+    <View style={styles.sourcePane}>
+      <Text style={styles.sourceEyebrow}>
+        {`Source · ${pageDisplayText(pageIndex, labels[pageIndex] ?? null)}`}
+      </Text>
+      {loading ? (
+        <ActivityIndicator size="small" color={tokens.colors.forest[800]} />
+      ) : paragraphs.length === 0 ? (
+        // Honest about an empty page rather than showing a blank card.
+        <Text style={styles.sourceEmpty}>
+          This page has no extractable text.
+        </Text>
+      ) : (
+        paragraphs.map((para, i) => (
+          <Text key={i} style={styles.sourceParagraph}>
+            {para}
+          </Text>
+        ))
+      )}
+    </View>
   );
 }
 
@@ -692,10 +833,13 @@ function QuestionScreen({
 
 function MCQBody({
   question,
+  sourceLabel,
   answer,
   onAnswer,
 }: {
   question: MCQQuestion;
+  /** Printed page citation, computed once by the screen above. */
+  sourceLabel: string;
   answer: { type: 'mcq'; selectedIdx: number; isCorrect: boolean } | undefined;
   onAnswer: (r: AnswerRecord) => void;
 }) {
@@ -780,7 +924,7 @@ function MCQBody({
             </Text>
           </View>
           <Text style={styles.feedbackBody}>{question.feedback}</Text>
-          <SourceChip source={question.source} />
+          <SourceChip label={sourceLabel} />
         </View>
       )}
     </>
@@ -791,10 +935,13 @@ function MCQBody({
 
 function ShortAnswerBody({
   question,
+  sourceLabel,
   answer,
   onAnswer,
 }: {
   question: ShortQuestion;
+  /** Printed page citation, computed once by the screen above. */
+  sourceLabel: string;
   answer: { type: 'short'; text: string; grade: Grade } | undefined;
   onAnswer: (r: AnswerRecord) => void;
 }) {
@@ -866,7 +1013,7 @@ function ShortAnswerBody({
           <Text style={styles.modelAnswerLabel}>Model answer</Text>
           <Text style={styles.modelAnswerText}>{question.modelAnswer}</Text>
 
-          <SourceChip source={question.source} />
+          <SourceChip label={sourceLabel} />
         </View>
       )}
     </>
@@ -916,6 +1063,7 @@ function ResultsScreen({
   // capture it locally so the icons show the user's last choice
   // while the results screen is up.
   const [quality, setQuality] = useState<'up' | 'down' | null>(null);
+  const { isWide } = useSizeClass();
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'left', 'right', 'bottom']}>
       {/* Results header */}
@@ -929,7 +1077,13 @@ function ResultsScreen({
 
       <ScrollView
         style={styles.scroll}
-        contentContainerStyle={styles.resultsBody}
+        contentContainerStyle={[
+          styles.resultsBody,
+          // A centred single column at every wide size (§4 and the
+          // Expanded frame) — the session goes two-up, the results
+          // do not.
+          isWide && styles.resultsBodyWide,
+        ]}
         showsVerticalScrollIndicator={false}
       >
         {/* Score hero */}
@@ -1208,9 +1362,18 @@ function SegGroup({
   );
 }
 
-function SourceChip({ source }: { source: string }) {
-  // The "Source — " prefix is this screen's copy, not Badge's business.
-  return <Badge kind="source" label={`Source: ${source}`} />;
+/**
+ * The page citation.
+ *
+ * `label` comes from `pageDisplayText` + `usePageLabels`, the way
+ * `SummaryScreen` does it, rather than the `p. N` string this screen
+ * used to synthesise — that one ignored printed page labels, so a
+ * book whose publisher numbers its pages was cited two different ways
+ * depending on which AI tool you were in.
+ */
+function SourceChip({ label }: { label: string }) {
+  // The "Source: " prefix is this screen's copy, not Badge's business.
+  return <Badge kind="source" label={`Source: ${label}`} />;
 }
 
 // ─── Styles ───────────────────────────────────────────────────────────────────
@@ -1439,6 +1602,50 @@ const styles = StyleSheet.create({
     paddingHorizontal: 18,
     paddingTop: 14,
     paddingBottom: 24,
+  },
+  /** Centres the session, however wide the window gets. */
+  questionBodyWide: {
+    alignSelf: 'center',
+  },
+  /** Medium stacks the two and pads them off the edges. */
+  questionBodyMedium: {
+    paddingHorizontal: tokens.layout.practice.medium.paddingX,
+    gap: tokens.layout.practice.medium.gap,
+  },
+  sessionRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+  },
+  /**
+   * The passage card. It prints the book's words, so the body is the
+   * reading face rather than the UI face — `Reading/Standard` in the
+   * frame.
+   */
+  sourcePane: {
+    backgroundColor: tokens.bgColors.surface,
+    borderRadius: tokens.radii.lg,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: tokens.borderColors.subtle,
+    padding: tokens.space.xl,
+    gap: tokens.space.md,
+  },
+  sourceEyebrow: {
+    fontFamily: tokens.fonts.uiMedium,
+    fontSize: tokens.fontSizes.ui.xxxs,
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
+    color: tokens.textColors.muted,
+  },
+  sourceParagraph: {
+    fontFamily: tokens.fonts.reading,
+    fontSize: 20,
+    lineHeight: 35.6,
+    color: tokens.textColors.primary,
+  },
+  sourceEmpty: {
+    fontFamily: tokens.fonts.ui,
+    fontSize: tokens.fontSizes.ui.sm,
+    color: tokens.textColors.muted,
   },
 
   // Progress dots
@@ -1716,6 +1923,11 @@ const styles = StyleSheet.create({
   resultsBody: {
     padding: 18,
     gap: 14,
+  },
+  resultsBodyWide: {
+    width: '100%',
+    maxWidth: tokens.layout.practice.results,
+    alignSelf: 'center',
   },
   scoreHero: {
     alignItems: 'center',

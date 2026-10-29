@@ -18,7 +18,7 @@ spelled out below.
 | §4 Library (layout) | R-M2a | ✅ Medium hero + grid, 440 master + book pane, search, offline banner |
 | §4 Library (overlays) | R-M2b | ✅ Add popover, book actions menu, remove modal, 480 upload dialog |
 | §4 Reader | R-M3a | ✅ 680 measure, inline search, action bar, Reading options popover. PDF spread deferred, see below |
-| §4 AI tools | R-M3b | ✅ Slide-over on Medium, docked on Expanded and Desktop; tools list, Pages panel. Practice takeover is R-M3c |
+| §4 AI tools | R-M3b, R-M3c | ✅ Panels in M3b; the practice session takeover and the anchored word pop-over in M3c |
 | §4 Listen | R-M4 | Planned. Two-column Now playing, 680 bimodal, voice/timer/speed popovers |
 | §4 Book detail | R-M5 | Planned. Cover left, info right |
 | §4 Discover | R-M5 | Planned. Featured card sizes, two-column results, 640 request form |
@@ -48,6 +48,25 @@ with the flow that owns them.
 | Discover Refreshing spinner | R-M5 | Pending |
 | Progress ring percentage, one rounded value | R-M2b | ✅ `ProgressRing` |
 | No em dashes in any UI copy | R-M2b | ✅ App and marketing site swept |
+
+## Follow-up: translate word pop-over content
+
+R-M3c **anchored** the word pop-over over the tapped word, which is
+what the responsive brief asks for. Its *content* is still the
+dictionary lookup the app has always shown.
+
+Figma `314:14052` shows something different: an `EN → TWI` header, the
+word, its phonetic, the definition, the **translation**, and Play /
+Save, at **260** wide. That is also the prop shape of
+`features/reader/screens/TranslateWordPopover.tsx`, which is exported
+from the barrel and **has no call sites** — the live component is a
+separate, module-local `TranslatePopover` inside `ReaderScreen`.
+
+So the follow-up is: move the pop-over to that content, driven by the
+existing translation service, and delete whichever of the two
+components loses. Held separate from R-M3c because it is a content and
+data change — the pop-over would need a translation as well as a
+definition — and nothing in §7 asks for one.
 
 ## Carried, with a reason
 
