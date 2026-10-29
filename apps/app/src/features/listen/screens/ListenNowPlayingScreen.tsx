@@ -34,6 +34,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { EqBars, Icon, RecentListenRow, Text } from '~/components';
 import { tokens } from '~/design/tokens';
+import { useSizeClass } from '~/hooks/useSizeClass';
 import { peekCachedCoverUrl, resolveCoverUrl } from '~/core/bookCovers';
 import type { Speed } from './PlaybackSpeedSheet';
 
@@ -99,7 +100,6 @@ export type ListenNowPlayingScreenProps = {
   onScrubTo?: (percent: number) => void;
   onOpenSpeedSheet: () => void;
   onOpenVoiceSheet: () => void;
-  onOpenChaptersSheet: () => void;
   onOpenRecent: (id: string) => void;
   onSeeAllRecent?: () => void;
   onOpenProfile?: () => void;
@@ -128,258 +128,305 @@ export function ListenNowPlayingScreen({
   onScrubTo,
   onOpenSpeedSheet,
   onOpenVoiceSheet,
-  onOpenChaptersSheet,
   onOpenRecent,
   onSeeAllRecent,
   onOpenProfile,
 }: ListenNowPlayingScreenProps) {
+  const { sizeClass, isWide } = useSizeClass();
   const paused = state === 'paused';
   const cardBg = paused ? tokens.colors.cardPaused : tokens.colors.forest[800];
   const dimOpacity = paused ? 0.6 : 1;
+
+  // §4: "Expanded and Desktop put the player and stats on the left and
+  // Recently listened on the right." Medium stays one column, so the
+  // split is the two widest classes rather than `isWide`.
+  const twoUp = sizeClass === 'expanded' || sizeClass === 'desktop';
+  const cols = twoUp ? tokens.layout.listen[sizeClass] : null;
+
+  // Hero card — the player itself, and the left column above Medium.
+  const hero = (
+    <View style={[styles.card, { backgroundColor: cardBg }]}>
+      {/* Top row: cover + meta */}
+      <View style={styles.topRow}>
+        <View style={[styles.cover, paused && { opacity: 0.7 }]}>
+          <Text style={styles.coverText} numberOfLines={3}>
+            {bookTitle}
+          </Text>
+        </View>
+        <View style={styles.metaCol}>
+          <View
+            style={[
+              styles.badge,
+              paused && { backgroundColor: tokens.overlay.onDark.alpha[10] },
+            ]}
+          >
+            <View
+              style={[
+                styles.badgeDot,
+                paused && {
+                  backgroundColor: tokens.overlay.onDark.alpha[40],
+                },
+              ]}
+            />
+            <Text
+              style={[
+                styles.badgeLabel,
+                paused && { color: tokens.overlay.onDark.alpha[50] },
+              ]}
+            >
+              {paused ? 'Paused' : 'Now playing'}
+            </Text>
+          </View>
+          {/* Long titles (e.g. multi-volume commentaries like
+           *  "Expositions of Holy Scripture / Second Corinthians,
+           *  Galatians, and Philippians Chapters / I to End…")
+           *  used to swallow the entire hero card. Cap at 2 lines
+           *  with `numberOfLines + ellipsizeMode='tail'` so the
+           *  scrub bar and transport stay visible above the fold. */}
+          <Text
+            style={styles.title}
+            numberOfLines={2}
+            ellipsizeMode="tail"
+          >
+            {bookTitle}
+          </Text>
+          <Text style={styles.author} numberOfLines={1}>
+            {author}
+          </Text>
+          <Text style={styles.chapter} numberOfLines={1}>
+            {chapterLabel}
+          </Text>
+        </View>
+      </View>
+
+      {/* Scrub bar — draggable. While the user is dragging, we show a
+          live preview percentage so the thumb tracks their finger,
+          then commit to the audio session on release via onScrubTo.
+          The actual audio.positionSeconds is the source of truth at
+          rest; the local override only applies during a drag gesture. */}
+      <ScrubBar
+        progressPercent={progressPercent}
+        paused={paused}
+        elapsed={elapsed}
+        remaining={remaining}
+        onScrubTo={onScrubTo}
+      />
+
+      {/* Transport controls — Audible-style 5-button row:
+          | page prev | -15s | play/pause | +15s | page next |
+          Outer buttons jump pages; inner buttons nudge 15 seconds
+          within the current page; centre is play/pause. */}
+      <View style={styles.controls}>
+        <Pressable
+          onPress={onSkipBack}
+          style={[styles.skipBtn, paused && { opacity: 0.5 }]}
+          hitSlop={6}
+          accessibilityLabel="Previous page"
+        >
+          {/* Curved-arrow "skip" icon for page prev — matches the
+              "this is a chunky jump" feel users expect from a
+              page-skip control. */}
+          <Icon
+            name="PlayerSkipBack"
+            size={24}
+            color={tokens.overlay.onDark.alpha[85]}
+          />
+        </Pressable>
+
+        <Pressable
+          onPress={onRewind15}
+          style={[styles.nudgeBtn, paused && { opacity: 0.5 }]}
+          hitSlop={6}
+          accessibilityLabel="Rewind 15 seconds"
+        >
+          {/* Triangle+bar "track" icon for the 15-second nudge —
+              the textual "15" badge is gone (icon-only matches
+              the page-skip controls and keeps the row visually
+              aligned). The screen-reader label still
+              communicates the 15-second step. */}
+          <Icon
+            name="PlayerTrackPrev"
+            size={22}
+            color={tokens.overlay.onDark.alpha[85]}
+          />
+        </Pressable>
+
+        <Pressable
+          onPress={onPlayPause}
+          style={[
+            styles.playBtn,
+            paused && { backgroundColor: tokens.overlay.onDark.alpha[85] },
+          ]}
+          accessibilityRole="button"
+          accessibilityLabel={paused ? 'Play' : 'Pause'}
+        >
+          <Icon
+            name={paused ? 'Play' : 'Pause'}
+            size={22}
+            color={tokens.colors.forest[900]}
+            strokeWidth={0}
+          />
+        </Pressable>
+
+        <Pressable
+          onPress={onForward15}
+          style={[styles.nudgeBtn, paused && { opacity: 0.5 }]}
+          hitSlop={6}
+          accessibilityLabel="Forward 15 seconds"
+        >
+          <Icon
+            name="PlayerTrackNext"
+            size={22}
+            color={tokens.overlay.onDark.alpha[85]}
+          />
+        </Pressable>
+
+        <Pressable
+          onPress={onSkipForward}
+          style={[styles.skipBtn, paused && { opacity: 0.5 }]}
+          hitSlop={6}
+          accessibilityLabel="Next page"
+        >
+          <Icon
+            name="PlayerSkipForward"
+            size={24}
+            color={tokens.overlay.onDark.alpha[85]}
+          />
+        </Pressable>
+      </View>
+
+      {/* Pills — speed + voice. Chapters pill removed: pages are the
+          navigation unit (not chapters), and the prev/next page
+          buttons above already cover that. */}
+      <View style={styles.pills}>
+        <Pill
+          icon="ArrowsSort"
+          label={`${formatSpeed(speed)}×`}
+          prominent
+          onPress={onOpenSpeedSheet}
+          opacity={dimOpacity}
+        />
+        <Pill icon="Microphone" label={voice} onPress={onOpenVoiceSheet} opacity={dimOpacity} />
+      </View>
+    </View>
+  );
+
+  // Recently listened — the right column above Medium.
+  const recently = (
+    <View>
+      <View style={styles.sectionRow}>
+        <Text style={styles.sectionTitle}>Recently listened</Text>
+        {onSeeAllRecent && (
+          <Pressable onPress={onSeeAllRecent} hitSlop={6}>
+            <Text style={styles.seeAll}>See all →</Text>
+          </Pressable>
+        )}
+      </View>
+      <View style={styles.recentList}>
+        {recentlyListened.map((track, i) => {
+          const isActive = track.id === activeRecentId;
+          const isLast = i === recentlyListened.length - 1;
+          return (
+            <RecentListenRow
+              key={track.id}
+              size="compact"
+              title={track.bookTitle}
+              meta={track.meta}
+              initials={track.initials}
+              coverStoragePath={track.coverStoragePath ?? null}
+              coverColor={
+                isActive
+                  ? tokens.colors.forest[800]
+                  : (track.coverColor ?? tokens.colors.amber[500])
+              }
+              isActive={isActive}
+              isPlaying={isActive && !paused}
+              showDivider={!isLast}
+              dimCover={paused && isActive}
+              onPress={() => onOpenRecent(track.id)}
+            />
+          );
+        })}
+      </View>
+    </View>
+  );
+
+  // This month — under the player in the left column above Medium.
+  const thisMonth = (
+    <View>
+      <View style={styles.sectionRow}>
+        <Text style={styles.sectionTitle}>This month</Text>
+      </View>
+      <View style={styles.statsGrid}>
+        <StatCard
+          value={`${monthStats.listeningHours}`}
+          unit="h"
+          label="Listening time"
+          delta={monthStats.listeningHoursDelta}
+        />
+        <StatCard
+          value={`${monthStats.booksStarted}`}
+          label="Books started"
+          delta={
+            monthStats.booksFinished !== undefined
+              ? `${monthStats.booksFinished} finished`
+              : undefined
+          }
+        />
+        <StatCard
+          value={`${monthStats.audioRemainingMin}`}
+          unit="m"
+          label="Audio remaining"
+          delta={monthStats.audioResetLabel}
+          mutedDelta
+        />
+      </View>
+    </View>
+  );
 
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
       <ScrollView
         style={styles.scroll}
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={[
+          styles.scrollContent,
+          {
+            // The blocks used to carry their own horizontal inset — 18 on
+            // the cards and 22 on the section rows, which never lined up.
+            // One container padding instead, from the gutter above
+            // Compact, which is what every Listen frame draws.
+            paddingHorizontal: isWide ? tokens.layout.gutter[sizeClass] : 18,
+            gap: isWide ? tokens.space.ml : 22,
+          },
+        ]}
         showsVerticalScrollIndicator={false}
       >
         {/* Header — title only. Profile lives in the You tab, no need
             to surface a duplicate avatar here. */}
         <View style={styles.header}>
-          <Text style={styles.headerTitle}>Listen</Text>
+          <Text style={styles.headerTitle} numberOfLines={1}>
+            Listen
+          </Text>
         </View>
 
-        {/* Hero card */}
-        <View style={[styles.card, { backgroundColor: cardBg }]}>
-          {/* Top row: cover + meta */}
-          <View style={styles.topRow}>
-            <View style={[styles.cover, paused && { opacity: 0.7 }]}>
-              <Text style={styles.coverText} numberOfLines={3}>
-                {bookTitle}
-              </Text>
+        {twoUp && cols ? (
+          <View style={[styles.columns, { gap: cols.gap }]}>
+            {/* Fixed left, flexible right: the frames leave 460 inside
+                Expanded's 1044 and 476 inside Desktop's 1120, so only
+                the left needs a number. */}
+            <View style={[styles.column, { width: cols.left }]}>
+              {hero}
+              {thisMonth}
             </View>
-            <View style={styles.metaCol}>
-              <View
-                style={[
-                  styles.badge,
-                  paused && { backgroundColor: tokens.overlay.onDark.alpha[10] },
-                ]}
-              >
-                <View
-                  style={[
-                    styles.badgeDot,
-                    paused && {
-                      backgroundColor: tokens.overlay.onDark.alpha[40],
-                    },
-                  ]}
-                />
-                <Text
-                  style={[
-                    styles.badgeLabel,
-                    paused && { color: tokens.overlay.onDark.alpha[50] },
-                  ]}
-                >
-                  {paused ? 'Paused' : 'Now playing'}
-                </Text>
-              </View>
-              {/* Long titles (e.g. multi-volume commentaries like
-               *  "Expositions of Holy Scripture / Second Corinthians,
-               *  Galatians, and Philippians Chapters / I to End…")
-               *  used to swallow the entire hero card. Cap at 2 lines
-               *  with `numberOfLines + ellipsizeMode='tail'` so the
-               *  scrub bar and transport stay visible above the fold. */}
-              <Text
-                style={styles.title}
-                numberOfLines={2}
-                ellipsizeMode="tail"
-              >
-                {bookTitle}
-              </Text>
-              <Text style={styles.author} numberOfLines={1}>
-                {author}
-              </Text>
-              <Text style={styles.chapter} numberOfLines={1}>
-                {chapterLabel}
-              </Text>
-            </View>
+            <View style={styles.recentCard}>{recently}</View>
           </View>
-
-          {/* Scrub bar — draggable. While the user is dragging, we show a
-              live preview percentage so the thumb tracks their finger,
-              then commit to the audio session on release via onScrubTo.
-              The actual audio.positionSeconds is the source of truth at
-              rest; the local override only applies during a drag gesture. */}
-          <ScrubBar
-            progressPercent={progressPercent}
-            paused={paused}
-            elapsed={elapsed}
-            remaining={remaining}
-            onScrubTo={onScrubTo}
-          />
-
-          {/* Transport controls — Audible-style 5-button row:
-              | page prev | -15s | play/pause | +15s | page next |
-              Outer buttons jump pages; inner buttons nudge 15 seconds
-              within the current page; centre is play/pause. */}
-          <View style={styles.controls}>
-            <Pressable
-              onPress={onSkipBack}
-              style={[styles.skipBtn, paused && { opacity: 0.5 }]}
-              hitSlop={6}
-              accessibilityLabel="Previous page"
-            >
-              {/* Curved-arrow "skip" icon for page prev — matches the
-                  "this is a chunky jump" feel users expect from a
-                  page-skip control. */}
-              <Icon
-                name="PlayerSkipBack"
-                size={24}
-                color={tokens.overlay.onDark.alpha[85]}
-              />
-            </Pressable>
-
-            <Pressable
-              onPress={onRewind15}
-              style={[styles.nudgeBtn, paused && { opacity: 0.5 }]}
-              hitSlop={6}
-              accessibilityLabel="Rewind 15 seconds"
-            >
-              {/* Triangle+bar "track" icon for the 15-second nudge —
-                  the textual "15" badge is gone (icon-only matches
-                  the page-skip controls and keeps the row visually
-                  aligned). The screen-reader label still
-                  communicates the 15-second step. */}
-              <Icon
-                name="PlayerTrackPrev"
-                size={22}
-                color={tokens.overlay.onDark.alpha[85]}
-              />
-            </Pressable>
-
-            <Pressable
-              onPress={onPlayPause}
-              style={[
-                styles.playBtn,
-                paused && { backgroundColor: tokens.overlay.onDark.alpha[85] },
-              ]}
-              accessibilityRole="button"
-              accessibilityLabel={paused ? 'Play' : 'Pause'}
-            >
-              <Icon
-                name={paused ? 'Play' : 'Pause'}
-                size={22}
-                color={tokens.colors.forest[900]}
-                strokeWidth={0}
-              />
-            </Pressable>
-
-            <Pressable
-              onPress={onForward15}
-              style={[styles.nudgeBtn, paused && { opacity: 0.5 }]}
-              hitSlop={6}
-              accessibilityLabel="Forward 15 seconds"
-            >
-              <Icon
-                name="PlayerTrackNext"
-                size={22}
-                color={tokens.overlay.onDark.alpha[85]}
-              />
-            </Pressable>
-
-            <Pressable
-              onPress={onSkipForward}
-              style={[styles.skipBtn, paused && { opacity: 0.5 }]}
-              hitSlop={6}
-              accessibilityLabel="Next page"
-            >
-              <Icon
-                name="PlayerSkipForward"
-                size={24}
-                color={tokens.overlay.onDark.alpha[85]}
-              />
-            </Pressable>
-          </View>
-
-          {/* Pills — speed + voice. Chapters pill removed: pages are the
-              navigation unit (not chapters), and the prev/next page
-              buttons above already cover that. */}
-          <View style={styles.pills}>
-            <Pill
-              icon="ArrowsSort"
-              label={`${formatSpeed(speed)}×`}
-              prominent
-              onPress={onOpenSpeedSheet}
-              opacity={dimOpacity}
-            />
-            <Pill icon="Microphone" label={voice} onPress={onOpenVoiceSheet} opacity={dimOpacity} />
-          </View>
-        </View>
-
-        {/* Recently listened */}
-        <View style={styles.sectionRow}>
-          <Text style={styles.sectionTitle}>Recently listened</Text>
-          {onSeeAllRecent && (
-            <Pressable onPress={onSeeAllRecent} hitSlop={6}>
-              <Text style={styles.seeAll}>See all →</Text>
-            </Pressable>
-          )}
-        </View>
-        <View style={styles.recentList}>
-          {recentlyListened.map((track, i) => {
-            const isActive = track.id === activeRecentId;
-            const isLast = i === recentlyListened.length - 1;
-            return (
-              <RecentListenRow
-                key={track.id}
-                size="compact"
-                title={track.bookTitle}
-                meta={track.meta}
-                initials={track.initials}
-                coverStoragePath={track.coverStoragePath ?? null}
-                coverColor={
-                  isActive
-                    ? tokens.colors.forest[800]
-                    : (track.coverColor ?? tokens.colors.amber[500])
-                }
-                isActive={isActive}
-                isPlaying={isActive && !paused}
-                showDivider={!isLast}
-                dimCover={paused && isActive}
-                onPress={() => onOpenRecent(track.id)}
-              />
-            );
-          })}
-        </View>
-
-        {/* This month */}
-        <View style={styles.sectionRow}>
-          <Text style={styles.sectionTitle}>This month</Text>
-        </View>
-        <View style={styles.statsGrid}>
-          <StatCard
-            value={`${monthStats.listeningHours}`}
-            unit="h"
-            label="Listening time"
-            delta={monthStats.listeningHoursDelta}
-          />
-          <StatCard
-            value={`${monthStats.booksStarted}`}
-            label="Books started"
-            delta={
-              monthStats.booksFinished !== undefined
-                ? `${monthStats.booksFinished} finished`
-                : undefined
-            }
-          />
-          <StatCard
-            value={`${monthStats.audioRemainingMin}`}
-            unit="m"
-            label="Audio remaining"
-            delta={monthStats.audioResetLabel}
-            mutedDelta
-          />
-        </View>
+        ) : (
+          <>
+            {hero}
+            {recently}
+            {thisMonth}
+          </>
+        )}
       </ScrollView>
     </SafeAreaView>
   );
@@ -547,7 +594,7 @@ function Pill({
   onPress,
   opacity = 1,
 }: {
-  icon: 'ArrowsSort' | 'Microphone' | 'ListDetails';
+  icon: 'ArrowsSort' | 'Microphone';
   label: string;
   prominent?: boolean;
   onPress: () => void;
@@ -628,7 +675,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 22,
     paddingTop: 14,
     paddingBottom: 10,
   },
@@ -652,10 +698,30 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
 
+  /**
+   * The two columns above Medium. `flex-start` because the frames show
+   * the Recently listened card hugging its rows (380 tall) beside a
+   * taller left column (466), not stretching to match it.
+   */
+  columns: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+  },
+  column: {
+    gap: tokens.space.ml,
+  },
+  /** `right` on `329:2188` — surface fill, 16 radius, 16/20/8/20. */
+  recentCard: {
+    flex: 1,
+    backgroundColor: tokens.bgColors.surface,
+    borderRadius: tokens.radii['3xl'],
+    paddingTop: tokens.space.lg,
+    paddingHorizontal: tokens.space.ml,
+    paddingBottom: tokens.space.sm,
+  },
+
   // Hero card
   card: {
-    marginHorizontal: 18,
-    marginBottom: 22,
     borderRadius: 18,
     padding: 20,
   },
@@ -857,7 +923,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 22,
     marginBottom: 10,
   },
   sectionTitle: {
@@ -875,8 +940,6 @@ const styles = StyleSheet.create({
 
   // Recent list
   recentList: {
-    marginHorizontal: 18,
-    marginBottom: 22,
     borderRadius: 12,
     overflow: 'hidden',
     borderWidth: 0.5,
@@ -904,7 +967,6 @@ const styles = StyleSheet.create({
   statsGrid: {
     flexDirection: 'row',
     gap: 10,
-    marginHorizontal: 18,
   },
   statCard: {
     flex: 1,

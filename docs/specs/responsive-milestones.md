@@ -19,7 +19,7 @@ spelled out below.
 | §4 Library (overlays) | R-M2b | ✅ Add popover, book actions menu, remove modal, 480 upload dialog |
 | §4 Reader | R-M3a | ✅ 680 measure, inline search, action bar, Reading options popover. PDF spread deferred, see below |
 | §4 AI tools | R-M3b, R-M3c | ✅ Panels in M3b; the practice session takeover and the anchored word pop-over in M3c |
-| §4 Listen | R-M4 | Planned. Two-column Now playing, 680 bimodal, voice/timer/speed popovers |
+| §4 Listen | R-M4a, R-M4b | ✅ The tab in M4a; the player in M4b. Split below |
 | §4 Book detail | R-M5 | Planned. Cover left, info right |
 | §4 Discover | R-M5 | Planned. Featured card sizes, two-column results, 640 request form |
 | §4 You & Settings | R-M6 | Planned. 440 You column as master |
@@ -48,6 +48,56 @@ with the flow that owns them.
 | Discover Refreshing spinner | R-M5 | Pending |
 | Progress ring percentage, one rounded value | R-M2b | ✅ `ProgressRing` |
 | No em dashes in any UI copy | R-M2b | ✅ App and marketing site swept |
+
+## R-M4 is two milestones
+
+The brief's §4 Listen is one sentence, but the build log's Listen flow
+is eight screens across three sizes — the tab's four states, the
+foreground player, three popovers, the mini player and History. That is
+roughly twice R-M3b, so it splits the way R-M3 did.
+
+**R-M4a — the Listen tab.** ✅ Now playing as two columns above Medium
+(a fixed left of 560 / 620 and a flexible Recently listened card), one
+684 column at Medium, the Empty (440), Resume (560) and History (720)
+states centred, and the "Listen" title held to one line.
+`layout.listen` carries the frame widths.
+
+**R-M4b — the player.** Planned:
+
+- The foreground player at **680**, centred — the bimodal text on its
+  scroll content container and the bar's controls on an inner wrapper,
+  so the bar's border and fill stay full bleed.
+- **Voice, sleep timer and speed as popovers** above Compact, anchored
+  on their pills. `placePopover` already flips above a trigger with no
+  room below, which is the player bar's case, so the popovers want an
+  anchor rather than a new "centred above this node" mode. Figma draws
+  them arrowless and centred over the bar; anchoring keeps an arrow
+  pointing at the pill, which is what every other popover in the app
+  does. That divergence is deliberate.
+- **`Panel / Playback speed (compact)`** (`372:448`) as the speed
+  content: one line per speed, the name in muted text, the selected row
+  tinted with a Check. `SPEED_CATALOG` in `@bookflow/shared` already
+  carries `{ value, display, label, description }`, so this is the same
+  data with the description dropped.
+  **Figma's panel lists eight speeds ending at 3×; the code must ship
+  seven.** `PLAYBACK_SPEEDS` stops at 2× and
+  `packages/shared/src/__tests__/playback.test.ts:17` asserts 3× is
+  absent from both the store set and the catalog, because the store
+  cannot persist it. The panel's `opt/3×` row re-introduces exactly the
+  bug that test guards. Code wins.
+- **Wiring the phone's speed sheet.** Speed currently cycles in place on
+  tap on both Listen surfaces, and `PlaybackSpeedSheet` — the phone's
+  designed sheet, descriptions and all — is built but dead; only its
+  `Speed` type is imported. The build log says the phone sheet keeps its
+  descriptions while Medium and up use the compact panel, so Compact
+  gets the sheet and the cycle goes.
+- **The Desktop mini player in the side rail** (`Rail mini player`
+  `295:98`, 208 × 138: cover and title, a 2px progress line, then a
+  centred three-button transport). `SideRail` has no footer region, so
+  it gains a `footer` slot the shell fills — keeping the rail a dumb nav
+  component rather than teaching it about audio. Desktop only: the rail
+  is only `expanded` there, and the build log keeps Expanded on the
+  bottom bar.
 
 ## Follow-up: translate word pop-over content
 
@@ -102,4 +152,4 @@ same reason. Listen's own chapters are still R-M4's.
 
 **Listen's full-screen early returns** still have to become panel
 content before §3 can present them. The reader's were R-M3b's main
-body of work; Listen's are R-M4's.
+body of work; Listen's are R-M4b's.

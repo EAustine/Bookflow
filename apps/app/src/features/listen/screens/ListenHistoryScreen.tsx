@@ -24,6 +24,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Icon, RecentListenRow, Text } from '~/components';
 import { tokens } from '~/design/tokens';
+import { useSizeClass } from '~/hooks/useSizeClass';
 import { useBooks } from '~/hooks/useBooks';
 import { useAudioSession } from '../api/audioSession';
 import { useBackHandler } from '~/lib/useBackHandler';
@@ -43,6 +44,8 @@ export function ListenHistoryScreen({
   onBack,
   activeBookId,
 }: ListenHistoryScreenProps) {
+  const { sizeClass, isWide } = useSizeClass();
+
   // Hardware back returns to the Listen tab via `onBack` instead
   // of letting the gesture bubble up to the root "Press back again
   // to exit" handler. Without this the user landed on the Android
@@ -73,7 +76,12 @@ export function ListenHistoryScreen({
 
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
-      <View style={styles.header}>
+      <View
+        style={[
+          styles.header,
+          isWide && { paddingHorizontal: tokens.layout.gutter[sizeClass] },
+        ]}
+      >
         <Pressable
           onPress={onBack}
           hitSlop={8}
@@ -106,7 +114,7 @@ export function ListenHistoryScreen({
         <FlatList
           data={sorted}
           keyExtractor={(b) => b.id}
-          contentContainerStyle={styles.list}
+          contentContainerStyle={[styles.list, isWide && styles.listWide]}
           ItemSeparatorComponent={() => <View style={styles.separator} />}
           renderItem={({ item }) => {
             const isActive = item.id === activeBookId;
@@ -199,6 +207,17 @@ const styles = StyleSheet.create({
 
   list: {
     paddingVertical: 8,
+  },
+  /**
+   * `list` is 720 and centred on every wide History frame. Medium
+   * draws it at 720 inside a 748 content — 14 either side, inside the
+   * 32 gutter — so capping at 720 behind the gutter lands on 684
+   * there. Expanded and Desktop are exact.
+   */
+  listWide: {
+    width: '100%',
+    maxWidth: tokens.layout.listen.history,
+    alignSelf: 'center',
   },
   separator: {
     height: StyleSheet.hairlineWidth,
