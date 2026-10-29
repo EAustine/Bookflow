@@ -38,6 +38,88 @@ Target: `docs/ARCHITECTURE.md` · Distance to it: `docs/ARCHITECTURE_GAPS.md`
 
 ## Progress
 
+### M4a — web boot · 2026-10-29
+
+**The app exports and loads on web.** `npm run build:web` exits 0,
+`npm run test:web` asserts the Welcome screen paints at 390 and 1440
+with a clean console, and both run in CI.
+
+Two config files that the project did not have. Expo 55 needs neither
+to build native; they exist for the web bundle.
+
+**`metro.config.js`** resolves 14 native-only packages to placeholders
+on web, plus a catch-all for `react-native/Libraries/*` — those deep
+imports come from *inside* dependencies, so they cannot be caught by
+package name and a dependency added later would reintroduce the
+failure. Native resolution is untouched; the override only fires for
+`platform === 'web'`.
+
+**Placeholders throw when called, never when loaded.** A placeholder
+that throws on import is the blocker again with a better message. Each
+is a Proxy: reading a property hands back a function, and the function
+throws, so every screen still renders and only a path that genuinely
+reaches a native package fails.
+
+**Three of them no-op instead**, because §8 gives `notifications`,
+`shareIntent` and `haptics` the web implementation "no-op at launch" —
+doing nothing *is* the adapter. That is also the difference between a
+page that loads and one that does not: `SignedInShell` calls
+`installNotificationHandler()` at module evaluation time and
+`useShareIntent()` during first render. The first web load was blank
+for exactly this reason.
+
+**Billing reports "no subscription" from today.** `revenuecat.ts`'s
+`disabled` gate now includes web. It had to: the key ternary falls
+through to the *Android* key on any non-iOS platform, so `apiKey` is
+truthy on web and the app would have configured RevenueCat with a key
+that is not valid for it. The existing disabled path already makes
+configure and login no-ops and every entitlement check false, so
+sign-in and the screens behind it load — which is what R-M9 needs.
+
+### What the spike got right, and what has changed since
+
+M0 spike 2 (2026-10-22) is why this took a day rather than a week. Its
+blocker 1 is real and still required. **Blocker 2 is no longer
+present**: with the transform removed the bundle contains **zero**
+`import.meta` and the page loads clean, so the Zustand occurrence it
+traced has gone out of the dependency set.
+
+The transform ships anyway, because it was tested rather than assumed:
+
+| | `import.meta` in bundle | smoke test |
+|---|---|---|
+| probe reintroduced, no transform | 1 | **fails at both widths** |
+| probe reintroduced, transform on | 0 | passes |
+| no probe | 0 | passes |
+
+So the guard is a guard, not a formality, and the transform neutralises
+the class if a future dependency brings it back.
+
+**Metro's per-file transform cache does not invalidate on a
+`babel.config.js` change.** Found the hard way: the transform looked
+broken for two builds, including with its platform gate removed, and
+was fine the moment the cache was cleared. CI therefore builds web with
+`--clear`, with the reason written next to it — without that, a config
+edit can silently fail to apply and the bundle that ships is not the
+one the config describes.
+
+**`apps/app/dist/` had to leave the typecheck.** `tsc` blew its call
+stack on the 8.9 MB bundle the moment the export landed in the project;
+`tsconfig.json` now excludes it.
+
+### Carried from M4a
+
+- **8.9 MB.** Unchanged from the spike's measurement and still too big
+  for Ama. M4c.
+- **Auth has never had a responsive milestone.** Welcome renders at
+  1440 as a stretched phone layout — one column, full-width CTA — where
+  the build log's Phase 5 describes a split screen with a brand panel.
+  §4's frame set has nine Auth frames and no responsive milestone
+  covers them. R-M9 will be looking straight at this page.
+- `@playwright/test` is a new dependency, flagged per CLAUDE.md. It is
+  the spike's own recommendation and the only thing that makes a web
+  claim checkable.
+
 ### Responsive M8 — System states · 2026-10-29
 
 30 wide frames, four surfaces. Six of §4's ten System rows had already
