@@ -26,7 +26,7 @@ import {
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
-  BottomSheet,
+  Presenter,
   ModeTogglePill,
   type BottomSheetRef,
   type ReaderMode,
@@ -53,7 +53,7 @@ import { supabase } from '~/lib/supabase';
 import { useReadingSession } from '../api/readingSessions';
 import { saveHighlight, useBookHighlights, type Highlight } from '../api/highlights';
 import { HighlightsScreen } from './HighlightsScreen';
-import { BookSearchScreen } from '~/features/library';
+import { HighlightedText, InReaderSearchHeader } from './InReaderSearchHeader';
 import {
   TRANSLATION_LANGUAGE_LABELS,
   type ReaderFontFamily,
@@ -511,8 +511,25 @@ export function ReaderScreen({
   const [selectedSentence, setSelectedSentence] = useState<string | null>(null);
   const [aiMode, setAIMode] = useState<'summary' | 'chat' | 'practice' | 'translate' | null>(null);
   const [showHighlights, setShowHighlights] = useState(false);
-  const [showSearch, setShowSearch] = useState(false);
   const typoSheetRef = useRef<BottomSheetRef>(null);
+  // The Display action in the bottom bar. The reading-options popover
+  // anchors to it above Compact; on a phone it stays a sheet and the
+  // ref is unused.
+  const displayAnchorRef = useRef<View>(null);
+
+  /**
+   * In-chapter search (§4: "search stays inline — the search header
+   * replaces the reader header, and matches highlight in the page").
+   *
+   * This replaced text mode's whole-book `BookSearchScreen` route,
+   * which had no caller left once the Search action opened the header
+   * instead. Full-mode PDF and EPUB still open that screen, because
+   * neither can paint a highlight into its own content.
+   */
+  const [inlineSearch, setInlineSearch] = useState(false);
+  const [inlineQuery, setInlineQuery] = useState('');
+  const [matchIndex, setMatchIndex] = useState(0);
+
   // Chapter / page sheet was removed from the chrome — pages are
   // navigated by swipe and the page counter at top right; per the
   // chapters→pages refactor, chapters no longer have a list UI.
@@ -1166,6 +1183,75 @@ export function ReaderScreen({
     restorePassesRef.current = 0;
     seekToPage(idx);
   }, [seekToPage]);
+  /**
+   * The pages of the chapter the reader is currently in. Chapter
+   * identity is the derived title, because that is the only chapter
+   * marker a `pages` row carries. `allPages` is already in memory —
+   * the reader bulk-fetches every page up front — so this is a filter,
+   * not a query.
+   */
+  const chapterScope = useMemo(() => {
+    const current = pageContentMap.get(pageIndex);
+    if (!current) return { pages: [] as PageRow[], label: '' };
+    const title = deriveChapter(current).title;
+    const pages = allPages
+      .filter((row) => deriveChapter(row).title === title)
+      .sort((a, b) => a.page_index - b.page_index);
+    // A book whose pages carry no chapter title gives every page the
+    // same empty title, so "this chapter" is really the whole book.
+    // Say so rather than labelling the scope with nothing — the count
+    // bar is the only place the user learns what was searched.
+    return { pages, label: title || 'Whole book' };
+  }, [allPages, pageContentMap, pageIndex]);
+
+  /**
+   * Where every match lives. `offsets` maps a page index to the number
+   * of matches that come before it in the chapter, which is what lets
+   * a page highlight its own matches with the right global numbering
+   * without knowing about the pages around it.
+   */
+  const searchMatches = useMemo(() => {
+    const q = inlineQuery.trim().toLowerCase();
+    if (!q) return { total: 0, offsets: new Map<number, number>(), pages: [] as number[] };
+    const offsets = new Map<number, number>();
+    const pages: number[] = [];
+    let total = 0;
+    for (const row of chapterScope.pages) {
+      offsets.set(row.page_index, total);
+      let inPage = 0;
+      for (const para of deriveChapter(row).paragraphs) {
+        const lower = para.toLowerCase();
+        let at = lower.indexOf(q);
+        while (at !== -1) {
+          inPage += 1;
+          at = lower.indexOf(q, at + q.length);
+        }
+      }
+      for (let k = 0; k < inPage; k++) pages.push(row.page_index);
+      total += inPage;
+    }
+    return { total, offsets, pages };
+  }, [inlineQuery, chapterScope]);
+
+  // Stepping a match scrolls to the page holding it. Wraps at both
+  // ends, which is what every reader's find bar does.
+  const stepMatch = useCallback(
+    (delta: number) => {
+      const { total, pages } = searchMatches;
+      if (total === 0) return;
+      const next = (matchIndex + delta + total) % total;
+      setMatchIndex(next);
+      const target = pages[next];
+      if (target != null && target !== pageIndexRef.current) jumpToPage(target);
+    },
+    [searchMatches, matchIndex, jumpToPage],
+  );
+
+  const closeInlineSearch = useCallback(() => {
+    setInlineSearch(false);
+    setInlineQuery('');
+    setMatchIndex(0);
+  }, []);
 
   // Persist the page-change immediately so reopening lands on the
   // right page even if the user closes the reader before scrolling
@@ -1524,21 +1610,6 @@ export function ReaderScreen({
       />
     );
   }
-  if (showSearch) {
-    return (
-      <BookSearchScreen
-        book={book}
-        onClose={() =>
-          closeOverlayPreservingPosition(() => setShowSearch(false))
-        }
-        onJumpToPage={(idx) => {
-          jumpToPage(idx);
-          setShowSearch(false);
-        }}
-      />
-    );
-  }
-
   return (
     <SafeAreaView
       style={[styles.safe, { backgroundColor: palette.bg }]}
@@ -1553,6 +1624,25 @@ export function ReaderScreen({
       <Animated.View
         style={[{ opacity: chromeOpacity, paddingTop: insets.top }]}
       >
+        {inlineSearch ? (
+          <InReaderSearchHeader
+            query={inlineQuery}
+            onChangeQuery={(q) => {
+              setInlineQuery(q);
+              setMatchIndex(0);
+            }}
+            onCancel={closeInlineSearch}
+            onClear={() => {
+              setInlineQuery('');
+              setMatchIndex(0);
+            }}
+            resultCount={searchMatches.total}
+            activeIndex={matchIndex}
+            chapterLabel={chapterScope.label}
+            onPrev={() => stepMatch(-1)}
+            onNext={() => stepMatch(1)}
+          />
+        ) : (
         <ReaderHeader
           book={book}
           palette={palette}
@@ -1571,6 +1661,7 @@ export function ReaderScreen({
           }}
           pointerEvents={autoHide && !chromeVisible ? 'none' : 'auto'}
         />
+        )}
       </Animated.View>
 
       {/* Slow-network banner. Shown when the bulk page fetch has
@@ -1637,6 +1728,9 @@ export function ReaderScreen({
               palette={palette}
               readingFont={readingFont}
               fontSize={fontSize}
+              searchQuery={inlineSearch ? inlineQuery : ''}
+              activeMatchIndex={matchIndex}
+              matchOffset={searchMatches.offsets.get(item.page_index) ?? 0}
               tappedWord={tappedWord}
               selectedSentence={selectedSentence}
               onWordPress={handleWordPress}
@@ -1872,8 +1966,15 @@ export function ReaderScreen({
           onListen={onListen}
           onAITools={() => aiSheetRef.current?.present()}
           onReadingOptions={() => typoSheetRef.current?.present()}
+          displayAnchorRef={displayAnchorRef}
           onHighlights={() => setShowHighlights(true)}
-          onSearch={() => setShowSearch(true)}
+          onSearch={() => {
+            // Text mode searches in place (§4). Full mode still opens
+            // the whole-book screen, because neither the PDF view nor
+            // the EPUB WebView can paint a highlight into its content.
+            setMatchIndex(0);
+            setInlineSearch(true);
+          }}
           pointerEvents={autoHide && !chromeVisible ? 'none' : 'auto'}
         />
       </Animated.View>
@@ -1929,7 +2030,7 @@ export function ReaderScreen({
       />
 
       {/* Typography sheet */}
-      <BottomSheet ref={typoSheetRef}>
+      <Presenter kind="menu" anchorRef={displayAnchorRef} ref={typoSheetRef}>
         <TypographySheet
           preset={preset}
           fontSize={fontSize}
@@ -1943,7 +2044,7 @@ export function ReaderScreen({
           onAutoHide={setAutoHide}
           onReset={reset}
         />
-      </BottomSheet>
+      </Presenter>
 
       {/* Sentence translate sheet */}
       <SentenceTranslateSheet
@@ -2190,6 +2291,16 @@ type PageSectionProps = {
   palette: (typeof THEME)[ReaderTheme];
   readingFont: string;
   fontSize: number;
+  /**
+   * The in-chapter search, when one is running. Empty means no
+   * search, which is also how the page decides whether to render
+   * tappable words or highlighted matches.
+   */
+  searchQuery: string;
+  /** Which match is active, numbered across the whole chapter. */
+  activeMatchIndex: number;
+  /** How many matches precede this page, so the two numbers agree. */
+  matchOffset: number;
   tappedWord: string | null;
   selectedSentence: string | null;
   onWordPress: (word: string) => void;
@@ -2258,6 +2369,9 @@ const PageSection = memo(function PageSection({
   palette,
   readingFont,
   fontSize,
+  searchQuery,
+  activeMatchIndex,
+  matchOffset,
   tappedWord,
   selectedSentence,
   onWordPress,
@@ -2274,6 +2388,28 @@ const PageSection = memo(function PageSection({
   // shows real text, which is the whole point of the refactor.
   const loading = dbPage === null;
   const ch = useMemo(() => (dbPage ? deriveChapter(dbPage) : null), [dbPage]);
+
+  /**
+   * Matches before each paragraph, within this page. Added to the
+   * page's own offset it gives each paragraph the chapter-wide
+   * numbering `HighlightedText` needs to know which match is active.
+   */
+  const paraMatchCounts = useMemo(() => {
+    if (!searchQuery || !ch) return [];
+    const q = searchQuery.toLowerCase();
+    const counts: number[] = [];
+    let running = 0;
+    for (const para of ch.paragraphs) {
+      counts.push(running);
+      const lower = para.toLowerCase();
+      let at = lower.indexOf(q);
+      while (at !== -1) {
+        running += 1;
+        at = lower.indexOf(q, at + q.length);
+      }
+    }
+    return counts;
+  }, [searchQuery, ch]);
 
   // Memoised style object passed down to each TappableParagraph.
   // Without this, a fresh inline object on every PageSection render
@@ -2382,6 +2518,28 @@ const PageSection = memo(function PageSection({
             const imgPath = parseImageMarker(para);
             if (imgPath) {
               return <ChapterImage key={i} storagePath={imgPath} />;
+            }
+            // While a search is running the paragraph renders its
+            // matches instead of its tappable words. The two cannot
+            // compose: `TappableParagraph` already splits the text
+            // into per-word spans for the dictionary, and threading a
+            // second span layer through it would mean reworking the
+            // hottest memo in the reader. Swapping the component is
+            // also the honest behaviour — mid-search you are
+            // navigating, not looking words up — and cancelling
+            // search puts the tappable words straight back.
+            if (searchQuery) {
+              const before = paraMatchCounts[i] ?? 0;
+              return (
+                <HighlightedText
+                  key={i}
+                  text={para}
+                  query={searchQuery}
+                  activeIndex={activeMatchIndex}
+                  globalMatchOffset={matchOffset + before}
+                  textStyle={paragraphStyle}
+                />
+              );
             }
             return (
               <TappableParagraph
@@ -2820,6 +2978,7 @@ function ActionBar({
   onListen,
   onAITools,
   onReadingOptions,
+  displayAnchorRef,
   onHighlights,
   onSearch,
   pointerEvents,
@@ -2828,20 +2987,27 @@ function ActionBar({
   onListen?: () => void;
   onAITools?: () => void;
   onReadingOptions?: () => void;
+  /** The Display action, which the reading-options popover anchors to. */
+  displayAnchorRef?: React.RefObject<View | null>;
   onHighlights?: () => void;
   onSearch?: () => void;
   pointerEvents?: 'none' | 'auto';
 }) {
   // Five actions across the bottom: Listen / AI tools / Search /
-  // Highlights / Reading options. Search joined this row so the top
-  // chrome stays minimal (back + title + mode pill); it's a frequent
-  // enough action to live alongside Listen.
+  // Highlights / Display. Search joined this row so the top chrome
+  // stays minimal (back + title + mode pill); it's a frequent enough
+  // action to live alongside Listen.
+  //
+  // §7 renamed the last one from "Reading options" to "Display" on
+  // the bar *only* — the sheet and popover it opens are still titled
+  // "Reading options". The rename is what lets all five labels sit on
+  // one line in a five-up row on a phone.
   const ACTIONS = [
-    { icon: 'Headphones' as const, label: 'Listen',          primary: true,  onPress: onListen },
-    { icon: 'Wand' as const,       label: 'AI tools',        primary: false, onPress: onAITools },
-    { icon: 'Search' as const,     label: 'Search',          primary: false, onPress: onSearch },
-    { icon: 'Notebook' as const,   label: 'Highlights',      primary: false, onPress: onHighlights },
-    { icon: 'Settings' as const,   label: 'Reading options', primary: false, onPress: onReadingOptions },
+    { icon: 'Headphones' as const, label: 'Listen',     primary: true,  onPress: onListen },
+    { icon: 'Wand' as const,       label: 'AI tools',   primary: false, onPress: onAITools },
+    { icon: 'Search' as const,     label: 'Search',     primary: false, onPress: onSearch },
+    { icon: 'Notebook' as const,   label: 'Highlights', primary: false, onPress: onHighlights },
+    { icon: 'Settings' as const,   label: 'Display',    primary: false, onPress: onReadingOptions, anchor: true },
   ];
 
   return (
@@ -2849,9 +3015,18 @@ function ActionBar({
       style={[styles.actionBar, { borderTopColor: palette.border, backgroundColor: palette.actionBg }]}
       pointerEvents={pointerEvents}
     >
-      {ACTIONS.map(({ icon, label, primary, onPress }) => (
+      {/*
+        The row of actions is capped at the reading measure and centred
+        so it sits under the page column. The bar's background and top
+        border stay full-bleed — only the five items are constrained.
+        Without this, `space-around` strands them across a 1440 window
+        while the text they act on is 680 wide.
+      */}
+      <View style={styles.actionBarRow}>
+      {ACTIONS.map(({ icon, label, primary, onPress, anchor }) => (
         <Pressable
           key={label}
+          ref={anchor ? displayAnchorRef : undefined}
           accessibilityRole="button"
           onPress={onPress ?? (() => {})}
           style={styles.actionItem}
@@ -2868,9 +3043,15 @@ function ActionBar({
               color={primary ? palette.primaryIcon : palette.text}
             />
           </View>
-          <Text style={[styles.actionLabel, { color: palette.muted }]}>{label}</Text>
+          <Text
+            style={[styles.actionLabel, { color: palette.muted }]}
+            numberOfLines={1}
+          >
+            {label}
+          </Text>
         </Pressable>
       ))}
+      </View>
     </View>
   );
 }
@@ -3458,11 +3639,28 @@ const styles = StyleSheet.create({
     fontFamily: tokens.fonts.ui,
     fontSize: 13,
   },
+  /**
+   * The reading measure (§4: "the page column is capped at 680 and
+   * centred"). It goes on the FlatList's *content container* rather
+   * than on `pagerWrap`, so the scroll indicator and the restore
+   * overlay stay at the window edge where they belong — only the text
+   * column narrows.
+   *
+   * `width: '100%'` is what makes `maxWidth` bite: without it the
+   * container sizes to its content and `alignSelf` has nothing to
+   * centre.
+   */
   pagerContent: {
     paddingBottom: tokens.space.xl,
+    width: '100%',
+    maxWidth: tokens.layout.reading.measure,
+    alignSelf: 'center',
   },
   page: {
-    paddingHorizontal: 24,
+    // 24 at every size. The Reader page's inner padding is not a
+    // size-class decision, so this is `space.xl` rather than one of
+    // the `layout.gutter` values.
+    paddingHorizontal: tokens.space.xl,
     paddingTop: tokens.space.lg,
     paddingBottom: tokens.space.lg,
   },
@@ -3637,13 +3835,18 @@ const styles = StyleSheet.create({
 
   // Action bar
   actionBar: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    alignItems: 'center',
     paddingTop: 10,
     paddingBottom: tokens.space.xl,
     paddingHorizontal: tokens.space.lg,
     borderTopWidth: 0.5,
+  },
+  actionBarRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    alignItems: 'center',
+    width: '100%',
+    maxWidth: tokens.layout.reading.measure,
+    alignSelf: 'center',
   },
   actionItem: {
     alignItems: 'center',

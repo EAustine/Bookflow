@@ -80,9 +80,18 @@ export function InReaderSearchHeader({
       {showCount && (
         <View style={styles.navBar}>
           <Text style={styles.countLabel}>
-            {resultCount > 0
-              ? `${safeIndex} of ${resultCount} · ${chapterLabel}`
-              : `No matches · ${chapterLabel}`}
+            {/*
+              The scope is appended only when there is one to name. A
+              book whose pages carry no chapter title has nothing to
+              put here, and the separator was left dangling after the
+              count ("2 of 59 ·").
+            */}
+            {[
+              resultCount > 0 ? `${safeIndex} of ${resultCount}` : 'No matches',
+              chapterLabel,
+            ]
+              .filter(Boolean)
+              .join(' · ')}
           </Text>
           <View style={styles.navBtns}>
             <Pressable

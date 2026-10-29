@@ -38,6 +38,87 @@ Target: `docs/ARCHITECTURE.md` · Distance to it: `docs/ARCHITECTURE_GAPS.md`
 
 ## Progress
 
+### Responsive M3a — the Reader · 2026-10-29
+
+§4 Reader's layout and chrome. M3b takes the panel system: the four
+`aiMode` returns and Highlights refactored into `SidePanel` content,
+docked above Compact, plus a reader Chapters panel and the practice
+takeover.
+
+**The reader was entirely width-unaware** — no `useSizeClass`, no
+`useWindowDimensions`, no breakpoint anywhere across its three
+screens — and `tokens.layout.reading.measure` had zero call sites in
+the repo. It now caps one node per screen: the text reader's FlatList
+*content container* (not `pagerWrap`, which would box the scroll
+indicator and the restore overlay), the PDF's inline style width, and
+the EPUB's `webviewWrap`. Measured 680 centred at 820 and 1180 in
+both text and PDF.
+
+The action bar's **row** is capped too, while its surface stays
+full-bleed. §4 only caps the page column, but `space-around` across
+five items at full window width strands them at 1440 while the text
+they act on is 680 wide. Measured at 820 and 1180, the five items land
+exactly where `space-around` in a 680 column puts them.
+
+**Two things the PDF needed that were not obvious.** `<Pdf>` was never
+passed `fitPolicy`, so it inherited the library default `2` ("fit
+both") — fine against a view sized to the whole window, but once that
+view is 680 on a wide screen, "fit both" letterboxes to height and the
+page stops filling the column. It now passes `fitPolicy={0}`. And the
+screen read `Dimensions.get('window')` once per render and fed it to a
+memo keyed on that non-reactive value, so a PDF kept its pre-rotation
+size until something else re-rendered the screen. Harmless while every
+device was portrait-locked; **M1 made tablets rotate.** Now
+`useWindowDimensions`.
+
+**Inline search was already written and wired to nothing.**
+`InReaderSearchHeader` — a header that replaces the reader header, a
+results-count nav bar, and a `HighlightedText` that paints matches in
+amber-200 with the active one in amber-500 — arrived with the M1
+workspaces commit, moved in M3's decomposition, and had never been
+imported. §4 describes it exactly. So this milestone wired it rather
+than built it: chapter scope from the derived page title, a match
+model that gives each page the count preceding it, and prev/next that
+jumps to the match's page.
+
+It renders **instead of** `TappableParagraph` while a query is live.
+The two cannot compose — the paragraph already splits into per-word
+spans for the dictionary, and threading a second span layer through it
+would mean reworking the hottest memo in the reader. Swapping is also
+the honest behaviour: mid-search you are navigating, not looking words
+up.
+
+Text mode's whole-book `BookSearchScreen` route had no caller left
+once Search opened the header, so that branch and its state are gone.
+Full-mode PDF and EPUB still open it, because neither can paint a
+highlight into its own content.
+
+**Found by verifying, not by reading:** a book whose pages carry no
+chapter title gives every page the same empty title, so "this chapter"
+silently became the whole book and the count bar read "2 of 59 ·" with
+a dangling separator. The scope now labels itself "Whole book" when
+there is no chapter, and the separator only appears when there is
+something to separate.
+
+`BookSearchScreen` and its `bookSearch` api **moved from the library
+feature to the reader**, where their only callers are. That removed
+three cross-feature imports, and `ListenScreen` — which already
+imported from `~/features/reader` on the line above — lost its
+`features/library` edge entirely.
+
+Verified on the emulator at 360, 820 and 1180 dp. The phone is
+unchanged. The action bar reads Listen / AI tools / Search /
+Highlights / Display, one line each, matching `130:368` in all three
+themes. Reading options opens as a 340 popover anchored to Display,
+opening upward, with the full sheet fitting and its title still
+"Reading options". Inline search steps matches across the chapter and
+highlights them in place.
+
+Deferred: the Full-mode PDF **single/spread toggle**.
+`react-native-pdf` 7.0.4 has no dual-page capability and the engine is
+pinned by CLAUDE.md, so Full mode ships single-page at every size.
+Recorded in `responsive-milestones.md` beside the drop zone and §6.
+
 ### Responsive M2b — Library overlays, upload dialog, §7 copy · 2026-10-28
 
 The rest of §4 Library. M2a gave the screen its layouts; this gives it

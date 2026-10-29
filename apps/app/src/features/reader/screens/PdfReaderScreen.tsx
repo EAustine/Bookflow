@@ -20,16 +20,16 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Animated,
-  Dimensions,
   Pressable,
   StyleSheet,
   View,
+  useWindowDimensions,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import Pdf from 'react-native-pdf';
 import {
-  BottomSheet,
   ModeTogglePill,
+  Presenter,
   type BottomSheetRef,
   Icon,
   Text,
@@ -50,7 +50,7 @@ import {
 import { PracticeQuestionsScreen } from '~/features/ai';
 import { TranslateChapterScreen } from './TranslateChapterScreen';
 import { HighlightsScreen } from './HighlightsScreen';
-import { BookSearchScreen } from '~/features/library';
+import { BookSearchScreen } from './BookSearchScreen';
 import { ReaderScreen } from './ReaderScreen';
 
 export type PdfReaderScreenProps = {
@@ -121,7 +121,13 @@ export function PdfReaderScreen({
     onBack();
     return true;
   });
-  const screen = Dimensions.get('window');
+  // `useWindowDimensions`, not `Dimensions.get`: this screen used to
+  // snapshot the window once per render and feed it to `pdfStyle`,
+  // whose memo deps were therefore never invalidated by a resize.
+  // Harmless while every device was portrait-locked — M1 let tablets
+  // rotate, after which a PDF kept its pre-rotation size until some
+  // unrelated state change re-rendered the screen.
+  const screen = useWindowDimensions();
   // Explicit safe-area insets so absolute-positioned chrome can pad
   // itself off the status bar / home indicator. Nesting SafeAreaViews
   // inside an absolute-positioned parent doesn't apply the inset
@@ -140,6 +146,9 @@ export function PdfReaderScreen({
   // with PDF-specific toggles (continuous vs single-page, brightness
   // wash) later.
   const readingOptionsSheetRef = useRef<BottomSheetRef>(null);
+  // The Display action, which the reading-options popover anchors to
+  // above Compact. Unused on a phone, where it stays a sheet.
+  const displayAnchorRef = useRef<View>(null);
   const [aiMode, setAIMode] = useState<'summary' | 'chat' | 'practice' | 'translate' | null>(null);
   const [showHighlights, setShowHighlights] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
@@ -404,9 +413,13 @@ export function PdfReaderScreen({
   // a "new style" to the native view on every parent re-render
   // (state ticks, chrome animations, etc.), and on Android that
   // forces a layout pass that can pre-empt the swipe gesture.
+  // §4 caps the page column at 680. The chrome is positioned
+  // absolutely against the root, so narrowing this narrows only the
+  // page.
+  const pdfWidth = Math.min(screen.width, tokens.layout.reading.measure);
   const pdfStyle = useMemo(
-    () => [styles.pdf, { width: screen.width, height: screen.height }],
-    [screen.width, screen.height],
+    () => [styles.pdf, { width: pdfWidth, height: screen.height }],
+    [pdfWidth, screen.height],
   );
   // Last-shown timestamp for showChrome throttling. The native PDF
   // view fires `onPageChanged` quickly during a fast swipe; without
@@ -667,6 +680,13 @@ export function PdfReaderScreen({
             trustAllCerts={false}
             enablePaging
             horizontal
+            // Fit the WIDTH (0), not both axes. The library default is
+            // 2 ("fit both"), which was fine while this view was sized
+            // to the whole window — once it is capped at 680 on a wide
+            // screen, "fit both" letterboxes to the taller axis and the
+            // page stops filling the column. §4 asks for scaled to fit
+            // the width.
+            fitPolicy={0}
             // Annotations off — none of our content is annotated,
             // and the renderer skipping that pass measurably tightens
             // the swipe on Android.
@@ -786,6 +806,7 @@ export function PdfReaderScreen({
         pointerEvents={chromeVisible ? 'auto' : 'none'}
       >
         <View style={styles.actionBar}>
+          <View style={styles.actionBarRow}>
           <ActionItem
             icon="Headphones"
             label="Listen"
@@ -809,9 +830,11 @@ export function PdfReaderScreen({
           />
           <ActionItem
             icon="Settings"
-            label="Reading options"
+            label="Display"
+            anchorRef={displayAnchorRef}
             onPress={() => readingOptionsSheetRef.current?.present()}
           />
+          </View>
         </View>
       </Animated.View>
 
@@ -844,9 +867,13 @@ export function PdfReaderScreen({
         onAsk={() => setAIMode('chat')}
         onTranslate={() => setAIMode('translate')}
       />
-      <BottomSheet ref={readingOptionsSheetRef}>
+      <Presenter
+        kind="menu"
+        anchorRef={displayAnchorRef}
+        ref={readingOptionsSheetRef}
+      >
         <PdfReadingOptionsSheet />
-      </BottomSheet>
+      </Presenter>
     </SafeAreaView>
   );
 }
@@ -900,15 +927,19 @@ function ActionItem({
   icon,
   label,
   primary,
+  anchorRef,
   onPress,
 }: {
   icon: 'Headphones' | 'Wand' | 'Search' | 'Notebook' | 'Settings';
   label: string;
   primary?: boolean;
+  /** Set when a wide-screen popover anchors to this action. */
+  anchorRef?: React.RefObject<View | null>;
   onPress?: () => void;
 }) {
   return (
     <Pressable
+      ref={anchorRef}
       accessibilityRole="button"
       onPress={onPress}
       style={styles.actionItem}
@@ -927,7 +958,9 @@ function ActionItem({
           color={primary ? tokens.colors.cream[50] : tokens.textColors.primary}
         />
       </View>
-      <Text style={styles.actionLabel}>{label}</Text>
+      <Text style={styles.actionLabel} numberOfLines={1}>
+        {label}
+      </Text>
     </Pressable>
   );
 }
@@ -956,6 +989,7 @@ const styles = StyleSheet.create({
   },
   pdfArea: {
     flex: 1,
+    alignItems: 'center',
     backgroundColor: tokens.bgColors.canvas,
   },
   pdf: {
@@ -1086,12 +1120,19 @@ const styles = StyleSheet.create({
   // identical whether the user is reading a PDF, EPUB-text, or
   // EPUB-full. Any visual tweak should land in all three.
   actionBar: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    alignItems: 'center',
     paddingTop: 10,
     paddingBottom: tokens.space.xl,
     paddingHorizontal: tokens.space.lg,
+  },
+  // Capped and centred so the five actions sit under the page column
+  // rather than spreading across the whole window.
+  actionBarRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    alignItems: 'center',
+    width: '100%',
+    maxWidth: tokens.layout.reading.measure,
+    alignSelf: 'center',
   },
   actionItem: {
     alignItems: 'center',
