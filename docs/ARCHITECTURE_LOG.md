@@ -38,6 +38,62 @@ Target: `docs/ARCHITECTURE.md` · Distance to it: `docs/ARCHITECTURE_GAPS.md`
 
 ## Progress
 
+### Responsive M8 — System states · 2026-10-29
+
+30 wide frames, four surfaces. Six of §4's ten System rows had already
+shipped with the flow that owned them — offline Library (M2a), offline
+AI chat and the scope banner (M3b), slow-network Discover (M5b), and
+the notification permission dialog, which M7 pulled forward.
+
+**The Library skeleton now follows the branch.** It drew one
+full-width list at every size, returned above the screen's own
+`compact / medium / wide` ladder — rows where a cover grid was coming
+at Medium, one bleed column where a 440 master and a book pane were
+coming above it, and on the phone it was simply stale: no stats card,
+no tab bar, so the bottom nav vanished for the length of the load. It
+reads the size class itself now, so the call sites did not move.
+Medium gets the 684 × 194 hero block and the 4-column grid; above it,
+the 440 master beside a **pane skeleton** (240 × 360 cover, four bars,
+two buttons, three 588 × 56 rows) rather than the "Pick a book" empty
+state — nothing failed to be selected, the library has not arrived.
+
+**The Reader skeleton got the 680 measure and a real back button.** Its
+body had no cap, so at 1440 the paragraphs ran ~1400 wide and snapped
+to 680 when text landed; and `onBack` was destructured and never used,
+with a comment claiming the opposite, so a cold reader open had no way
+out.
+
+**The toast centres on the content area.** It stays mounted at the
+window root — deliberate, so it paints above bottom sheets — and
+offsets by the rail instead. It reads a new `railVisible` flag the
+shell publishes rather than the size class, because the reader and the
+foreground player are wide surfaces with no rail. Vertically it is top
+on Compact (the tab bar is there) and 30 above the bottom safe area
+above it, which is what every tablet frame draws.
+
+**The crash boundary went 420 → 480**, as a literal. It does not
+import `layout.lane.width`: its own comment explains that it uses raw
+primitives and hex so a broken design system cannot bring the crash
+screen down with the app, and a boundary that imports what may have
+just crashed is not a boundary.
+
+**One hole filled:** Medium had no offline banner at all — the Compact
+mount is gated `!isWide`, the wide one lives inside the master, and
+that branch fell between them.
+
+**Recorded, not changed:** the 30 `Alert.alert` sites stay native,
+because the brief's row is "iOS alert on tablets, web dialog on
+desktop" and the Desktop dialog is web-only (R-M9). The milestones doc
+had assigned "the five native `Alert`s" to M8; the real count is 30
+across 8 files. And `Skeleton`'s shimmer is two hex literals where §4
+says `color/bg/surface` — binding them changes every skeleton in the
+app, so it is held for the sign-off pass.
+
+Gate: 0 errors / **210** warnings, 98 tests. Verified at 360 / 820 /
+1180 / 1440 using the `MOCK_*` constants that already existed for it.
+The text reader's skeleton needed a forced mount, since every book in
+the test library is PDF or EPUB and none opens `ReaderScreen`.
+
 ### Responsive M7 — Monetisation · 2026-10-29
 
 27 of §4 Monetisation's 30 wide frames. The other three are the
