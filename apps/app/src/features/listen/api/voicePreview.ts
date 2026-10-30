@@ -1,13 +1,13 @@
 import {
-  createAudioPlayer,
-  setAudioModeAsync,
-  type AudioPlayer,
-} from 'expo-audio';
+  configureAudioSession,
+  createPlayer,
+  type AudioPlayerHandle,
+} from '~/platform/audio';
 import { supabase } from '~/lib/supabase';
 
 /**
  * Fetches ElevenLabs' published preview URL for a voice and plays it
- * via expo-audio. Centralises the lifecycle so the picker UI just
+ * through ~/platform/audio. Centralises the lifecycle so the picker just
  * has to call play()/stop() and read isPlaying — there's exactly
  * one preview player alive at a time and the previous one is fully
  * disposed before the next starts.
@@ -30,7 +30,7 @@ type PreviewError = { error: string; message?: string };
 // ElevenLabs preview URLs are stable, so refetching is wasted.
 const urlCache = new Map<string, string>();
 
-let activePlayer: AudioPlayer | null = null;
+let activePlayer: AudioPlayerHandle | null = null;
 let activeVoiceId: string | null = null;
 const listeners = new Set<() => void>();
 
@@ -90,17 +90,9 @@ async function fetchPreviewUrl(voiceId: string): Promise<string> {
  */
 export function stopVoicePreview(): void {
   if (!activePlayer) return;
-  try {
-    activePlayer.pause();
-  } catch {
-    // expo-audio occasionally throws if the player was already
-    // released. Swallow — we're tearing down anyway.
-  }
-  try {
-    activePlayer.release();
-  } catch {
-    // same
-  }
+  // `release` pauses, drops the OS controls and its own listeners, and
+  // tolerates a player that was already released.
+  activePlayer.release();
   activePlayer = null;
   activeVoiceId = null;
   notify();
@@ -120,50 +112,33 @@ export async function playVoicePreview(voiceId: string): Promise<void> {
   // same mode (aiAudio.ts) but the preview never did, so a preview tapped
   // before any book has played would produce no sound (and respects the
   // iOS silent switch). Non-fatal if it throws; we still try to play.
-  try {
-    await setAudioModeAsync({
-      allowsRecording: false,
-      playsInSilentMode: true,
-    });
-  } catch {
-    // Mode failures are non-fatal — continue and attempt playback.
-  }
+  // Non-fatal by contract; playback is attempted either way.
+  await configureAudioSession();
   // The user may have closed the sheet (or tapped another preview)
   // during the fetch. Bail in that case — stopVoicePreview cleared
   // activeVoiceId; if it's not us, abandon.
-  const player = createAudioPlayer({ uri: url });
+  const player = createPlayer(url);
   activePlayer = player;
   activeVoiceId = voiceId;
   notify();
 
-  // Play-on-loaded. createAudioPlayer loads the source asynchronously, and
-  // calling play() before it's ready silently no-ops in expo-audio — THAT
-  // was the "preview is silent" bug. So we (re)issue play() on the loaded
-  // status whenever the player isn't already playing (idempotent once it
-  // is), and also kick it immediately below in case it's already buffered.
-  player.addListener(
-    'playbackStatusUpdate',
-    (status: { isLoaded?: boolean; playing?: boolean; didJustFinish?: boolean }) => {
-      if (status.didJustFinish) {
-        stopVoicePreview();
-        return;
-      }
-      if (status.isLoaded && !status.playing && activePlayer === player) {
-        try {
-          player.play();
-        } catch {
-          stopVoicePreview();
-        }
-      }
-    },
-  );
+  // Play-on-loaded. A player loads its source asynchronously, and
+  // calling play() before it is ready silently does nothing — THAT was
+  // the "preview is silent" bug. So we (re)issue play() on the loaded
+  // status whenever the player isn't already playing (idempotent once
+  // it is), and also kick it immediately below in case it is already
+  // buffered.
+  player.onStatus((status) => {
+    if (status.didJustFinish) {
+      stopVoicePreview();
+      return;
+    }
+    if (status.loaded && !status.playing && activePlayer === player) {
+      player.play();
+    }
+  });
 
-  try {
-    player.play();
-  } catch (err) {
-    stopVoicePreview();
-    throw err;
-  }
+  player.play();
 }
 
 /** Currently-playing voice ID, or null if no preview is active. */

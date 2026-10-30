@@ -1,10 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  createAudioPlayer,
-  setAudioModeAsync,
-  type AudioPlayer,
-  type AudioStatus,
-} from 'expo-audio';
+  configureAudioSession,
+  createPlayer,
+  type AudioPlayerHandle,
+} from '~/platform/audio';
 import { formatNetworkError } from '~/lib/networkErrors';
 import { supabase } from '~/lib/supabase';
 // Deliberate and safe: see the cycle note in audioDownloads.ts. Both sides
@@ -18,21 +17,19 @@ import { presentPaywall, ENTITLEMENT_PRO } from '~/features/billing';
 /**
  * Per-page TTS playback. The edge function `generate-audio` produces
  * an MP3 in Supabase Storage; we fetch the signed URL, hand it to
- * expo-audio's `createAudioPlayer`, and expose play/pause/seek and a
+ * ~/platform/audio's `createPlayer`, and expose play/pause/seek and a
  * status snapshot. Cached audio is essentially free (the function
  * returns the same URL with no LLM round-trip), so changing pages
  * or voices after the first generation is fast.
  *
- * Why expo-audio (not expo-av): expo-av@16 has a header-import bug
- * against the ExpoModulesCore shipped with SDK 55, and Expo is
- * deprecating it in favour of expo-audio for new-architecture
- * builds. The API is more declarative; we wrap it in the same
- * imperative `useAudio` shape our screens already speak.
+ * Which package plays the bytes is ~/platform/audio's business, and
+ * the reasoning for it lives there. What matters here is the shape:
+ * the adapter is imperative, which is what our screens already speak.
  *
- * `useAudio` owns one AudioPlayer at a time. Switching pages or
- * voices releases the previous player before fetching the new URL —
- * expo-audio allocates per-instance and we want the audio to stop
- * cleanly when the user advances.
+ * `useAudio` owns one player at a time. Switching pages or voices
+ * releases the previous one before fetching the new URL — a player is
+ * allocated per source, and we want audio to stop cleanly when the
+ * user advances.
  */
 
 /**
@@ -295,7 +292,7 @@ export function useAudio(args: {
 } {
   const { bookId, pageIndex, voiceId = DEFAULT_VOICE, enabled } = args;
   const [status, setStatus] = useState<PlaybackStatus>(INITIAL_STATUS);
-  const playerRef = useRef<AudioPlayer | null>(null);
+  const playerRef = useRef<AudioPlayerHandle | null>(null);
   // Token for stale-load coordination. If the user changes the page
   // before the URL fetch resolves, the new request gets a new token
   // and the old one's onLoad becomes a no-op.
@@ -325,7 +322,7 @@ export function useAudio(args: {
     const p = playerRef.current;
     if (p) {
       try {
-        // expo-audio: `setPlaybackRate(rate, pitchCorrection?)`. We don't
+        // The adapter leaves pitch correction at its default. We don't
         // pass pitchCorrection so the platform default ("low" on iOS,
         // "medium" on Android) applies — fine for narration.
         p.setPlaybackRate(rate);
@@ -339,29 +336,12 @@ export function useAudio(args: {
   useEffect(() => {
     const token = ++loadTokenRef.current;
 
-    // Always release the previous player. expo-audio allocates per
-    // instance; we never reuse one across files.
-    //
-    // Order matters: pause() synchronously stops audio output BEFORE
-    // remove() frees the native resources. Without the pause(), the
-    // audio buffer can continue draining for ~100–300ms even after
-    // remove() returns — and if the user has already started a new
-    // book in that window, BOTH audios play at once until the old
-    // buffer empties.
+    // Always release the previous player; a player is allocated per
+    // source and never reused across files. `release` pauses before
+    // freeing, which is load-bearing — see ~/platform/audio.
     const prev = playerRef.current;
     playerRef.current = null;
-    if (prev) {
-      try {
-        prev.pause();
-      } catch {
-        // already paused or released
-      }
-      try {
-        prev.remove();
-      } catch {
-        // already released
-      }
-    }
+    prev?.release();
     setStatus(INITIAL_STATUS);
 
     if (!enabled || !bookId) return;
@@ -372,23 +352,16 @@ export function useAudio(args: {
       // 1. Configure the audio session so:
       //    - playback works through the iOS silent switch
       //    - narration continues when the user locks the screen or
-      //      switches apps (uses expo-audio's `AudioControlsService`
-      //      foreground service on Android, declared in the manifest
-      //      with `FOREGROUND_SERVICE_MEDIA_PLAYBACK`)
+      //      switches apps (on Android via the audio package's
+      //      `AudioControlsService` foreground service, declared in
+      //      the manifest with `FOREGROUND_SERVICE_MEDIA_PLAYBACK`)
       //    - starting playback pauses other audio (Spotify, podcasts),
       //      since we behave as a media-playback app rather than
       //      something like a notification chime that should layer
-      try {
-        await setAudioModeAsync({
-          allowsRecording: false,
-          playsInSilentMode: true,
-          shouldRouteThroughEarpiece: false,
-          shouldPlayInBackground: true,
-          interruptionMode: 'doNotMix',
-        });
-      } catch {
-        // mode failures are non-fatal; continue trying to play
-      }
+      await configureAudioSession({
+        playInBackground: true,
+        exclusive: true,
+      });
 
       // 2. Resolve a playable source: a locally-downloaded file first
       //    (fully offline — no signed-URL expiry, works with no network),
@@ -400,7 +373,7 @@ export function useAudio(args: {
       const local = await getLocalAudio(bookId, pageIndex, voiceId);
       if (local) {
         playUri = local.audioUri;
-        durationSeed = 0; // expo-audio fills the real duration on load
+        durationSeed = 0; // the player reports the real duration on load
         alignmentSource = local.alignmentUri;
       } else {
       const result = await fetchPageAudio({ bookId, pageIndex, voiceId });
@@ -475,14 +448,14 @@ export function useAudio(args: {
       alignmentSource = result.data.alignmentUrl;
       }
 
-      // 3. Create the player. expo-audio loads asynchronously; we
-      // subscribe to playbackStatusUpdate to track position + state.
-      let player: AudioPlayer;
+      // 3. Create the player. It loads asynchronously; we subscribe to
+      // status updates to track position + state.
+      let player: AudioPlayerHandle;
       try {
-        player = createAudioPlayer({ uri: playUri });
+        player = createPlayer(playUri);
       } catch (err) {
-        console.warn('[aiAudio] createAudioPlayer threw:', err);
-        // The signed audio URL came back fine but expo-audio
+        console.warn('[aiAudio] createPlayer threw:', err);
+        // The signed audio URL came back fine but the platform
         // couldn't wire it up — usually a transient native-side
         // issue OR a download failure (signed URL race). Either
         // way the user can act on "try again", so phrase it that
@@ -495,21 +468,11 @@ export function useAudio(args: {
         return;
       }
       if (token !== loadTokenRef.current) {
-        // Race: page or book changed while createAudioPlayer was
-        // running. Pause first so the freshly-created player doesn't
-        // briefly start outputting audio that runs in parallel with
-        // the next session — same dueling-audio bug as the main
-        // cleanup path, just on a tighter race window.
-        try {
-          player.pause();
-        } catch {
-          // not yet started
-        }
-        try {
-          player.remove();
-        } catch {
-          // ignore
-        }
+        // Race: page or book changed while the player was being
+        // created. `release` pauses before freeing, which is what
+        // keeps the freshly-created player from briefly outputting
+        // audio alongside the next session.
+        player.release();
         return;
       }
 
@@ -517,41 +480,28 @@ export function useAudio(args: {
       // player. The status listener fires repeatedly; we only want to
       // notify the caller once per page load.
       let firedLoaded = false;
-      const sub = player.addListener('playbackStatusUpdate', (s: AudioStatus) => {
+      player.onStatus((s) => {
         if (token !== loadTokenRef.current) return;
         setStatus((prev) => ({
           ...prev,
           loading: false,
           ready: true,
           isPlaying: s.playing,
-          positionSeconds: s.currentTime ?? prev.positionSeconds,
-          durationSeconds:
-            typeof s.duration === 'number' && s.duration > 0
-              ? s.duration
-              : prev.durationSeconds || durationSeed,
+          positionSeconds: s.currentTime,
+          durationSeconds: s.duration ?? (prev.durationSeconds || durationSeed),
         }));
         if (!firedLoaded) {
           firedLoaded = true;
           onLoadedRef.current?.();
         }
-        // expo-audio raises didJustFinish=true on the status update where
-        // the track reaches its end (currentTime ≈ duration, playing
-        // flips false). We forward the signal to the caller; auto-advance
+        // The track reached its end. We forward the signal; auto-advance
         // is decided one level up.
-        const sLoose = s as AudioStatus & { didJustFinish?: boolean };
-        if (sLoose.didJustFinish) {
+        if (s.didJustFinish) {
           onCompleteRef.current?.();
         }
       });
 
-      // Attach the cleanup to a token-checked closure so we don't
-      // remove the listener for a player that was already swapped out.
       playerRef.current = player;
-      const cleanup = () => {
-        sub.remove();
-      };
-      // Stash the cleanup on the player so the unload path runs it.
-      (player as AudioPlayer & { _bookflowCleanup?: () => void })._bookflowCleanup = cleanup;
 
       // Apply the user's chosen playback rate to the freshly-created
       // player. Without this, every page load resets to 1× even if the
@@ -566,7 +516,7 @@ export function useAudio(args: {
 
       // Wire the player into the system MediaSession (Android: media
       // notification in the tray + lock-screen controls; iOS: Now
-      // Playing info + control center). expo-audio's
+      // Playing info + control center). Android's
       // `AudioControlsService` is already in the manifest because the
       // plugin's `enableBackgroundPlayback` defaults to true — what we
       // need here is to feed it metadata so it has something to display
@@ -579,20 +529,13 @@ export function useAudio(args: {
       const md = metadataRef.current;
       if (md) {
         try {
-          player.setActiveForLockScreen(
-            true,
-            {
-              title: md.title,
-              artist: md.artist,
-              artworkUrl: md.artworkUrl,
-            },
-            {
-              showSeekForward: true,
-              showSeekBackward: true,
-            },
-          );
+          player.setLockScreen({
+            title: md.title,
+            artist: md.artist,
+            artworkUrl: md.artworkUrl,
+          });
         } catch (err) {
-          console.warn('[audio] setActiveForLockScreen failed:', err);
+          console.warn('[aiAudio] lock-screen registration failed:', err);
         }
       }
 
@@ -619,38 +562,15 @@ export function useAudio(args: {
       // attach the listener after we'd already torn down,
       // leaking the subscription.
       loadTokenRef.current++;
-      const p = playerRef.current as
-        | (AudioPlayer & { _bookflowCleanup?: () => void })
-        | null;
+      const p = playerRef.current;
       playerRef.current = null;
-      if (p) {
-        // Halt audio output BEFORE releasing the player — see the
-        // comment in the previous-player cleanup at the top of this
-        // effect for why. Without an explicit pause(), remove() lets
-        // the audio decoder drain its buffer in the background, which
-        // means starting a new book while the old one is still playing
-        // produces a window of dueling audio.
-        try {
-          p.pause();
-        } catch {
-          // already paused or released
-        }
-        try {
-          // Drop the MediaSession before releasing the player so the
-          // system notification disappears cleanly. Without this, the
-          // notification can briefly orphan and the next session's
-          // notification might attach with stale title/artist.
-          p.clearLockScreenControls();
-        } catch {
-          // never registered for lock-screen, or already cleared
-        }
-        try {
-          p._bookflowCleanup?.();
-          p.remove();
-        } catch {
-          // already released
-        }
-      }
+      // One call now: `release` pauses before freeing, drops the OS
+      // controls so the notification cannot orphan with stale
+      // title/artist, and removes its own listeners. The cleanup used
+      // to be stashed on the player object as `_bookflowCleanup` — a
+      // field on someone else's class — because there was nowhere
+      // else to keep it.
+      p?.release();
     };
   }, [bookId, pageIndex, voiceId, enabled]);
 
@@ -664,15 +584,11 @@ export function useAudio(args: {
     const p = playerRef.current;
     const md = args.metadata;
     if (!p || !md) return;
-    try {
-      p.updateLockScreenMetadata({
-        title: md.title,
-        artist: md.artist,
-        artworkUrl: md.artworkUrl,
-      });
-    } catch (err) {
-      console.warn('[audio] updateLockScreenMetadata failed:', err);
-    }
+    p.updateLockScreenMetadata({
+      title: md.title,
+      artist: md.artist,
+      artworkUrl: md.artworkUrl,
+    });
   }, [args.metadata?.title, args.metadata?.artist, args.metadata?.artworkUrl]);
 
   const play = useCallback(() => {
