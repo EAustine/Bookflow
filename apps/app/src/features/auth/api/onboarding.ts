@@ -15,10 +15,21 @@
  * distinguishable from "never reached the question".
  */
 
+import type { Database } from '@bookflow/shared';
+
+/**
+ * A patch against one profile row, typed from the generated schema so
+ * a misspelled column is a compile error rather than a silent no-op.
+ * `@bookflow/shared` is type-only here and imports nothing from a
+ * platform, so this file stays loadable by the test runner.
+ */
+export type ProfilePatch =
+  Database['public']['Tables']['profiles']['Update'];
+
 /** Applies a patch to one profile row. Bound to Supabase in `auth.ts`. */
 export type ProfileUpdate = (
   userId: string,
-  patch: Record<string, unknown>,
+  patch: ProfilePatch,
 ) => PromiseLike<{ error: { message: string } | null }>;
 
 export type OnboardingWriteResult = { ok: boolean; error?: string };
@@ -31,7 +42,7 @@ export type OnboardingWriteResult = { ok: boolean; error?: string };
 async function writeProfile(
   update: ProfileUpdate,
   userId: string,
-  patch: Record<string, unknown>,
+  patch: ProfilePatch,
   label: string,
 ): Promise<OnboardingWriteResult> {
   try {
