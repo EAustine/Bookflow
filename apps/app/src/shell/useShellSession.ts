@@ -12,9 +12,9 @@
  * change then.
  */
 import { useCallback, useEffect, useState } from 'react';
-import type * as DocumentPicker from 'expo-document-picker';
-import { useShareIntent } from 'expo-share-intent';
 import { useRouter } from 'expo-router';
+import { useSharedFiles } from '~/platform/shareIntent';
+import type { PickedFile } from '~/platform/files';
 import { supabase } from '~/lib/supabase';
 import { reset as resetOfflineQueue } from '~/core/offline-queue';
 import { clearBookCoverCache as clearLibrarySignedUrlCache } from '~/core/bookCovers';
@@ -29,7 +29,7 @@ export type ShellSession = {
   onUpgrade: () => void;
   listenState: ListenPlaybackState;
   setListenState: React.Dispatch<React.SetStateAction<ListenPlaybackState>>;
-  pendingUploadAssets: DocumentPicker.DocumentPickerAsset[] | null;
+  pendingUploadAssets: PickedFile[] | null;
   onPendingUploadAssetsConsumed: () => void;
 };
 
@@ -37,7 +37,7 @@ export function useShellSession(): ShellSession {
   const router = useRouter();
   const [listenState, setListenState] = useState<ListenPlaybackState>('paused');
   const [pendingUploadAssets, setPendingUploadAssets] = useState<
-    DocumentPicker.DocumentPickerAsset[] | null
+    PickedFile[] | null
   >(null);
 
   const handleSignOut = useCallback(async () => {
@@ -87,21 +87,17 @@ export function useShellSession(): ShellSession {
    * target + Android intent-filter for application/epub+zip and
    * application/pdf). Changes there require a new EAS build.
    */
-  const { hasShareIntent, shareIntent, resetShareIntent } = useShareIntent({
-    resetOnBackground: true,
-  });
+  const { files: sharedFiles, clear: clearSharedFiles } = useSharedFiles();
   useEffect(() => {
-    if (!hasShareIntent || !shareIntent.files || shareIntent.files.length === 0) {
-      return;
-    }
+    if (sharedFiles.length === 0) return;
     // Filter to the formats we can actually import. The plugin config
     // already restricts activation to EPUB+PDF, but defending here too
     // keeps things robust if a tester or share-target glitch sends
     // something else.
-    const supported: DocumentPicker.DocumentPickerAsset[] = [];
-    for (const f of shareIntent.files) {
+    const supported: PickedFile[] = [];
+    for (const f of sharedFiles) {
       const mimeType = f.mimeType?.toLowerCase() ?? '';
-      const name = f.fileName?.toLowerCase() ?? '';
+      const name = f.name?.toLowerCase() ?? '';
       const looksLikeBook =
         mimeType === 'application/pdf' ||
         mimeType === 'application/epub+zip' ||
@@ -109,18 +105,18 @@ export function useShellSession(): ShellSession {
         name.endsWith('.epub');
       if (!looksLikeBook) continue;
       supported.push({
-        uri: f.path,
-        name: f.fileName ?? 'Shared book',
+        uri: f.uri,
+        name: f.name ?? 'Shared book',
         mimeType: f.mimeType ?? undefined,
         size: f.size ?? undefined,
-      } as DocumentPicker.DocumentPickerAsset);
+      });
     }
     if (supported.length) {
       setPendingUploadAssets(supported);
       router.navigate('/library');
     }
-    resetShareIntent();
-  }, [hasShareIntent, shareIntent, resetShareIntent, router]);
+    clearSharedFiles();
+  }, [sharedFiles, clearSharedFiles, router]);
 
   const onPendingUploadAssetsConsumed = useCallback(
     () => setPendingUploadAssets(null),

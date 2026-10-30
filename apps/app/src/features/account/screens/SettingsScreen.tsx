@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Alert, Linking, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -404,8 +404,26 @@ function StorageRow() {
     (a, b) => b.updatedAt - a.updatedAt,
   );
   const hasAny = entries.length > 0;
-  const totalBytes =
-    entries.reduce((sum, e) => sum + (e.bytes || 0), 0) || totalDownloadBytes();
+  const storeBytes = entries.reduce((sum, e) => sum + (e.bytes || 0), 0);
+  /**
+   * Fallback for a device holding downloads the registry doesn't know
+   * about — a cleared store, or a reinstall over existing files.
+   * Reading the disk became async in M4b (so web can ever implement
+   * it), so it lands a tick after first paint; `storeBytes` covers the
+   * normal case synchronously and this only fills the gap.
+   */
+  const [diskBytes, setDiskBytes] = useState(0);
+  useEffect(() => {
+    if (storeBytes > 0) return;
+    let cancelled = false;
+    void totalDownloadBytes().then((bytes) => {
+      if (!cancelled) setDiskBytes(bytes);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [storeBytes]);
+  const totalBytes = storeBytes || diskBytes;
 
   const confirmRemoveAll = () => {
     Alert.alert(
@@ -416,7 +434,7 @@ function StorageRow() {
         {
           text: 'Remove all',
           style: 'destructive',
-          onPress: () => deleteAllDownloads(),
+          onPress: () => void deleteAllDownloads(),
         },
       ],
     );
@@ -431,7 +449,7 @@ function StorageRow() {
         {
           text: 'Remove',
           style: 'destructive',
-          onPress: () => deleteBookDownload(bookId),
+          onPress: () => void deleteBookDownload(bookId),
         },
       ],
     );

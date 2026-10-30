@@ -30,13 +30,12 @@ import {
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { BottomSheetModalProvider } from '@gorhom/bottom-sheet';
+import type { PickedFile } from '~/platform/files';
 import { useShellChromeStore } from '~/stores/shellChrome';
 import { SideRail } from '~/components/SideRail';
 import { useSizeClass } from '~/hooks/useSizeClass';
 import { useFonts } from 'expo-font';
 import * as Linking from 'expo-linking';
-import * as DocumentPicker from 'expo-document-picker';
-import { useShareIntent } from 'expo-share-intent';
 import {
   Fraunces_400Regular_Italic,
   Fraunces_600SemiBold,
@@ -228,7 +227,7 @@ export function SignedInShell({
    * immediately. Array (not a single asset) so multi-file shares
    * from the OS share sheet feed in alongside single-asset
    * onboarding picks through one channel. */
-  pendingUploadAssets: DocumentPicker.DocumentPickerAsset[] | null;
+  pendingUploadAssets: PickedFile[] | null;
   /** Clear the pending assets once LibraryScreen has handed them to upload. */
   onPendingUploadAssetsConsumed: () => void;
   /**

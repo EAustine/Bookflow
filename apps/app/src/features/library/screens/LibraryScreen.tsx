@@ -19,6 +19,7 @@ import Svg, {
   Rect,
   Stop,
 } from 'react-native-svg';
+import type { PickedFile } from '~/platform/files';
 import { CURATED_LIBRARY } from '~/data/curatedLibrary';
 import {
   type BottomSheetRef,
@@ -48,7 +49,6 @@ import type { Book } from '~/types/book';
 import { ReaderScreen } from '~/features/reader';
 import { AddBookSheet, ProcessingScreen, type ProcessingStep, ScannedPdfErrorScreen } from './UploadFlowScreen';
 import { useBookUpload } from '../api/uploadBook';
-import type * as DocumentPicker from 'expo-document-picker';
 import { useFreePlanUsage, FREE_PLAN_LIMITS } from '~/features/billing';
 import { useMonthlyListenStats } from '~/features/reader';
 import { useReaderStore } from '~/stores/readerStore';
@@ -155,7 +155,7 @@ export type LibraryScreenProps = {
    * the parent via `onPendingUploadAssetsConsumed` so the slot is
    * cleared and we don't re-fire on a future remount.
    */
-  pendingUploadAssets?: DocumentPicker.DocumentPickerAsset[] | null;
+  pendingUploadAssets?: PickedFile[] | null;
   onPendingUploadAssetsConsumed?: () => void;
   /**
    * A book id to open in the reader as soon as it is available.

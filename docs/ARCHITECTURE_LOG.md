@@ -11,10 +11,10 @@ Target: `docs/ARCHITECTURE.md` · Distance to it: `docs/ARCHITECTURE_GAPS.md`
 
 | | |
 |---|---|
-| **Current step** | **M3 merged to `main` 2026-10-28** (fast-forward, 26 commits). Offline queue, the eight-feature decomposition, PDF page fidelity, `pageDisplay`, and the page-fidelity test are in |
-| **Branch** | None in flight. `main` at `41c0add`, **26 commits ahead of `origin/main` — not pushed** |
-| **`main`** | Carries M1, M2 and M3. tsc 0, eslint 0, deno check clean, 68 tests |
-| **Next** | TanStack Query conversion (M3's remaining scope), the 7 routes deferred from M2, and the reader items under "Known, carried past the merge" below |
+| **Current step** | **M4b — platform adapters.** Nine of the ten adapters that have call sites are built; metro's native-only list is down from 14 packages to 2, both billing |
+| **Branch** | `arch/m4b-platform-adapters`, 10 commits, **not pushed**. Branches from `main` at `2c1a0a3` |
+| **`main`** | Carries M1, M2, M3 and M4a, plus PRs #17–#19. tsc 0, eslint 0 errors, deno check clean, 122 tests |
+| **Next** | `billing`, held until the internal-track build soaks (that path moved real money on 2026-10-30 and should not change while it is being watched). Then the lint gate fix, then M4c (the 8.9 MB bundle) and R-M9 |
 
 ---
 
@@ -37,6 +37,166 @@ Target: `docs/ARCHITECTURE.md` · Distance to it: `docs/ARCHITECTURE_GAPS.md`
 ---
 
 ## Progress
+
+### M4b — platform adapters · 2026-10-30
+
+**Nine adapters; metro's native-only list went from 14 packages to 2.**
+`clipboard`, `files`, `speech`, `shareIntent`, `imagePicker`,
+`notifications`, `fileCache`, `audio`, `reader-host`. Only `billing`
+remains, deliberately — see "Next" above.
+
+#### The gate that measures this work was blind
+
+Before starting, the count. The `no-restricted-imports` rule that
+tracks native-only imports reported **5 call sites. There were 24.**
+Three independent holes:
+
+- **Flat-config override.** The blocks for `features/*/**`, `ui/**` and
+  `components/**` each set `no-restricted-imports` for their own
+  boundary patterns, which *replaces* the native-only `paths` config
+  for those files rather than adding to it. M3 moved nearly all the app
+  under `features/`, so the rule stopped seeing it. Every one of the 19
+  unreported sites was under `features/`; all 5 reported ones were in
+  `shell/` and `hooks/`. No exceptions, which is what made the
+  diagnosis certain rather than likely.
+- **Routes are not covered.** The rule's glob is `apps/app/src/**`;
+  routes live in `apps/app/app/`. Nothing violates it there today.
+- **Lazy `require()` is invisible.** `lib/notifications.ts` loaded
+  `expo-notifications` that way, deliberately, and the rule only
+  inspects import declarations.
+
+The config comment still read "Twenty-one call sites violate it today".
+That number was not stale by drift — it was frozen at the moment the
+rule went blind. Same file still listed `apps/app/App.tsx`, deleted in
+PR #18.
+
+The fix is the last commit of M4b, not the first: flipping to `error`
+now would mean writing 24 inline exemptions and deleting them over the
+following nine commits. It lands with billing, when there are none to
+write.
+
+#### Two packages were never installed
+
+`expo-haptics` and `expo-secure-store` sat in metro's list, in
+eslint's, and in §8's table. Neither is a declared dependency, neither
+is in `node_modules`, nothing imports either — both entries mapped a
+specifier that never appears. They came from M0 spike 2 surveying the
+§8 table rather than the import graph. §8 keeps the rows as intent;
+the lists are for packages the code reaches.
+
+#### What the sweep found in the app
+
+- **`SignedInShell` imported `useShareIntent` and never called it.**
+  M4a's note says the shell calls it during first render; true until M3
+  moved the hook to `useShellSession`. What stayed was an import
+  dragging a native package into the web bundle for nothing — the same
+  residue as the RevenueCat bug in PR #18, harmless only because M4a
+  had given it a placeholder to land on.
+- **`expo-document-picker` was a *type* dependency, not a call
+  dependency.** Four files named `DocumentPicker.DocumentPickerAsset`
+  in their own props and state; one ever opened a picker. A native
+  package was in the type signature of half the app because it owned
+  the shape of "a file the user chose". `PickedFile` owns it now, and
+  the share-intent handler's `as DocumentPickerAsset` cast — which
+  existed only to pass off a hand-built object as a package type — is
+  gone.
+- **`lib/notifications.ts` was 478 lines of two things.** Notification
+  policy tangled with the plumbing that reaches the package. Split:
+  356 lines of policy, seven operations in `platform/`.
+- **`_bookflowCleanup`.** `useAudio` kept its listener teardown by
+  assigning a function onto `expo-audio`'s player object and reading it
+  back at unmount. The handle owns its subscriptions now.
+
+#### Decisions taken here
+
+- **Flat modules, not `platform/<name>/index.ts`.** §8 specified a
+  directory per adapter with `.native.ts` and `.web.ts`;
+  `platform/orientation.ts` had already set a flatter pattern, and for
+  a one-function adapter a directory is ceremony. §8 updated.
+- **Web siblings annotate against the native signature**
+  (`typeof import('./x').fn`). Nothing else compares the two — tsc
+  resolves the native file and never looks at the `.web` one — so
+  without it the implementations can diverge silently.
+- **`fileCache` is asynchronous throughout**, including the five
+  operations `expo-file-system` answers synchronously. §8's web
+  implementation is the Cache API or IndexedDB, both async to the core,
+  so a sync signature would be a contract only native could satisfy.
+  Cost: four call sites, one of which (SettingsScreen's StorageRow) now
+  reads disk size in an effect instead of during render.
+- **No crop on web** for avatars (Austine, 2026-10-30).
+  `allowsEditing`/`aspect` have no browser equivalent short of a
+  cropper dependency; the avatar renders into a 96px circle that
+  centre-crops anyway.
+- **Honest web implementations over throwing placeholders.** Where the
+  real one belongs to a later milestone, reads answer empty and writes
+  reject. `fileCache` writes reject rather than silently storing
+  nothing, because telling someone a book is available offline when it
+  is not is a promise the product breaks on a train.
+
+#### EPUB reading works on web
+
+Not a placeholder. The reader's bridge script targets
+`window.ReactNativeWebView.postMessage`; the iframe gets a four-line
+shim defining that in terms of `parent.postMessage` before the bridge
+runs, so the existing script works unchanged. Rewriting it would have
+meant two copies of the scroll-restore and tap-versus-scroll logic,
+which is subtle enough to drift. Messages are matched on `event.source`.
+
+PDF on web says so plainly, which is §8's own "no PDF full mode at
+launch" — §7.6 rules pdf.js out on M0 spike 1's measurements, and web
+PDF rendering is a separate decision with its own budget.
+
+#### Open question 16, closed — with a correction
+
+The reader/listen barrel cycle is gone. `core/offlineLibrary.ts` now
+owns the offline root, the per-book directory and the cached page text
+that both features touched; `PageRow` moved to `core/pageRows.ts`,
+which both already imported. No `~/features/listen` import remains
+under `features/reader`.
+
+**The question's own description of the gate was wrong.** It said
+`import/no-cycle` "reports it when that one file is linted and misses
+it on a whole-tree run". It does not, and did not: both runs report
+zero. The rule is scoped to relative specifiers because the resolver
+cannot follow `~/*` or the workspace exports maps, so a cycle built
+entirely from aliases is invisible to it either way. This one was found
+by reading the barrels.
+
+The gap is closed by a test rather than a resolver (Austine,
+2026-10-30). `eslint-import-resolver-typescript` would teach
+`import/no-cycle` to follow `~/*`, but it is a new dependency and the
+baseline config records that a resolver taught what `tsc` already knows
+previously produced 333 false positives.
+`packages/shared/src/__tests__/importCycles.test.ts` walks the app's
+import graph instead, resolving `~/*` the way Metro does.
+
+#### Its first run found five more
+
+**`ai`, `billing`, `library`, `listen` and `reader` are one mutually
+dependent knot, through ten edges.** Fixing question 16's cycle fixed
+the instance, not the class.
+
+| | |
+|---|---|
+| ai | → billing, reader |
+| billing | → ai |
+| library | → billing, listen, reader |
+| listen | → billing, reader |
+| reader | → ai, library |
+
+They are latent rather than broken: every crossing is read inside a
+component body or an event handler, never at module-eval time, so
+nothing resolves to `undefined` today. That was equally true of the M3
+cycle right up until it was not.
+
+The ten edges are a baseline the test asserts as an **equality**, so a
+new one fails and removing one fails too. Untangling five features is
+its own piece of work and not M4b's; see the new question 17.
+
+#### Gate
+
+tsc 0, eslint 0 errors, 122 tests, web export clean, both Playwright
+widths, on every one of the ten commits. Bundle still 8.9 MB — M4c.
 
 ### M4a — web boot · 2026-10-29
 
@@ -1367,7 +1527,8 @@ migrations, not ten.
 | 12 | `listen_sessions.chapter_id` is a leftover from `0010_chapters_to_pages.sql`. Reconcile or drop while the schema is open | M5 |
 | 15 | **F-46 — two components named `SendFeedbackScreen`.** The standalone 380-line form is dead; the app ships the mail hand-off. Delete the dead one, or wire it and delete the stub | M3 |
 | 13 | **Can Ghanaian customers actually pay?** Web Billing is Stripe-only, card-only, and its purchase links cannot be localised. The persona the web app most helps is the one least served by that checkout. Needs a direct answer from RevenueCat or Stripe | before M8 |
-| 16 | **A real import cycle between the reader and listen barrels.** `reader/api/useBookChapters` → `~/features/listen` → `ListenScreen` → `~/features/reader` → back. `import/no-cycle` reports it when that one file is linted and misses it on a whole-tree run, so the gate is green on a cycle that exists. Harmless today only because every crossing is called from inside a function, never at module load — the same shape that crashed the M3 launch. `getCachedPages` is shared by both features, so the `bookCovers` fix applies: move it to `~/core/` | M4 |
+| ~~16~~ | ~~**A real import cycle between the reader and listen barrels.**~~ — **closed 2026-10-30** in M4b: `getCachedPages`, the offline root and `PageRow` moved to `~/core/`. The row's claim that `import/no-cycle` catches it on a single-file run was wrong; alias cycles are invisible to that rule in both modes. Successor question: whether to add a resolver, write a graph-walking test, or neither | ✅ |
+| 17 | **Five features are one import knot.** `ai`, `billing`, `library`, `listen` and `reader` reach each other through ten barrel edges, every one a latent `export *` cycle. Harmless only because no crossing is read at module-eval time, which is exactly what was true of the cycle that crashed M3. Baselined by `importCycles.test.ts` so it cannot grow; untangling it is unscheduled work. Likely shape: the shared screens move to `~/core/` or a feature stops reaching into another's screens | unscheduled |
 | ~~14~~ | ~~Real-device confirmation for pdf.js~~ — **closed by the result, 2026-10-22.** The spike failed, and a failure on flattering hardware is conclusive. Successor: confirm **text/EPUB** on a real device before M6 ships, since a *pass* is the case needing confirmation | before M6 |
 
 ---

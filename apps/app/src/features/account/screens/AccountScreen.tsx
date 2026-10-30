@@ -11,9 +11,9 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { File as FsFile } from 'expo-file-system';
-import * as ImagePicker from 'expo-image-picker';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { readBytes } from '~/platform/files';
+import { pickImage } from '~/platform/imagePicker';
 import {
   Presenter,
   type PresenterRef,
@@ -388,53 +388,36 @@ function EditProfileScreen({
     // Permission flow lives inside the picker — we request only
     // media-library access (no camera) because the simulator
     // doesn't have a camera and most users grab from photos anyway.
-    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!perm.granted) {
-      setError('Permission to access photos was denied.');
-      return;
-    }
     try {
-      const result = await ImagePicker.launchImageLibraryAsync({
-        // String-literal `MediaType[]` form (SDK 55+).
-        mediaTypes: ['images'],
+      const result = await pickImage({
         // Crop UI back on per user request. Confirmed via tested
         // builds that picker + editing works on iOS Simulator and
         // device; the previous "silent return" behavior wasn't
         // caused by editing — it was caused by the iOS image not
         // making it past the upload step (XHR blob from file://
-        // returning 0 bytes). Switching to expo-file-system below
-        // makes the upload robust enough to keep crop on.
+        // returning 0 bytes). Reading through ~/platform/files below
+        // makes the upload robust enough to keep crop on. Web has no
+        // crop and ignores this.
         allowsEditing: true,
         aspect: [1, 1],
         // 0.8 — slightly higher than before so the cropped image
         // doesn't look soft on the 96px Edit-profile circle or the
         // larger sources we may render it in later.
         quality: 0.8,
-        selectionLimit: 1,
       });
-      // Diagnostic — visible in Metro / dev tools. If the picker
-      // ever returns an unexpected shape (canceled when user
-      // selected, empty assets array, missing uri), this surfaces
-      // the cause without needing native logs.
-      console.log('[avatar-pick] result', {
-        canceled: result.canceled,
-        count: result.assets?.length ?? 0,
-        firstUri: result.assets?.[0]?.uri ?? null,
-        firstMime: result.assets?.[0]?.mimeType ?? null,
-        firstSize:
-          (result.assets?.[0] as { fileSize?: number } | undefined)
-            ?.fileSize ?? null,
-      });
-      if (result.canceled) return;
-      const asset = result.assets?.[0];
-      if (!asset?.uri) {
+      if (result.status === 'denied') {
+        setError('Permission to access photos was denied.');
+        return;
+      }
+      if (result.status === 'cancelled') return;
+      if (result.status === 'unreadable') {
         setError(
           "Couldn't read the selected photo. Try a different image.",
         );
         return;
       }
-      setPickedUri(asset.uri);
-      setPickedMime(asset.mimeType ?? 'image/jpeg');
+      setPickedUri(result.image.uri);
+      setPickedMime(result.image.mimeType ?? 'image/jpeg');
     } catch (err) {
       console.warn('[avatar-pick] threw', err);
       setError(
@@ -604,8 +587,7 @@ function EditProfileScreen({
           // Read the picked file into an ArrayBuffer.
           let arrayBuffer: ArrayBuffer;
           try {
-            const fsFile = new FsFile(pickedUri);
-            arrayBuffer = await fsFile.arrayBuffer();
+            arrayBuffer = await readBytes(pickedUri);
           } catch (readErr) {
             console.warn('[avatar-upload] read failed', readErr);
             setError(

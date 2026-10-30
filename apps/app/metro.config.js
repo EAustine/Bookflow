@@ -27,28 +27,35 @@ const config = getDefaultConfig(__dirname);
 const PLACEHOLDERS = path.resolve(__dirname, 'src/platform/web-placeholder');
 
 /**
- * The §8 adapter list, plus the three it has never had a row for:
- * `react-native-webview` (named in §8's reader-host prose but missing
- * from the lint rule's own list), `react-native-purchases-ui` (arrived
- * after the spike, with the hosted paywall) and `expo-clipboard`
- * (added to §8 in Phase 0). Keep this in step with `NATIVE_ONLY` in
+ * What is left of the §8 adapter list, plus the two the lint rule has
+ * never had a row for: `react-native-webview` (named in §8's
+ * reader-host prose but missing from that list) and
+ * `react-native-purchases-ui` (arrived after the spike, with the
+ * hosted paywall). Keep this in step with `NATIVE_ONLY` in
  * `eslint.config.js`.
+ *
+ * Migrated to a real adapter so far, and therefore absent below:
+ * `expo-clipboard` → `src/platform/clipboard.ts`,
+ * `expo-document-picker` → `src/platform/files.ts`,
+ * `expo-speech` → `src/platform/speech.ts`,
+ * `expo-share-intent` → `src/platform/shareIntent.ts`,
+ * `expo-image-picker` → `src/platform/imagePicker.ts`,
+ * `expo-notifications` → `src/platform/notifications.ts`,
+ * `expo-file-system` → `src/platform/fileCache.ts` (plus `readBytes`
+ * on the `files` adapter),
+ * `expo-audio` → `src/platform/audio.ts`,
+ * `react-native-pdf` and `react-native-webview` →
+ * `src/platform/readerHost.tsx`.
+ *
+ * `expo-haptics` and `expo-secure-store` left without an adapter:
+ * neither is a declared dependency and nothing imports either, so
+ * their entries mapped a specifier that never appears. §8 keeps its
+ * rows for them as intent; this list is for packages the code
+ * actually reaches.
  */
 const NATIVE_ONLY = new Set([
-  'react-native-pdf',
-  'react-native-webview',
   'react-native-purchases',
   'react-native-purchases-ui',
-  'expo-audio',
-  'expo-speech',
-  'expo-file-system',
-  'expo-document-picker',
-  'expo-image-picker',
-  'expo-share-intent',
-  'expo-clipboard',
-  'expo-notifications',
-  'expo-haptics',
-  'expo-secure-store',
 ]);
 
 const defaultResolve = config.resolver.resolveRequest;

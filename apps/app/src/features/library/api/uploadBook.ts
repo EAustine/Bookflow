@@ -1,5 +1,5 @@
 import { useCallback, useRef, useState } from 'react';
-import * as DocumentPicker from 'expo-document-picker';
+import { pickFiles, type PickedFile } from '~/platform/files';
 import { supabase } from '~/lib/supabase';
 
 /**
@@ -262,7 +262,7 @@ export type UseBookUploadResult = {
    * `startUpload`, just without the picker step.
    */
   startUploadFromAsset: (
-    asset: DocumentPicker.DocumentPickerAsset,
+    asset: PickedFile,
   ) => Promise<void>;
   /**
    * Explicit batch entry point — run the pipeline for each asset
@@ -272,7 +272,7 @@ export type UseBookUploadResult = {
    * realtime as each `process-book` invocation completes server-side.
    */
   startUploadFromAssets: (
-    assets: DocumentPicker.DocumentPickerAsset[],
+    assets: PickedFile[],
   ) => Promise<void>;
   /** Abort any in-flight upload or poll. The book row is left in place (status reflects last write). */
   cancel: () => void;
@@ -305,7 +305,7 @@ export function useBookUpload(): UseBookUploadResult {
    */
   const runPipelineFromAsset = useCallback(
     async (
-      picked: DocumentPicker.DocumentPickerAsset,
+      picked: PickedFile,
       options?: { skipFinalPoll?: boolean },
     ): Promise<void> => {
       abortRef.current?.abort();
@@ -551,7 +551,7 @@ export function useBookUpload(): UseBookUploadResult {
    * files processed, not by per-file outcome.
    */
   const processBatch = useCallback(
-    async (assets: DocumentPicker.DocumentPickerAsset[]) => {
+    async (assets: PickedFile[]) => {
       if (assets.length === 0) return;
       const skipFinalPoll = assets.length > 1;
       setBatchState({
@@ -587,23 +587,21 @@ export function useBookUpload(): UseBookUploadResult {
   const startUpload = useCallback(async () => {
     setState({ ...INITIAL_STATE, phase: 'picking' });
 
-    let picked: DocumentPicker.DocumentPickerAsset[];
+    let picked: PickedFile[];
     try {
-      const result = await DocumentPicker.getDocumentAsync({
-        type: ACCEPTED_MIME,
+      picked = await pickFiles({
+        mimeTypes: ACCEPTED_MIME,
         // Multi-select unlocks "drop your library in" — the OS picker
         // lets the user select N files at once from on-device storage
         // OR from any connected source (iCloud, Drive, Dropbox), with
         // no SDK integration on our side. Sequential upload in
         // processBatch handles the rest.
         multiple: true,
-        copyToCacheDirectory: true,
       });
-      if (result.canceled || !result.assets || result.assets.length === 0) {
+      if (picked.length === 0) {
         setState(INITIAL_STATE);
         return;
       }
-      picked = result.assets;
     } catch (err) {
       setState({
         ...INITIAL_STATE,
@@ -628,7 +626,7 @@ export function useBookUpload(): UseBookUploadResult {
    * asset straight to upload without a picker round-trip.
    */
   const startUploadFromAsset = useCallback(
-    async (asset: DocumentPicker.DocumentPickerAsset) => {
+    async (asset: PickedFile) => {
       await processBatch([asset]);
     },
     [processBatch],
@@ -641,7 +639,7 @@ export function useBookUpload(): UseBookUploadResult {
    * resolved list of assets in hand.
    */
   const startUploadFromAssets = useCallback(
-    async (assets: DocumentPicker.DocumentPickerAsset[]) => {
+    async (assets: PickedFile[]) => {
       await processBatch(assets);
     },
     [processBatch],

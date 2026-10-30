@@ -46,7 +46,8 @@ The full product scope, personas, MVP features, pricing, and beta plan are in `/
 - `@tabler/icons-react-native` for icons (with `react-native-svg`), wrapped by `src/components/Icon.tsx` — **never import Tabler directly**. The wrapper applies `tokens.iconStrokeWidth` (1.0); don't pass `strokeWidth` at all. The one exception is `strokeWidth={0}` on Tabler's `*Filled` glyphs (Play, Pause, ThumbUpFilled), which paint from `fill`.
 - `@gorhom/bottom-sheet` for bottom sheets (don't roll our own)
 - `expo-audio` for audio playback (not `expo-av` or `react-native-track-player`)
-- `react-native-webview` + injected CSS for EPUB Full mode (not `epubjs`); **`react-native-pdf` for PDF Full mode, permanently** — M0 spike 1 measured pdf.js in a WebView at 42 dropped frames in 60 during ordinary reading scroll on a low-end device, so it is ruled out of the unified reader engine. See `/docs/ARCHITECTURE.md` §7.6.
+- `react-native-webview` + injected CSS for EPUB Full mode (not `epubjs`); **`react-native-pdf` for PDF Full mode, permanently** — M0 spike 1 measured pdf.js in a WebView at 42 dropped frames in 60 during ordinary reading scroll on a low-end device, so it is ruled out of the unified reader engine. See `/docs/ARCHITECTURE.md` §7.6. Both are reached through `~/platform/readerHost`, not imported directly.
+- **Native-only packages live behind `~/platform/*`** (`audio`, `clipboard`, `fileCache`, `files`, `imagePicker`, `notifications`, `readerHost`, `shareIntent`, `speech`), each a module with a `.web.ts` sibling Metro resolves for the web bundle. Never import `expo-audio`, `expo-clipboard`, `expo-file-system`, `expo-document-picker`, `expo-image-picker`, `expo-notifications`, `expo-share-intent`, `expo-speech`, `react-native-pdf` or `react-native-webview` from a screen — same rule as Tabler icons, and for the same reason: the wrapper is where the platform differences are decided. An adapter exposes what the app needs rather than re-exporting its package. `react-native-purchases` is the last holdout, moving once the current release soaks. See `/docs/ARCHITECTURE.md` §8.
 - Read `/docs/specs/bookflow_engineering_scoping.md` for the full rationale on each choice
 
 **Don't suggest alternatives** like "have you considered Flutter?" or "we should use Redux instead." These were debated; the answers are above. If a genuinely new constraint emerges, then revisit — but don't second-guess proactively.
@@ -58,53 +59,88 @@ The full product scope, personas, MVP features, pricing, and beta plan are in `/
 ### File structure
 
 ```
-apps/app/                 # The Expo app. Routes in app/, screens in src/.
+apps/app/                 # The Expo app. Routes in app/, everything else in src/.
 apps/site/                # Marketing site (static), deployed to Vercel.
 packages/tokens/          # Design tokens -> RN theme + tokens.css.
 packages/shared/          # Types and pure logic. No platform imports.
 supabase/                 # Migrations and 21 edge functions. Repo root.
 
-apps/app/app/             # Expo Router routes (file-based).
+apps/app/app/             # Expo Router routes (file-based), M2 onward.
+├── _layout.tsx           # Root: session restore, splash, boot hand-off
+├── index.tsx
+├── (auth)/ (onboarding)/ (tabs)/
+└── auth/ settings/ you/
+                          # Route map: /docs/M2_ROUTE_MAP.md
+
 apps/app/src/
-├── screens/             # Every screen and sheet. Tabs swap on local
-│   │                    # `view` state; there is no router.
-│   ├── LibraryScreen.tsx
-│   ├── DiscoverScreen.tsx   # also holds Category + Book detail views
-│   ├── ListenHomeScreen.tsx / ListenNowPlayingScreen.tsx / ListenScreen.tsx
-│   ├── YouScreen.tsx / AccountScreen.tsx / SettingsScreen.tsx / YouDrillScreens.tsx
-│   ├── ReaderScreen.tsx / PdfReaderScreen.tsx / EpubFullReaderScreen.tsx
-│   └── ...
-├── components/          # Reusable components
+├── features/            # The app, by feature (M3). Eight of them.
+│   ├── account/ ai/ auth/ billing/
+│   ├── discover/ library/ listen/ reader/
+│   └── <name>/
+│       ├── api/         # Data + side effects for this feature
+│       ├── components/  # Private to the feature
+│       ├── hooks/       # (where a feature needs them)
+│       ├── screens/     # LibraryScreen.tsx, ReaderScreen.tsx, …
+│       └── index.ts     # The feature's public face. Import ANOTHER
+│                        # feature through this; never import your OWN
+│                        # feature's index — it re-exports you, and the
+│                        # cycle resolves to undefined at module load.
+├── shell/               # SignedInShell + useShellSession. What wraps
+│                        # the tabs: share intent, paywall, billing sync.
+├── platform/            # Native-only packages (§8). One module per
+│   │                    # adapter with a .web.ts sibling Metro picks
+│   │                    # for the web bundle.
+│   ├── audio.ts / audio.web.ts
+│   ├── readerHost.tsx / readerHost.web.tsx
+│   └── clipboard / fileCache / files / imagePicker /
+│       notifications / orientation / shareIntent / speech
+├── core/                # Shared by more than one feature, owned by
+│                        # none. Where a cross-feature helper goes
+│                        # instead of creating an import cycle.
+├── components/          # Reusable components (34). The design system.
 │   ├── Button.tsx       # Canonical button — use, don't reinvent
 │   ├── Input.tsx
-│   ├── Icon.tsx         # Lucide wrapper
+│   ├── Icon.tsx         # Tabler wrapper — never import Tabler directly
 │   ├── ListRow.tsx
 │   ├── BottomSheet.tsx
 │   └── ...
-├── design/              # Design system tokens & utilities
+├── ui/                  # Presentational odds and ends. Must NOT import
+│                        # from features/ or screens/ — the dependency
+│                        # runs the other way.
+├── design/              # Design system tokens
 │   ├── tokens.ts        # All colors, spacing, typography
-│   ├── CLAUDE.md        # Nested instructions for design work
-│   └── theme.ts
+│   └── CLAUDE.md        # Nested instructions for design work
 ├── lib/                 # Service integrations
 │   ├── supabase.ts
 │   ├── anthropic.ts
 │   ├── elevenlabs.ts
 │   └── revenuecat.ts
-├── hooks/               # Custom React hooks
+├── audio/               # Now-playing metadata
+├── data/                # Static content (the curated library)
+├── hooks/               # Cross-feature React hooks
 ├── stores/              # Zustand stores
-├── types/               # TypeScript type definitions
-└── utils/               # Pure utility functions
+└── types/               # TypeScript type definitions
 
 docs/
-└── specs/               # All design system + product specs
+├── ARCHITECTURE.md       # The target. Wins over this file.
+├── ARCHITECTURE_LOG.md   # Which milestone is live, and why
+├── ARCHITECTURE_GAPS.md  # Distance between the two
+├── M2_ROUTE_MAP.md / M2_DEEP_LINKS.md / M3_FEATURE_MAP.md
+├── MOBILE_UI_SPEC.md / RELEASE_QA_CHECKLIST.md
+└── specs/               # Design system + product specs
     ├── bookflow_mvp_scope.md
     ├── bookflow_design_system.md
     ├── bookflow_button_system.html
     ├── bookflow_input_system.html
     ├── bookflow_bottom_sheet_system.html
     ├── bookflow_list_row_system.html
-    └── bookflow_engineering_scoping.md
+    ├── bookflow_engineering_scoping.md
+    └── responsive-handoff.md / responsive-milestones.md
 ```
+
+There is **no `src/screens/`** and no `src/utils/`. Screens live in the
+feature that owns them. If you find a reference to either, it predates
+M3 and is the bug.
 
 ### Naming conventions
 
