@@ -142,20 +142,54 @@ describe('nextBootHandoff — magic-link cold start', () => {
   });
 
   /**
-   * Sign out without restarting. The shell does its own
-   * `router.replace('/(auth)/welcome')` (useShellSession.ts), so what
-   * matters here is that the finished hand-off cannot fire again and
-   * take the user somewhere else — in particular back to the Library
-   * destination restore chose at boot.
+   * Signing in through a link, then signing out without restarting.
+   *
+   * The shell performs that last navigation itself
+   * (`router.replace('/(auth)/welcome')` in `useShellSession`), so what
+   * this has to prove is that the boot hand-off stays out of the way
+   * for the rest of the process.
+   *
+   * It must not fire again *at all*, not even towards Welcome. The
+   * destination parked at boot happens to be Welcome here, because a
+   * link cold start runs restore before the exchange — so a hand-off
+   * that fired would look correct in this one scenario while being
+   * wrong in general, and would have taken a user who was reading in
+   * Library back to the start screen.
    */
-  it('stays finished once the link sign-in is through', () => {
-    const after = replay(
-      [
-        booting({ destination: LIBRARY, splashDone: true }),
-        booting({ destination: LIBRARY, splashDone: true }),
-      ],
-      'done',
-    );
-    expect(after).toEqual([{ kind: 'wait' }, { kind: 'wait' }]);
+  it('stays out of the way when a link sign-in is followed by signing out', () => {
+    const actions = replay([
+      // Cold start on the callback route. Restore finds no session yet
+      // and parks Welcome; the splash finishes.
+      booting({ onAuthCallback: true }),
+      booting({ onAuthCallback: true, destination: WELCOME, splashDone: true }),
+      // The exchange succeeds and the callback navigates into the app.
+      booting({ destination: WELCOME, splashDone: true }),
+      // Sign out, same process, no restart. The shell replaces to
+      // Welcome; the hand-off's own inputs are unchanged.
+      booting({ destination: WELCOME, splashDone: true }),
+      booting({ destination: WELCOME, splashDone: true }),
+    ]);
+
+    expect(actions).toEqual([
+      { kind: 'wait' },
+      { kind: 'wait' },
+      { kind: 'discard' },
+      { kind: 'wait' },
+      { kind: 'wait' },
+    ]);
+    expect(actions.some((a) => a.kind === 'navigate')).toBe(false);
+  });
+
+  /** The same guarantee entered directly at the finished phase. */
+  it('never navigates again once finished', () => {
+    expect(
+      replay(
+        [
+          booting({ destination: LIBRARY, splashDone: true }),
+          booting({ destination: LIBRARY, splashDone: true }),
+        ],
+        'done',
+      ),
+    ).toEqual([{ kind: 'wait' }, { kind: 'wait' }]);
   });
 });
