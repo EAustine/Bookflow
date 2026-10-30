@@ -30,6 +30,15 @@ import {
 import { completeAuthCallback, parseAuthCallback, describeAuthCallback } from '~/features/auth';
 import { supabase } from '~/lib/supabase';
 
+/**
+ * How long to wait for a URL to arrive from any of the three sources
+ * before admitting none will. Generous: a cold start has to boot the JS
+ * bundle, resolve the route and hit the network before `inFlight` is
+ * set, and failing early on a slow device would be worse than the hang
+ * it replaces.
+ */
+const CALLBACK_CEILING_MS = 15000;
+
 export default function Callback() {
   const router = useRouter();
   const params = useLocalSearchParams();
@@ -42,6 +51,13 @@ export default function Callback() {
   // surface as "link expired" on a link the user had just tapped.
   const inFlight = useRef(false);
 
+  /**
+   * Whether any source handed us a URL carrying real auth material —
+   * not merely *a* URL. Gates the ceiling below; see both the `!payload`
+   * branch and the ceiling for why the distinction matters.
+   */
+  const sawAuthMaterial = useRef(false);
+
   const handleUrl = useCallback(
     async (url: string | null | undefined, source: string) => {
       if (!url) {
@@ -51,12 +67,22 @@ export default function Callback() {
       console.log('[auth] callback via', source, '::', describeAuthCallback(url));
       const payload = parseAuthCallback(url);
       if (!payload) {
-        // Not a silent return. A callback URL that parses to nothing is
-        // the shape of bug that leaves the user staring at "Verifying
-        // your sign-in link…" with no way to tell why.
+        // Deliberately neither paints an error nor stands the ceiling
+        // down. On a warm start `getInitialURL()` returns the URL that
+        // launched the *process* — often bare `bookflow://` with no auth
+        // material — while the real link is still arriving through the
+        // listener. Failing here would kill a sign-in that was about to
+        // succeed, and standing the ceiling down would re-create the
+        // hang it exists to end. Say so in the log and let the ceiling
+        // decide.
         console.warn('[auth] callback URL carried no auth material:', describeAuthCallback(url));
         return;
       }
+      // Real auth material, so the screen now resolves on its own: an
+      // error payload paints immediately and an exchange paints when it
+      // settles. The ceiling stands down from here, which is what gives
+      // the exchange as long as the network needs.
+      sawAuthMaterial.current = true;
       console.log('[auth] callback payload kind:', payload.kind);
 
       // An error callback carries nothing to exchange, so it skips the
@@ -135,6 +161,39 @@ export default function Callback() {
     if (Object.keys(qp).length === 0) return;
     void handleUrl(Linking.createURL('/auth/callback', { queryParams: qp }), 'routerParams');
   }, [code, errParam, errCode, handleUrl]);
+
+  /**
+   * Last resort. All three sources above can legitimately come back with
+   * nothing — `getInitialURL` is null on a warm start, the `url` event
+   * fires before this mounts, and the router's params do not carry a
+   * fragment, which is where an implicit-flow token lives. When that
+   * happens there is no error to show and no exchange to await, so the
+   * screen said "Verifying your sign-in link…" forever with no way out.
+   *
+   * Observed while testing an admin-generated link: the redirect put the
+   * token in the fragment, `getInitialURL` returned null, and `params`
+   * had neither `code` nor `error`. Nothing was wrong enough to fail,
+   * and nothing was right enough to finish.
+   *
+   * So: if no auth material has arrived by now, say so. `unknown` is
+   * the honest kind — we genuinely do not know why the link carried
+   * nothing — and its screen already offers a way back to sign-in.
+   *
+   * This fires **only** when nothing arrived. Once a payload has been
+   * seen the exchange owns the screen for as long as it needs: a slow
+   * network must not be reported as a dead link, and an exchange that
+   * already failed has a specific error on screen that `unknown` would
+   * only make vaguer.
+   */
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (sawAuthMaterial.current) return;
+      console.warn('[auth] callback: no URL from any source; giving up');
+      setError('unknown');
+      setState('error');
+    }, CALLBACK_CEILING_MS);
+    return () => clearTimeout(timer);
+  }, []);
 
   return (
     <AuthCallbackScreen

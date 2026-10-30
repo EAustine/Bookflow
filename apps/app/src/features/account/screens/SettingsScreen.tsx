@@ -357,7 +357,7 @@ export function SettingsScreen({
           hour={reminderHour}
           minute={reminderMinute}
           onConfirm={(hour, minute) => {
-            // Persist → the App-root useDailyReminderSync hook sees the
+            // Persist → the root layout's useDailyReminderSync hook sees the
             // new time and reschedules the OS notification automatically.
             setReminderHour(hour);
             setReminderMinute(minute);

@@ -5,10 +5,10 @@
  * /Users/completefarmer/Downloads/you_tab.html (Batch 3).
  *
  * Architecture:
- *   - Self-contained presentational screen. Caller (App.tsx) supplies
- *     `profile`, `plan`, `onSignOut`, and `onTabChange`. Sign-out's actual
- *     `supabase.auth.signOut()` call lives in App so the routing back to
- *     Welcome lives in one place.
+ *   - Self-contained presentational screen. The caller (`SignedInShell`)
+ *     supplies `profile`, `plan`, `onSignOut`, and `onTabChange`.
+ *     Sign-out's actual `supabase.auth.signOut()` call lives in
+ *     `useShellSession` so the routing back to Welcome lives in one place.
  *   - The sign-out confirmation is a stacked-CTA bottom sheet, per design
  *     rule #2 (confirmation sheets always stack, never side-by-side) and
  *     rule #5 (destructive actions always trigger a confirmation sheet,

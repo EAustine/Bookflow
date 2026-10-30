@@ -16,8 +16,8 @@
  * desaturates pills, swaps the pause icon for play, and replaces the EQ
  * bars in the active recent row with two static bars.
  *
- * Tab bar is rendered by the host (App.tsx); this screen is only the
- * scrollable content area between the status bar and the tab bar.
+ * Tab bar is rendered by the host (`SignedInShell`); this screen is only
+ * the scrollable content area between the status bar and the tab bar.
  */
 
 import { useEffect, useMemo, useRef, useState, type RefObject } from 'react';

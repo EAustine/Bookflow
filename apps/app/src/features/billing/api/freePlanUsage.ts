@@ -30,10 +30,10 @@ import { useMemo } from 'react';
 import { useBooks } from '~/hooks/useBooks';
 import { useIsPro } from './revenuecat';
 
-/** Free-tier caps. Mirrors the constant in App.tsx — kept duplicated
- * for now so this module doesn't depend on App.tsx (which would be a
- * cycle); the App.tsx copy will drop to a re-export once the YouScreen
- * meter wiring is migrated to read from here too. */
+/** Free-tier caps. Mirrors `FREE_PLAN_LIMITS` in `SignedInShell` — kept
+ * duplicated for now so this module doesn't depend on the shell (which
+ * would be a cycle); the shell's copy will drop to a re-export once the
+ * YouScreen meter wiring is migrated to read from here too. */
 export const FREE_PLAN_LIMITS = {
   // Monthly NEW-narration (generation) allowance. Cached + downloaded
   // playback is free and uncapped — only fresh ElevenLabs generation counts,

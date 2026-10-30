@@ -53,6 +53,22 @@ const disabled =
 
 let configured = false;
 
+/**
+ * Configure the SDK. **Must run before anything reads an entitlement** —
+ * every other function here guards on `configured`, so until this runs
+ * `logIn` returns null and no RevenueCat customer is ever created.
+ *
+ * Idempotent: the `configured` flag makes a second call a no-op, which
+ * matters because React 18 StrictMode mounts effects twice in dev.
+ *
+ * Returns early on **web** through `disabled`, which includes
+ * `Platform.OS === 'web'`. The root layout runs on web too, and
+ * `react-native-purchases` resolves to an M4a placeholder there that
+ * throws when called — so this guard is what keeps the web bundle
+ * loading. M4b's `billing` adapter replaces it with the RevenueCat Web
+ * SDK, configured with the same Supabase user id so an Android
+ * subscription shows on web.
+ */
 export function configureRevenueCat(appUserID?: string): void {
   if (configured || disabled) return;
   if (!apiKey) {
@@ -74,8 +90,22 @@ export async function loginRevenueCat(userId: string): Promise<CustomerInfo | nu
   return customerInfo;
 }
 
+/**
+ * Log out, but only a real user.
+ *
+ * RevenueCat errors if you log out an anonymous customer, and after
+ * `configure()` with no `appUserID` that is exactly what we are until
+ * the first `logIn`. So a sign-out before sign-in — or a second
+ * sign-out — would throw into a `console.warn` and look like a billing
+ * fault when nothing is wrong.
+ *
+ * The id prefix is the check rather than an SDK `isAnonymous` getter,
+ * because the prefix is stable across SDK versions.
+ */
 export async function logoutRevenueCat(): Promise<CustomerInfo | null> {
   if (disabled || !configured) return null;
+  const appUserId = await Purchases.getAppUserID();
+  if (appUserId.startsWith('$RCAnonymousID:')) return null;
   return Purchases.logOut();
 }
 

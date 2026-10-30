@@ -18,27 +18,14 @@
  */
 
 import { createClient } from 'npm:@supabase/supabase-js@2.45.0';
+import { decideRevenueCatPlan } from '../_shared/revenuecatPlan.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 const WEBHOOK_SECRET = Deno.env.get('REVENUECAT_WEBHOOK_SECRET');
 
-const PRO_ENTITLEMENT = 'Bookflow Pro';
 const FREE_LIMIT = 50_000;
 const PRO_LIMIT = 500_000;
-
-// Events that grant or extend Pro access.
-const GRANT = new Set([
-  'INITIAL_PURCHASE',
-  'RENEWAL',
-  'UNCANCELLATION',
-  'PRODUCT_CHANGE',
-  'SUBSCRIPTION_EXTENDED',
-  'TEMPORARY_ENTITLEMENT_GRANT',
-]);
-// Events that revoke Pro access. (CANCELLATION is intentionally absent — it
-// means auto-renew was turned off, but access continues until EXPIRATION.)
-const REVOKE = new Set(['EXPIRATION', 'SUBSCRIPTION_PAUSED']);
 
 // Consumable top-up products → how much each grants. Keys are the Google Play
 // product IDs; amounts match what's advertised (AI = credits, audio = seconds).
@@ -103,15 +90,12 @@ Deno.serve(async (req) => {
     return new Response('skipped_anonymous', { status: 200 });
   }
 
-  // RevenueCat includes the entitlement identifiers the event touches. With a
-  // single Pro entitlement we also treat an empty list as "touches Pro".
-  const entitlements: string[] = Array.isArray(event.entitlement_ids)
-    ? event.entitlement_ids
-    : event.entitlement_id
-    ? [event.entitlement_id]
-    : [];
-  const touchesPro =
-    entitlements.length === 0 || entitlements.includes(PRO_ENTITLEMENT);
+  // What this event means for the plan, and whether it is a consumable
+  // top-up instead. Pure and unit tested in revenuecatPlan.ts, which also
+  // carries the reasoning: a promotional grant and a credit pack arrive
+  // under the same `NON_RENEWING_PURCHASE` type, so the entitlement has to
+  // decide which is which.
+  const decision = decideRevenueCatPlan(event);
 
   const supabaseSvc = () =>
     createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
@@ -121,7 +105,11 @@ Deno.serve(async (req) => {
   // Consumable credit top-ups (one-time, non-subscription). These do NOT grant
   // Pro — they add to the user's purchased balance via grant_credits, which is
   // idempotent by transaction id so a redelivered webhook never double-grants.
-  if (type === 'NON_RENEWING_PURCHASE') {
+  // `decision.topup` rather than the type alone: a promotional Pro grant
+  // also arrives as NON_RENEWING_PURCHASE, and used to be swallowed here
+  // because it matches no top-up product. That is exactly how a granted
+  // entitlement left `profiles.plan` on free while the app showed Premium.
+  if (decision.topup) {
     const productId: string = event.product_id ?? '';
     const txn: string = event.transaction_id ?? event.id ?? '';
     const grant = resolveTopup(productId);
@@ -158,9 +146,7 @@ Deno.serve(async (req) => {
     });
   }
 
-  let plan: 'pro' | 'free' | null = null;
-  if (GRANT.has(type) && touchesPro) plan = 'pro';
-  else if (REVOKE.has(type) && touchesPro) plan = 'free';
+  const plan = decision.plan;
 
   if (!plan) {
     // CANCELLATION / BILLING_ISSUE / TRANSFER / TEST / … — acknowledge, no change.

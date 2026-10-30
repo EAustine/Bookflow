@@ -50,15 +50,12 @@ import { Lexend_400Regular } from '@expo-google-fonts/lexend';
 import { Literata_400Regular } from '@expo-google-fonts/literata';
 import { installRejectionTracker } from '~/lib/installRejectionTracker';
 import {
-  configureRevenueCat,
-  presentPaywall,
   useIsPro,
   ENTITLEMENT_PRO,
 } from '~/features/billing';
 import {
   fireBookReadyNotification,
   installNotificationHandler,
-  useDailyReminderSync,
   useNotificationPermission,
   useStreakWarningSync,
 } from '~/lib/notifications';
@@ -82,7 +79,6 @@ import {
   type AuthExchangeErrorKind,
   completeAuthCallback,
   parseAuthCallback,
-  setupRevenueCatAuthSync,
 } from '~/features/auth';
 import { supabase } from '~/lib/supabase';
 import type { TabKey } from '~/components';

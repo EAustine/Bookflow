@@ -177,8 +177,9 @@ export function useBooksImpl(): UseBooksResult {
   const [isLoading, setIsLoading] = useState(true);
 
   // We capture the user id once for the realtime filter. If the user signs
-  // out and a different user signs in, App.tsx remounts the library, which
-  // re-runs this hook from scratch — so the closed-over id stays correct.
+  // out and a different user signs in, the tab layout remounts its
+  // BooksProvider, which re-runs this hook from scratch — so the
+  // closed-over id stays correct.
   const channelRef = useRef<RealtimeChannel | null>(null);
   // Unique channel topic per hook instance. Supabase realtime returns
   // the *existing* channel when `.channel(name)` is called with a name

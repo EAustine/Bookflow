@@ -11,10 +11,10 @@
  * always visible regardless of branch — same pattern as LibraryScreen,
  * DiscoverScreen, and YouScreen.
  *
- * react-native-track-player isn't wired yet, so for now App.tsx hardcodes
- * `isPlaying=false`. When the player is integrated, swap that for a real
- * subscription to the playback state and the now-playing branch lights up
- * automatically.
+ * Stale when written: it described `App.tsx` hardcoding
+ * `isPlaying=false` pending react-native-track-player. The app uses
+ * `expo-audio` through `AudioSessionProvider`, and the shell reads live
+ * playback state from `useAudioSession`.
  */
 
 import { Pressable, StyleSheet, View } from 'react-native';

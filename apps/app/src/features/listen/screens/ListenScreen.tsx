@@ -79,8 +79,8 @@ export type ListenScreenProps = {
 // ─── Screen ───────────────────────────────────────────────────────────────────
 
 export function ListenScreen({ book, onBack, onMinimize, pageIndex }: ListenScreenProps) {
-  // The audio session is owned globally (App.tsx wraps everything in
-  // AudioSessionProvider). This screen is a controller/view — it never
+  // The audio session is owned globally (the root layout wraps everything
+  // in AudioSessionProvider). This screen is a controller/view — it never
   // mounts its own useAudio, so navigating away keeps audio playing.
   const audio = useAudioSession();
   // Picks the speed picker's density: the one-line list in a popover,
@@ -255,7 +255,7 @@ export function ListenScreen({ book, onBack, onMinimize, pageIndex }: ListenScre
   // Route Android hardware-back through the same path as the
   // in-screen chevron — closes the foreground listening overlay
   // and returns the user to the Library tab (handled by the
-  // parent's onBack closure in App.tsx).
+  // `onBack` closure the shell passes in).
   useBackHandler(() => {
     onBack();
     return true;

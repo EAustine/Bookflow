@@ -89,8 +89,8 @@ const DAILY_REMINDER_ID = 'bookflow:daily-reading-reminder';
  * finished notifications still register even when the user happens
  * to be using the app. Quiet badge-only would be too easy to miss.
  *
- * Call once at module load (App.tsx imports this module's
- * `installNotificationHandler`).
+ * Call once at module load (`SignedInShell` imports this module's
+ * `installNotificationHandler` and calls it at module evaluation time).
  */
 let handlerInstalled = false;
 export function installNotificationHandler(): void {

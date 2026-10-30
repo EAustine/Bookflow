@@ -15,9 +15,10 @@ import { BackHandler, Platform } from 'react-native';
  *     a handler that calls its own `onBack` callback and returns true.
  *     This re-uses the same back-affordance that the in-screen header
  *     button already wires up.
- *   - The root `App.tsx` registers a handler at the very top of the
- *     subscription stack as a last resort. It fires only when no
- *     sub-screen has handled the press — i.e., the user is on a tab
+ *   - The root layout (`app/_layout.tsx`) registers a handler at the
+ *     very bottom of the subscription stack as a last resort, since it
+ *     mounts first and LIFO therefore runs it last. It fires only when
+ *     no sub-screen has handled the press — i.e., the user is on a tab
  *     home — and shows a "Press back again to exit" toast.
  *
  * Handler stability: callers don't need to memoize the handler. We

@@ -661,6 +661,27 @@ function EditProfileScreen({
         setError(upsertError.message);
         return;
       }
+      // Mirror the name onto the auth user so Supabase's own
+      // Authentication → Users "Display name" column agrees with what
+      // the app shows. `profiles` stays the source of truth and
+      // `useCurrentUser` prefers it; the problem is that auth metadata
+      // was written once at signup (auth.ts) and never again, while the
+      // trigger that seeded `profiles` from it only runs on user
+      // creation. So the two diverged the first time anyone edited
+      // their name here, leaving the dashboard showing a stale name
+      // when you most need it — looking up a real user.
+      //
+      // Deliberately not fatal. The save has already succeeded; a
+      // failed mirror costs an out-of-date dashboard column, not data.
+      const { error: metaError } = await supabase.auth.updateUser({
+        data: { full_name: trimmed },
+      });
+      if (metaError) {
+        console.warn(
+          '[account] auth display-name mirror failed:',
+          metaError.message,
+        );
+      }
       // Refresh the local preview to the new public URL so a
       // subsequent navigation back to this screen renders the new
       // avatar without waiting for useCurrentUser to re-fetch.

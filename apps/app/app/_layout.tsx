@@ -15,13 +15,14 @@
  *
  * Route tree: docs/M2_ROUTE_MAP.md
  */
-import { useCallback, useEffect, useState } from "react";
-import { StyleSheet } from "react-native";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { BackHandler, Platform, StyleSheet, ToastAndroid } from "react-native";
+import { useBackHandler } from "~/lib/useBackHandler";
 import { Slot, useRouter, usePathname } from "expo-router";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { BottomSheetModalProvider } from "@gorhom/bottom-sheet";
-import { SplashScreen } from "~/features/auth";
+import { SplashScreen, setupRevenueCatAuthSync } from "~/features/auth";
 import { RootErrorBoundary } from "~/components/RootErrorBoundary";
 import { AudioSessionProvider } from "~/features/listen";
 import { ToastHost } from "~/components/ToastHost";
@@ -30,6 +31,18 @@ import { StatusBar } from "expo-status-bar";
 import { supabase } from "~/lib/supabase";
 import { useAppFonts } from "~/lib/useAppFonts";
 import { applyOrientationPolicy } from "~/platform/orientation";
+import { configureRevenueCat } from "~/features/billing";
+import {
+  useDailyReminderSync,
+  useNotificationPermission,
+  useStreakWarningSync,
+} from "~/lib/notifications";
+import { useReaderStore } from "~/stores/readerStore";
+import {
+  initialBootHandoffPhase,
+  nextBootHandoff,
+  type BootHandoffPhase,
+} from "@bookflow/shared";
 
 /**
  * Last-resort ceiling on the splash. Every branch of session restore
@@ -46,6 +59,9 @@ const SESSION_RESTORE_CEILING_MS = 8000;
  */
 const PROFILE_LOOKUP_TIMEOUT_MS = 4000;
 
+/** How long a first back press stays "armed" for a confirming second one. */
+const BACK_TO_EXIT_WINDOW_MS = 2000;
+
 /** Where boot decided to go. `null` until restore answers. */
 type Destination =
   "/(auth)/welcome" | "/(onboarding)/intent" | "/(tabs)/library";
@@ -59,12 +75,10 @@ export default function RootLayout() {
   // route owns navigation from then on: it exchanges the token and routes
   // to Library or onboarding, or renders the "link expired" screen.
   //
-  // Session restore must not race it. Restore finds no session (the
-  // exchange has not happened yet), sets Welcome, and the hand-off below
-  // replaced the callback route with Welcome the moment the splash
-  // finished — so a user who tapped a link was returned to the start,
-  // mid-exchange, with no explanation. The error screen existed and was
-  // simply never allowed to render.
+  // Session restore must not race it, and must not act on what it
+  // decided before the exchange either. Both failure modes and the fix
+  // are in `bootHandoff.ts`; this flag is the input it turns on.
+  //
   // `usePathname`, not `useSegments`: with typed routes the segments
   // tuple is a union whose shortest member has no index 1.
   const onAuthCallback = pathname.startsWith('/auth/callback');
@@ -80,12 +94,111 @@ export default function RootLayout() {
     void applyOrientationPolicy();
   }, []);
 
-  // The hand-off. Both conditions must hold: a destination to go to, and
-  // a splash that has finished saying what it had to say.
+  /**
+   * RevenueCat identity. **Here, not in `SignedInShell`** — this has to
+   * be live before any screen can open a paywall, and the shell only
+   * mounts once you are already signed in.
+   *
+   * This ran nowhere at all between the M2 router cutover and now. Both
+   * calls lived in `App.tsx`, which the cutover orphaned, and the shell
+   * imported them without calling either. `configureRevenueCat` is what
+   * sets the module's `configured` flag, and every other billing
+   * function returns early without it — so `Purchases.logIn` never ran,
+   * no customer was ever created, and nobody could subscribe or be
+   * granted an entitlement.
+   *
+   * Order matters: configure first, because login guards on it.
+   * `setupRevenueCatAuthSync` then logs in with the Supabase user id on
+   * session restore and on every `SIGNED_IN`, and returns its own
+   * unsubscribe. Both are no-ops on web until M4b's billing adapter.
+   */
   useEffect(() => {
-    if (!splashDone || !destination) return;
-    if (onAuthCallback) return;
-    router.replace(destination);
+    configureRevenueCat();
+    return setupRevenueCatAuthSync();
+  }, []);
+
+  /**
+   * Daily reading reminder and streak nudge — same story, same cause.
+   * Both hooks were called only from `App.tsx`, so since the cutover
+   * Settings has been writing a reminder time that nothing acted on.
+   *
+   * `useNotificationPermission` only *reads* the permission
+   * (`getPermissionsAsync`); it never prompts. And both syncs schedule
+   * only when the toggle is on **and** permission is already granted,
+   * so launching the app can neither raise a prompt nor schedule
+   * anything the user did not ask for.
+   */
+  const reminderEnabled = useReaderStore((s) => s.notifReminderOn);
+  const reminderHour = useReaderStore((s) => s.notifReminderHour);
+  const reminderMinute = useReaderStore((s) => s.notifReminderMinute);
+  const streakWarningEnabled = useReaderStore((s) => s.notifStreakWarningOn);
+  const { granted: notifGranted } = useNotificationPermission();
+  useDailyReminderSync(
+    reminderEnabled,
+    reminderHour,
+    reminderMinute,
+    notifGranted,
+  );
+  useStreakWarningSync(
+    streakWarningEnabled,
+    reminderHour,
+    reminderMinute,
+    notifGranted,
+  );
+
+  /**
+   * Android hardware back, last resort. Restored from `App.tsx`, which
+   * the M2 cutover orphaned: `SignedInShell` has been importing
+   * `useBackHandler` ever since without calling it, so for the whole of
+   * that period a single back press at a tab home killed the app with
+   * no warning. Ten screens register their own handlers; nothing sat
+   * underneath them.
+   *
+   * Subscriptions are LIFO, so this belongs at the root, which mounts
+   * first and therefore runs last. It fires only when no screen has
+   * consumed the press. First press warns and opens a two second
+   * window; a second press inside it exits. The hook is already a
+   * no-op off Android, so web and iOS need no guard here.
+   */
+  const lastBackPressRef = useRef(0);
+  useBackHandler(() => {
+    const now = Date.now();
+    if (now - lastBackPressRef.current < BACK_TO_EXIT_WINDOW_MS) {
+      BackHandler.exitApp();
+      return true;
+    }
+    lastBackPressRef.current = now;
+    if (Platform.OS === "android") {
+      ToastAndroid.show("Press back again to exit", ToastAndroid.SHORT);
+    }
+    // Consume it, so the OS does not also exit on this first press.
+    return true;
+  });
+
+  /**
+   * The hand-off. Both conditions must hold: a destination to go to,
+   * and a splash that has finished saying what it had to say — plus the
+   * magic-link case, which is why the decision is a tested state
+   * machine in `@bookflow/shared` rather than two `if`s here.
+   *
+   * The short version: restore picks a destination *before* the
+   * callback has exchanged anything, so on a link cold start it parks
+   * Welcome, and that value has to be **discarded, not deferred**.
+   * Deferring it while the callback route was on screen is what shipped
+   * — and because leaving the route is itself a change of input, the
+   * hand-off re-ran the instant the callback succeeded and replaced a
+   * freshly signed-in user with Welcome. `bootHandoff.ts` has the full
+   * history and the phases; its spec replays both bugs.
+   */
+  const handoffPhase = useRef<BootHandoffPhase>(initialBootHandoffPhase);
+  useEffect(() => {
+    const next = nextBootHandoff(handoffPhase.current, {
+      splashDone,
+      destination,
+      onAuthCallback,
+    });
+    handoffPhase.current = next.phase;
+    if (next.action.kind === "navigate") router.replace(next.action.to);
   }, [splashDone, destination, router, onAuthCallback]);
 
   /**

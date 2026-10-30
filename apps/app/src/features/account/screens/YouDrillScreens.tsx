@@ -340,7 +340,7 @@ export function TranslationLanguageScreen({ onBack }: { onBack?: () => void }) {
  * reflected there (and vice versa) — earlier this screen owned its
  * own local `useState` which silently diverged from the Settings
  * surface. The OS permission flow is shared via
- * `useNotificationPermission`; `useDailyReminderSync` (mounted at
+ * `useNotificationPermission`; `useDailyReminderSync` (mounted in
  * the App root) takes care of scheduling/cancelling the OS-side
  * reminder whenever the toggle, hour, or permission changes.
  */
