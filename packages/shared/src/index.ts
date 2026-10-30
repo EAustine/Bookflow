@@ -20,4 +20,5 @@ export * from './readerPosition';
 export * from './popoverPlacement';
 export * from './gridLayout';
 export * from './pdfPageText';
+export * from './bootHandoff';
 export type * from './database';
