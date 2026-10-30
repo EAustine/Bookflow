@@ -35,7 +35,8 @@ const PLACEHOLDERS = path.resolve(__dirname, 'src/platform/web-placeholder');
  * `eslint.config.js`.
  *
  * Migrated to a real adapter so far, and therefore absent below:
- * `expo-clipboard` → `src/platform/clipboard.ts`.
+ * `expo-clipboard` → `src/platform/clipboard.ts`,
+ * `expo-document-picker` → `src/platform/files.ts`.
  */
 const NATIVE_ONLY = new Set([
   'react-native-pdf',
@@ -45,7 +46,6 @@ const NATIVE_ONLY = new Set([
   'expo-audio',
   'expo-speech',
   'expo-file-system',
-  'expo-document-picker',
   'expo-image-picker',
   'expo-share-intent',
   'expo-notifications',

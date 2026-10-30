@@ -12,9 +12,9 @@
  * change then.
  */
 import { useCallback, useEffect, useState } from 'react';
-import type * as DocumentPicker from 'expo-document-picker';
 import { useShareIntent } from 'expo-share-intent';
 import { useRouter } from 'expo-router';
+import type { PickedFile } from '~/platform/files';
 import { supabase } from '~/lib/supabase';
 import { reset as resetOfflineQueue } from '~/core/offline-queue';
 import { clearBookCoverCache as clearLibrarySignedUrlCache } from '~/core/bookCovers';
@@ -29,7 +29,7 @@ export type ShellSession = {
   onUpgrade: () => void;
   listenState: ListenPlaybackState;
   setListenState: React.Dispatch<React.SetStateAction<ListenPlaybackState>>;
-  pendingUploadAssets: DocumentPicker.DocumentPickerAsset[] | null;
+  pendingUploadAssets: PickedFile[] | null;
   onPendingUploadAssetsConsumed: () => void;
 };
 
@@ -37,7 +37,7 @@ export function useShellSession(): ShellSession {
   const router = useRouter();
   const [listenState, setListenState] = useState<ListenPlaybackState>('paused');
   const [pendingUploadAssets, setPendingUploadAssets] = useState<
-    DocumentPicker.DocumentPickerAsset[] | null
+    PickedFile[] | null
   >(null);
 
   const handleSignOut = useCallback(async () => {
@@ -98,7 +98,7 @@ export function useShellSession(): ShellSession {
     // already restricts activation to EPUB+PDF, but defending here too
     // keeps things robust if a tester or share-target glitch sends
     // something else.
-    const supported: DocumentPicker.DocumentPickerAsset[] = [];
+    const supported: PickedFile[] = [];
     for (const f of shareIntent.files) {
       const mimeType = f.mimeType?.toLowerCase() ?? '';
       const name = f.fileName?.toLowerCase() ?? '';
@@ -113,7 +113,7 @@ export function useShellSession(): ShellSession {
         name: f.fileName ?? 'Shared book',
         mimeType: f.mimeType ?? undefined,
         size: f.size ?? undefined,
-      } as DocumentPicker.DocumentPickerAsset);
+      });
     }
     if (supported.length) {
       setPendingUploadAssets(supported);
