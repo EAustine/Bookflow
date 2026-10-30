@@ -1,6 +1,10 @@
 import { useCallback } from 'react';
 import { useRouter } from 'expo-router';
-import { OnboardingFirstBookScreen } from '~/features/auth';
+import {
+  OnboardingFirstBookScreen,
+  persistOnboardingComplete,
+  updateProfileRow,
+} from '~/features/auth';
 import { supabase } from '~/lib/supabase';
 
 export default function FirstBook() {
@@ -37,21 +41,11 @@ export default function FirstBook() {
     // that does nothing — the same call restore already makes, where
     // the failure branch errs towards letting people in.
     void (async () => {
-      try {
-        const {
-          data: { session },
-        } = await supabase.auth.getSession();
-        if (!session?.user) return;
-        const { error } = await supabase
-          .from('profiles')
-          .update({ onboarding_complete: true })
-          .eq('id', session.user.id);
-        if (error) {
-          console.warn('[onboarding] completion write failed:', error.message);
-        }
-      } catch (err) {
-        console.warn('[onboarding] completion write threw:', err);
-      }
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      if (!session?.user) return;
+      await persistOnboardingComplete(updateProfileRow, session.user.id);
     })();
     router.replace('/(tabs)/library');
   }, [router]);

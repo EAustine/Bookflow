@@ -16,7 +16,8 @@
  * Route tree: docs/M2_ROUTE_MAP.md
  */
 import { useCallback, useEffect, useRef, useState } from "react";
-import { StyleSheet } from "react-native";
+import { BackHandler, Platform, StyleSheet, ToastAndroid } from "react-native";
+import { useBackHandler } from "~/lib/useBackHandler";
 import { Slot, useRouter, usePathname } from "expo-router";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
@@ -57,6 +58,9 @@ const SESSION_RESTORE_CEILING_MS = 8000;
  * already know enough to let the user in.
  */
 const PROFILE_LOOKUP_TIMEOUT_MS = 4000;
+
+/** How long a first back press stays "armed" for a confirming second one. */
+const BACK_TO_EXIT_WINDOW_MS = 2000;
 
 /** Where boot decided to go. `null` until restore answers. */
 type Destination =
@@ -141,6 +145,35 @@ export default function RootLayout() {
     reminderMinute,
     notifGranted,
   );
+
+  /**
+   * Android hardware back, last resort. Restored from `App.tsx`, which
+   * the M2 cutover orphaned: `SignedInShell` has been importing
+   * `useBackHandler` ever since without calling it, so for the whole of
+   * that period a single back press at a tab home killed the app with
+   * no warning. Ten screens register their own handlers; nothing sat
+   * underneath them.
+   *
+   * Subscriptions are LIFO, so this belongs at the root, which mounts
+   * first and therefore runs last. It fires only when no screen has
+   * consumed the press. First press warns and opens a two second
+   * window; a second press inside it exits. The hook is already a
+   * no-op off Android, so web and iOS need no guard here.
+   */
+  const lastBackPressRef = useRef(0);
+  useBackHandler(() => {
+    const now = Date.now();
+    if (now - lastBackPressRef.current < BACK_TO_EXIT_WINDOW_MS) {
+      BackHandler.exitApp();
+      return true;
+    }
+    lastBackPressRef.current = now;
+    if (Platform.OS === "android") {
+      ToastAndroid.show("Press back again to exit", ToastAndroid.SHORT);
+    }
+    // Consume it, so the OS does not also exit on this first press.
+    return true;
+  });
 
   /**
    * The hand-off. Both conditions must hold: a destination to go to,

@@ -12,3 +12,4 @@ export * from './screens/SplashScreen';
 export * from './screens/OnboardingIntentScreen';
 export * from './screens/OnboardingFirstBookScreen';
 export * from './api/auth';
+export * from './api/onboarding';

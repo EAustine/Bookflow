@@ -3,6 +3,7 @@ import { Platform } from 'react-native';
 import type { AuthError } from '@supabase/supabase-js';
 import { supabase } from '~/lib/supabase';
 import { loginRevenueCat, logoutRevenueCat } from '~/features/billing';
+import type { ProfileUpdate } from './onboarding';
 
 /**
  * Where Supabase should redirect after the user clicks the magic link.
@@ -472,3 +473,13 @@ export function setupRevenueCatAuthSync(): () => void {
 
   return () => data.subscription.unsubscribe();
 }
+
+/**
+ * The Supabase-bound profile updater the onboarding writes take.
+ *
+ * It lives here rather than in `onboarding.ts` because that file is
+ * deliberately free of React Native imports so it can be unit tested,
+ * and `~/lib/supabase` pulls in AsyncStorage.
+ */
+export const updateProfileRow: ProfileUpdate = (userId, patch) =>
+  supabase.from('profiles').update(patch).eq('id', userId);
