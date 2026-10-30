@@ -26,6 +26,7 @@ import {
 } from 'react-native';
 import { Modal as RNModal, useWindowDimensions } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { speak, stop as stopSpeaking } from '~/platform/speech';
 import {
   Presenter,
   ModeTogglePill,
@@ -74,7 +75,6 @@ import {
   BottomSheetModal,
   BottomSheetView,
 } from '@gorhom/bottom-sheet';
-import * as Speech from 'expo-speech';
 import { translateSnippet, translateSnippetErrorMessage } from '../api/translateSnippet';
 
 // ─── Theme palette ────────────────────────────────────────────────────────────
@@ -3189,9 +3189,9 @@ const SentenceTranslateSheet = forwardRef<BottomSheetModal, {
     };
   }, [sentence, targetLanguage, targetLabel]);
 
-  // One-shot TTS for the highlighted sentence. Uses the platform's
-  // native speech synthesizer (expo-speech) — instant, no API roundtrip,
-  // no bandwidth cost. Quality is below ElevenLabs but for "tap a
+  // One-shot TTS for the highlighted sentence. Uses the device's own
+  // speech synthesizer via ~/platform/speech — instant, no API
+  // roundtrip, no bandwidth cost. Quality is below ElevenLabs but for "tap a
   // sentence to hear it" the latency win is the bigger UX lever.
   // Tracks isSpeaking so the button can show a "Stop" affordance while
   // playing and so dismissing the sheet stops audio.
@@ -3199,18 +3199,18 @@ const SentenceTranslateSheet = forwardRef<BottomSheetModal, {
   useEffect(() => {
     return () => {
       // Tear down any in-flight speech when the sheet unmounts.
-      void Speech.stop();
+      void stopSpeaking();
     };
   }, []);
   const handleAudio = useCallback(() => {
     if (isSpeaking) {
-      void Speech.stop();
+      void stopSpeaking();
       setIsSpeaking(false);
       return;
     }
     if (!sentence.trim()) return;
     setIsSpeaking(true);
-    Speech.speak(sentence, {
+    speak(sentence, {
       // Slight slowdown — comfortable for sentence-by-sentence study.
       rate: 0.95,
       onDone: () => setIsSpeaking(false),
@@ -3219,7 +3219,7 @@ const SentenceTranslateSheet = forwardRef<BottomSheetModal, {
     });
   }, [sentence, isSpeaking]);
   const handleDismiss = useCallback(() => {
-    if (isSpeaking) void Speech.stop();
+    if (isSpeaking) void stopSpeaking();
     setIsSpeaking(false);
     onDismiss();
   }, [isSpeaking, onDismiss]);
@@ -3415,8 +3415,8 @@ function TranslatePopover({
             // benefits more from clarity than from a "natural"
             // reading cadence.
             onPress={() => {
-              void Speech.stop();
-              Speech.speak(word, { rate: 0.85 });
+              void stopSpeaking();
+              speak(word, { rate: 0.85 });
             }}
             style={styles.popoverBtnAudio}
           >

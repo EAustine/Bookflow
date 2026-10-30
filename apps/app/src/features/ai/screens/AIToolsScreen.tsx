@@ -10,7 +10,7 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import * as Speech from 'expo-speech';
+import { speak, stop as stopSpeaking } from '~/platform/speech';
 import { copyText } from '~/platform/clipboard';
 import { useNetworkState } from '~/hooks/useNetworkState';
 import {
@@ -781,17 +781,17 @@ function SummaryActionBar({
   useEffect(() => {
     return () => {
       // Stop any in-flight speech when leaving the summary screen.
-      void Speech.stop();
+      void stopSpeaking();
     };
   }, []);
   const handleListen = useCallback(() => {
     if (isSpeaking) {
-      void Speech.stop();
+      void stopSpeaking();
       setIsSpeaking(false);
       return;
     }
     setIsSpeaking(true);
-    Speech.speak(summary, {
+    speak(summary, {
       rate: 0.95,
       onDone: () => setIsSpeaking(false),
       onStopped: () => setIsSpeaking(false),
