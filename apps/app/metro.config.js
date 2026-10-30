@@ -37,7 +37,8 @@ const PLACEHOLDERS = path.resolve(__dirname, 'src/platform/web-placeholder');
  * Migrated to a real adapter so far, and therefore absent below:
  * `expo-clipboard` → `src/platform/clipboard.ts`,
  * `expo-document-picker` → `src/platform/files.ts`,
- * `expo-speech` → `src/platform/speech.ts`.
+ * `expo-speech` → `src/platform/speech.ts`,
+ * `expo-share-intent` → `src/platform/shareIntent.ts`.
  */
 const NATIVE_ONLY = new Set([
   'react-native-pdf',
@@ -47,7 +48,6 @@ const NATIVE_ONLY = new Set([
   'expo-audio',
   'expo-file-system',
   'expo-image-picker',
-  'expo-share-intent',
   'expo-notifications',
   'expo-haptics',
   'expo-secure-store',

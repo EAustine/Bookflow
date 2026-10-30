@@ -36,7 +36,6 @@ import { SideRail } from '~/components/SideRail';
 import { useSizeClass } from '~/hooks/useSizeClass';
 import { useFonts } from 'expo-font';
 import * as Linking from 'expo-linking';
-import { useShareIntent } from 'expo-share-intent';
 import {
   Fraunces_400Regular_Italic,
   Fraunces_600SemiBold,
