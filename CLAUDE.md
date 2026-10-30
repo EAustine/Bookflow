@@ -59,58 +59,88 @@ The full product scope, personas, MVP features, pricing, and beta plan are in `/
 ### File structure
 
 ```
-apps/app/                 # The Expo app. Routes in app/, screens in src/.
+apps/app/                 # The Expo app. Routes in app/, everything else in src/.
 apps/site/                # Marketing site (static), deployed to Vercel.
 packages/tokens/          # Design tokens -> RN theme + tokens.css.
 packages/shared/          # Types and pure logic. No platform imports.
 supabase/                 # Migrations and 21 edge functions. Repo root.
 
-apps/app/app/             # Expo Router routes (file-based).
+apps/app/app/             # Expo Router routes (file-based), M2 onward.
+├── _layout.tsx           # Root: session restore, splash, boot hand-off
+├── index.tsx
+├── (auth)/ (onboarding)/ (tabs)/
+└── auth/ settings/ you/
+                          # Route map: /docs/M2_ROUTE_MAP.md
+
 apps/app/src/
-├── screens/             # Every screen and sheet. Tabs swap on local
-│   │                    # `view` state; there is no router.
-│   ├── LibraryScreen.tsx
-│   ├── DiscoverScreen.tsx   # also holds Category + Book detail views
-│   ├── ListenHomeScreen.tsx / ListenNowPlayingScreen.tsx / ListenScreen.tsx
-│   ├── YouScreen.tsx / AccountScreen.tsx / SettingsScreen.tsx / YouDrillScreens.tsx
-│   ├── ReaderScreen.tsx / PdfReaderScreen.tsx / EpubFullReaderScreen.tsx
-│   └── ...
-├── components/          # Reusable components
+├── features/            # The app, by feature (M3). Eight of them.
+│   ├── account/ ai/ auth/ billing/
+│   ├── discover/ library/ listen/ reader/
+│   └── <name>/
+│       ├── api/         # Data + side effects for this feature
+│       ├── components/  # Private to the feature
+│       ├── hooks/       # (where a feature needs them)
+│       ├── screens/     # LibraryScreen.tsx, ReaderScreen.tsx, …
+│       └── index.ts     # The feature's public face. Import ANOTHER
+│                        # feature through this; never import your OWN
+│                        # feature's index — it re-exports you, and the
+│                        # cycle resolves to undefined at module load.
+├── shell/               # SignedInShell + useShellSession. What wraps
+│                        # the tabs: share intent, paywall, billing sync.
+├── platform/            # Native-only packages (§8). One module per
+│   │                    # adapter with a .web.ts sibling Metro picks
+│   │                    # for the web bundle.
+│   ├── audio.ts / audio.web.ts
+│   ├── readerHost.tsx / readerHost.web.tsx
+│   └── clipboard / fileCache / files / imagePicker /
+│       notifications / orientation / shareIntent / speech
+├── core/                # Shared by more than one feature, owned by
+│                        # none. Where a cross-feature helper goes
+│                        # instead of creating an import cycle.
+├── components/          # Reusable components (34). The design system.
 │   ├── Button.tsx       # Canonical button — use, don't reinvent
 │   ├── Input.tsx
-│   ├── Icon.tsx         # Lucide wrapper
+│   ├── Icon.tsx         # Tabler wrapper — never import Tabler directly
 │   ├── ListRow.tsx
 │   ├── BottomSheet.tsx
 │   └── ...
-├── design/              # Design system tokens & utilities
+├── ui/                  # Presentational odds and ends. Must NOT import
+│                        # from features/ or screens/ — the dependency
+│                        # runs the other way.
+├── design/              # Design system tokens
 │   ├── tokens.ts        # All colors, spacing, typography
-│   ├── CLAUDE.md        # Nested instructions for design work
-│   └── theme.ts
+│   └── CLAUDE.md        # Nested instructions for design work
 ├── lib/                 # Service integrations
 │   ├── supabase.ts
 │   ├── anthropic.ts
 │   ├── elevenlabs.ts
 │   └── revenuecat.ts
-├── platform/            # Native-only packages, one module per
-│   │                    # adapter with a .web.ts sibling (§8)
-│   ├── audio.ts / audio.web.ts
-│   ├── readerHost.tsx / readerHost.web.tsx
-│   └── ...
-├── hooks/               # Custom React hooks
+├── audio/               # Now-playing metadata
+├── data/                # Static content (the curated library)
+├── hooks/               # Cross-feature React hooks
 ├── stores/              # Zustand stores
-├── types/               # TypeScript type definitions
-└── utils/               # Pure utility functions
+└── types/               # TypeScript type definitions
 
 docs/
-└── specs/               # All design system + product specs
+├── ARCHITECTURE.md       # The target. Wins over this file.
+├── ARCHITECTURE_LOG.md   # Which milestone is live, and why
+├── ARCHITECTURE_GAPS.md  # Distance between the two
+├── M2_ROUTE_MAP.md / M2_DEEP_LINKS.md / M3_FEATURE_MAP.md
+├── MOBILE_UI_SPEC.md / RELEASE_QA_CHECKLIST.md
+└── specs/               # Design system + product specs
     ├── bookflow_mvp_scope.md
     ├── bookflow_design_system.md
     ├── bookflow_button_system.html
     ├── bookflow_input_system.html
     ├── bookflow_bottom_sheet_system.html
     ├── bookflow_list_row_system.html
-    └── bookflow_engineering_scoping.md
+    ├── bookflow_engineering_scoping.md
+    └── responsive-handoff.md / responsive-milestones.md
 ```
+
+There is **no `src/screens/`** and no `src/utils/`. Screens live in the
+feature that owns them. If you find a reference to either, it predates
+M3 and is the bug.
 
 ### Naming conventions
 
