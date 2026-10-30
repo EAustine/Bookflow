@@ -162,20 +162,36 @@ cannot follow `~/*` or the workspace exports maps, so a cycle built
 entirely from aliases is invisible to it either way. This one was found
 by reading the barrels.
 
-That leaves a real gap, and closing it is a decision rather than a fix:
+The gap is closed by a test rather than a resolver (Austine,
+2026-10-30). `eslint-import-resolver-typescript` would teach
+`import/no-cycle` to follow `~/*`, but it is a new dependency and the
+baseline config records that a resolver taught what `tsc` already knows
+previously produced 333 false positives.
+`packages/shared/src/__tests__/importCycles.test.ts` walks the app's
+import graph instead, resolving `~/*` the way Metro does.
 
-- **An import resolver** (`eslint-import-resolver-typescript`) would
-  teach `import/no-cycle` to follow `~/*`. A new dependency, and the
-  baseline comment notes a resolver taught the same thing as `tsc`
-  previously reported 333 false positives.
-- **A test** in `packages/shared/src/__tests__/` that walks the app's
-  import graph, resolving `~/*` by hand, and asserts no feature barrel
-  participates in a cycle. No dependency, runs in the existing vitest
-  job, and is the same move as `bootHandoff` and `revenuecatPlan`:
-  when the gate cannot see a class of bug, make the check a test.
-- **Neither**, and rely on §4 rule 1 plus review.
+#### Its first run found five more
 
-Unresolved. Needs Austine.
+**`ai`, `billing`, `library`, `listen` and `reader` are one mutually
+dependent knot, through ten edges.** Fixing question 16's cycle fixed
+the instance, not the class.
+
+| | |
+|---|---|
+| ai | → billing, reader |
+| billing | → ai |
+| library | → billing, listen, reader |
+| listen | → billing, reader |
+| reader | → ai, library |
+
+They are latent rather than broken: every crossing is read inside a
+component body or an event handler, never at module-eval time, so
+nothing resolves to `undefined` today. That was equally true of the M3
+cycle right up until it was not.
+
+The ten edges are a baseline the test asserts as an **equality**, so a
+new one fails and removing one fails too. Untangling five features is
+its own piece of work and not M4b's; see the new question 17.
 
 #### Gate
 
@@ -1512,6 +1528,7 @@ migrations, not ten.
 | 15 | **F-46 — two components named `SendFeedbackScreen`.** The standalone 380-line form is dead; the app ships the mail hand-off. Delete the dead one, or wire it and delete the stub | M3 |
 | 13 | **Can Ghanaian customers actually pay?** Web Billing is Stripe-only, card-only, and its purchase links cannot be localised. The persona the web app most helps is the one least served by that checkout. Needs a direct answer from RevenueCat or Stripe | before M8 |
 | ~~16~~ | ~~**A real import cycle between the reader and listen barrels.**~~ — **closed 2026-10-30** in M4b: `getCachedPages`, the offline root and `PageRow` moved to `~/core/`. The row's claim that `import/no-cycle` catches it on a single-file run was wrong; alias cycles are invisible to that rule in both modes. Successor question: whether to add a resolver, write a graph-walking test, or neither | ✅ |
+| 17 | **Five features are one import knot.** `ai`, `billing`, `library`, `listen` and `reader` reach each other through ten barrel edges, every one a latent `export *` cycle. Harmless only because no crossing is read at module-eval time, which is exactly what was true of the cycle that crashed M3. Baselined by `importCycles.test.ts` so it cannot grow; untangling it is unscheduled work. Likely shape: the shared screens move to `~/core/` or a feature stops reaching into another's screens | unscheduled |
 | ~~14~~ | ~~Real-device confirmation for pdf.js~~ — **closed by the result, 2026-10-22.** The spike failed, and a failure on flattering hardware is conclusive. Successor: confirm **text/EPUB** on a real device before M6 ships, since a *pass* is the case needing confirmation | before M6 |
 
 ---
