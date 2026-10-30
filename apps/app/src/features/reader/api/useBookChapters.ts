@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '~/lib/supabase';
 import { enqueue } from '~/core/offline-queue';
-import { getCachedPages } from '~/features/listen';
-import { fetchAllPageRows } from '~/core/pageRows';
+import { readCachedPages } from '~/core/offlineLibrary';
+import { fetchAllPageRows, type PageRow } from '~/core/pageRows';
 
 /**
  * Reader-side data hooks for pages (the unit since the chapters→pages
@@ -19,23 +19,7 @@ import { fetchAllPageRows } from '~/core/pageRows';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-export type PageRow = {
-  id: string;
-  book_id: string;
-  page_index: number;
-  pdf_page_number: number | null;
-  /**
-   * The printed page number as the publisher set it ("22", "xii"), when
-   * the PDF declares one. Display only — front matter commonly restarts
-   * numbering, so labels are neither unique nor ordered and must never
-   * be used as a key. `pdf_page_number` stays canonical.
-   */
-  page_label: string | null;
-  title: string | null;
-  content: string | null;
-  html_content: string | null;
-  word_count: number | null;
-};
+export type { PageRow };
 
 export type PageListItem = {
   id: string;
@@ -98,7 +82,7 @@ export function usePageList(bookId: string) {
         if (cancelled) return;
         if (error) {
           console.warn('[usePageList] fetch failed:', error.message);
-          const cached = await getCachedPages(bookId);
+          const cached = await readCachedPages(bookId);
           if (cancelled) return;
           setPages(cached ? cached.map(toListItem) : []);
         } else {
@@ -108,7 +92,7 @@ export function usePageList(bookId: string) {
         if (cancelled) return;
         console.warn('[usePageList] fetch threw:', err);
         // Offline fallback: list pages from downloaded text if present.
-        const cached = await getCachedPages(bookId);
+        const cached = await readCachedPages(bookId);
         if (cancelled) return;
         setPages(cached ? cached.map(toListItem) : []);
       }
@@ -169,7 +153,7 @@ export function usePage(bookId: string, pageIndex: number) {
 
         if (queryError) {
           // Offline / server error: fall back to downloaded page text.
-          const cached = await getCachedPages(bookId);
+          const cached = await readCachedPages(bookId);
           if (cancelled) return;
           const hit = cached?.find((p) => p.page_index === pageIndex);
           if (hit) setData(hit);
@@ -182,7 +166,7 @@ export function usePage(bookId: string, pageIndex: number) {
       } catch (err) {
         if (cancelled) return;
         console.warn('[usePage] fetch threw:', err);
-        const cached = await getCachedPages(bookId);
+        const cached = await readCachedPages(bookId);
         if (cancelled) return;
         const hit = cached?.find((p) => p.page_index === pageIndex);
         if (hit) setData(hit);
@@ -261,7 +245,7 @@ export function useAllPagesContent(bookId: string) {
         if (queryError) {
           // Offline / server error: fall back to downloaded page text if
           // this book was saved for offline use.
-          const cached = await getCachedPages(bookId);
+          const cached = await readCachedPages(bookId);
           if (cancelled) return;
           if (cached && cached.length) {
             setPages(cached);
@@ -286,7 +270,7 @@ export function useAllPagesContent(bookId: string) {
         if (cancelled) return;
         clearTimeout(timeoutId);
         // Offline fallback: use downloaded page text if available.
-        const cached = await getCachedPages(bookId);
+        const cached = await readCachedPages(bookId);
         if (cancelled) return;
         if (cached && cached.length) {
           setPages(cached);

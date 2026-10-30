@@ -2,7 +2,6 @@ import {
   download as downloadToCache,
   ensureDir,
   exists,
-  readText,
   readTextAt,
   remove,
   sizeOf,
@@ -19,8 +18,12 @@ import { fetchPageAudio, type AudioVoice } from './aiAudio';
 import { useDownloadsStore } from '~/stores/downloadsStore';
 import { fireDownloadCompleteNotification } from '~/lib/notifications';
 import type { Book } from '~/types/book';
-import type { PageRow } from '~/features/reader';
-import { fetchAllPageRows } from '~/core/pageRows';
+import {
+  offlineBookPath,
+  offlineRootPath,
+  writeCachedPages,
+} from '~/core/offlineLibrary';
+import { fetchAllPageRows, type PageRow } from '~/core/pageRows';
 
 /**
  * Offline audio + text downloads.
@@ -47,35 +50,31 @@ import { fetchAllPageRows } from '~/core/pageRows';
  * Cycle note: this module imports `fetchPageAudio` from `aiAudio`, and
  * `aiAudio` imports `getLocalAudio` from here. Both are hoisted function
  * declarations only ever called at runtime (never at module-eval time),
- * so the ES-module cycle resolves cleanly. The `PageRow`/`Book` imports
- * are type-only (erased at compile), so they add no runtime edge.
+ * so the ES-module cycle resolves cleanly. Contrast the barrel cycle
+ * that `~/core/offlineLibrary` exists to break, where `export *` IS
+ * evaluated on load.
+ *
+ * The on-disk root and the cached page text live in
+ * `~/core/offlineLibrary`, because the reader reads them too. Audio,
+ * alignment and the manifest are this module's alone.
  */
 
-const ROOT = 'bookflow-offline';
-
 // ── Path helpers ──────────────────────────────────────────────────────────
-
-const rootDir: CachePath = [ROOT];
-
-const bookDir = (bookId: string): CachePath => [ROOT, bookId];
 
 const audioFileFor = (
   bookId: string,
   pageIndex: number,
   voiceId: string,
-): CachePath => [ROOT, bookId, `a_${pageIndex}_${voiceId}.mp3`];
+): CachePath => [...offlineBookPath(bookId), `a_${pageIndex}_${voiceId}.mp3`];
 
 const alignFileFor = (
   bookId: string,
   pageIndex: number,
   voiceId: string,
-): CachePath => [ROOT, bookId, `a_${pageIndex}_${voiceId}.json`];
-
-const textFileFor = (bookId: string): CachePath => [ROOT, bookId, 'pages.json'];
+): CachePath => [...offlineBookPath(bookId), `a_${pageIndex}_${voiceId}.json`];
 
 const manifestFileFor = (bookId: string): CachePath => [
-  ROOT,
-  bookId,
+  ...offlineBookPath(bookId),
   'manifest.json',
 ];
 
@@ -122,31 +121,16 @@ export async function readJsonFile<T = unknown>(fileUri: string): Promise<T | nu
   }
 }
 
-/**
- * Return the cached page rows for a book if its text was downloaded, else
- * null. Powers the reader's offline fallback in `useBookChapters`.
- */
-export async function getCachedPages(bookId: string): Promise<PageRow[] | null> {
-  try {
-    const text = await readText(textFileFor(bookId));
-    if (text === null) return null;
-    const parsed = JSON.parse(text);
-    return Array.isArray(parsed) ? (parsed as PageRow[]) : null;
-  } catch {
-    return null;
-  }
-}
-
 // ── Sizes ───────────────────────────────────────────────────────────────────
 
 /** Bytes on disk for a single book's downloads (0 if none). */
 export async function bookDownloadBytes(bookId: string): Promise<number> {
-  return sizeOf(bookDir(bookId));
+  return sizeOf(offlineBookPath(bookId));
 }
 
 /** Total bytes across all offline downloads (0 if none). */
 export async function totalDownloadBytes(): Promise<number> {
-  return sizeOf(rootDir);
+  return sizeOf(offlineRootPath);
 }
 
 /** Human-readable byte size, e.g. "12.4 MB". */
@@ -167,7 +151,7 @@ export async function deleteBookDownload(bookId: string): Promise<void> {
   cancelDownload(bookId);
   // `remove` is already silent on a missing path or no access, and the
   // record is cleared either way.
-  await remove(bookDir(bookId));
+  await remove(offlineBookPath(bookId));
   useDownloadsStore.getState().remove(bookId);
 }
 
@@ -175,7 +159,7 @@ export async function deleteBookDownload(bookId: string): Promise<void> {
 export async function deleteAllDownloads(): Promise<void> {
   // Abort anything in flight first.
   for (const id of Array.from(inFlight.keys())) cancelDownload(id);
-  await remove(rootDir);
+  await remove(offlineRootPath);
   useDownloadsStore.getState().clearAll();
 }
 
@@ -300,7 +284,7 @@ export async function downloadBook(book: Book, voiceId: AudioVoice): Promise<voi
   });
 
   try {
-    await ensureDir(bookDir(bookId));
+    await ensureDir(offlineBookPath(bookId));
 
     // 1. Cache page text so reading + read-along work offline.
     let textCached = false;
@@ -308,7 +292,7 @@ export async function downloadBook(book: Book, voiceId: AudioVoice): Promise<voi
       const pages = await fetchAllPages(bookId);
       if (ctrl.signal.aborted) throw new DOMException('aborted', 'AbortError');
       if (pages.length) {
-        await writeText(textFileFor(bookId), JSON.stringify(pages));
+        await writeCachedPages(bookId, pages);
         textCached = true;
         useDownloadsStore.getState().upsert(bookId, { textCached: true });
       }

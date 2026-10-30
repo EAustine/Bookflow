@@ -1,6 +1,30 @@
 import { supabase } from '~/lib/supabase';
 
 /**
+ * One `pages` row. Here rather than in the reader because both the
+ * reader and the download orchestrator read these, and the type
+ * travelling through a feature barrel is what the import cycle was
+ * built from. See `offlineLibrary.ts`.
+ */
+export type PageRow = {
+  id: string;
+  book_id: string;
+  page_index: number;
+  pdf_page_number: number | null;
+  /**
+   * The printed page number as the publisher set it ("22", "xii"), when
+   * the PDF declares one. Display only — front matter commonly restarts
+   * numbering, so labels are neither unique nor ordered and must never
+   * be used as a key. `pdf_page_number` stays canonical.
+   */
+  page_label: string | null;
+  title: string | null;
+  content: string | null;
+  html_content: string | null;
+  word_count: number | null;
+};
+
+/**
  * Reading every `pages` row for a book, past the server's row cap.
  *
  * `.range(0, 9999)` does NOT lift that cap, which is what every caller
