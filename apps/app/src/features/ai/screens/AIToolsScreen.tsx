@@ -10,8 +10,8 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import * as Clipboard from 'expo-clipboard';
 import * as Speech from 'expo-speech';
+import { copyText } from '~/platform/clipboard';
 import { useNetworkState } from '~/hooks/useNetworkState';
 import {
   BottomSheetBackdrop,
@@ -801,7 +801,7 @@ function SummaryActionBar({
 
   const handleCopy = useCallback(async () => {
     try {
-      await Clipboard.setStringAsync(summary);
+      await copyText(summary);
       setCopied(true);
       // Reset after a moment so the next tap feels live again. Short
       // enough that no one stares at the chip waiting for it to revert.

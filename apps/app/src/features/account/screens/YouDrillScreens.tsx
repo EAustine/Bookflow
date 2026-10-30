@@ -16,8 +16,8 @@
 
 import { useCallback, useRef, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
-import * as Clipboard from 'expo-clipboard';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { copyText } from '~/platform/clipboard';
 import {
   BottomSheet,
   type BottomSheetRef,
@@ -571,7 +571,7 @@ export function SendFeedbackScreen({ onBack }: { onBack?: () => void }) {
 
   const handleCopyEmail = useCallback(async () => {
     try {
-      await Clipboard.setStringAsync(SUPPORT_EMAIL);
+      await copyText(SUPPORT_EMAIL);
       setCopied(true);
       // Reset the affordance after a beat so a subsequent tap still
       // reads as a real action ("Copied" → "Tap to copy" cycle).

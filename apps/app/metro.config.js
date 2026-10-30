@@ -27,12 +27,15 @@ const config = getDefaultConfig(__dirname);
 const PLACEHOLDERS = path.resolve(__dirname, 'src/platform/web-placeholder');
 
 /**
- * The §8 adapter list, plus the three it has never had a row for:
- * `react-native-webview` (named in §8's reader-host prose but missing
- * from the lint rule's own list), `react-native-purchases-ui` (arrived
- * after the spike, with the hosted paywall) and `expo-clipboard`
- * (added to §8 in Phase 0). Keep this in step with `NATIVE_ONLY` in
+ * What is left of the §8 adapter list, plus the two the lint rule has
+ * never had a row for: `react-native-webview` (named in §8's
+ * reader-host prose but missing from that list) and
+ * `react-native-purchases-ui` (arrived after the spike, with the
+ * hosted paywall). Keep this in step with `NATIVE_ONLY` in
  * `eslint.config.js`.
+ *
+ * Migrated to a real adapter so far, and therefore absent below:
+ * `expo-clipboard` → `src/platform/clipboard.ts`.
  */
 const NATIVE_ONLY = new Set([
   'react-native-pdf',
@@ -45,7 +48,6 @@ const NATIVE_ONLY = new Set([
   'expo-document-picker',
   'expo-image-picker',
   'expo-share-intent',
-  'expo-clipboard',
   'expo-notifications',
   'expo-haptics',
   'expo-secure-store',

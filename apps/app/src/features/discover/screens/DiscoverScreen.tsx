@@ -17,8 +17,8 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import * as Clipboard from 'expo-clipboard';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { copyText } from '~/platform/clipboard';
 import {
   Badge,
   type BottomSheetRef,
@@ -2005,7 +2005,7 @@ function SearchEmptyState({ query }: { query: string }) {
   const handleCopy = useCallback(
     async (field: 'email' | 'subject' | 'body', value: string) => {
       try {
-        await Clipboard.setStringAsync(value);
+        await copyText(value);
         setCopiedField(field);
         setTimeout(() => {
           // Only clear if this row is still the active one — if

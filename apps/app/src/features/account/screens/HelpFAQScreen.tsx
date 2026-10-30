@@ -14,8 +14,8 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import * as Clipboard from 'expo-clipboard';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { copyText } from '~/platform/clipboard';
 import { Icon, SubHeader, Text } from '~/components';
 import { tokens } from '~/design/tokens';
 
@@ -239,7 +239,7 @@ export function HelpFAQScreen({
       return;
     }
     try {
-      await Clipboard.setStringAsync(supportEmail);
+      await copyText(supportEmail);
       setEmailCopied(true);
       setTimeout(() => setEmailCopied(false), 1800);
     } catch {
