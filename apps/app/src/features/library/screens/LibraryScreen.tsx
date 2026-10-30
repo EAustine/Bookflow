@@ -133,7 +133,7 @@ export type LibraryScreenProps = {
   userName?: string;
   onUpgrade?: () => void;
   /**
-   * Hand off a book to the global audio session. Owned by App.tsx so the
+   * Hand off a book to the global audio session. Owned by the shell so the
    * Listen tab can reflect the active book and so a single useAudio
    * instance owns playback (rather than each tab racing its own).
    * Library no longer renders the player itself.
@@ -141,7 +141,7 @@ export type LibraryScreenProps = {
   onStartListening: (book: Book) => void;
   /**
    * Fired whenever the library opens or closes a reader (PDF / EPUB
-   * full / EPUB text). App.tsx uses this to hide the global mini
+   * full / EPUB text). The shell uses this to hide the global mini
    * player while the user is reading — the mini bar overlapping the
    * reader chrome was distracting and there's no need for it when
    * the user is already on the book.
@@ -149,8 +149,8 @@ export type LibraryScreenProps = {
   onReaderOpenChange?: (open: boolean) => void;
   /**
    * Pre-picked assets from onboarding step 2's Upload tab OR the
-   * iOS Share Extension / Android Intent handler (App.tsx routes
-   * both surfaces through this single channel). On mount we kick
+   * iOS Share Extension / Android Intent handler (`useShellSession`
+   * routes both surfaces through this single channel). On mount we kick
    * `useBookUpload.startUploadFromAssets(...)` with them, then notify
    * the parent via `onPendingUploadAssetsConsumed` so the slot is
    * cleared and we don't re-fire on a future remount.
@@ -259,8 +259,8 @@ export function LibraryScreen({
     number | null
   >(null);
 
-  // Tell App.tsx whenever we drill INTO a focused surface (reader
-  // OR highlights). App.tsx uses this signal to hide the floating
+  // Tell the shell whenever we drill INTO a focused surface (reader
+  // OR highlights). It uses this signal to hide the floating
   // MiniPlayer overlay — both surfaces are full-screen focused
   // views that shouldn't share their bottom edge with audio
   // chrome.
@@ -325,9 +325,9 @@ export function LibraryScreen({
   // presents the paywall instead of opening the OS picker.
   const planUsage = useFreePlanUsage();
 
-  // Consume pre-picked assets handed in by App.tsx — onboarding step
+  // Consume pre-picked assets handed in by the shell — onboarding step
   // 2's Upload tab OR the iOS Share Extension / Android Intent
-  // handler (App.tsx funnels both through the same array channel).
+  // handler (`useShellSession` funnels both through the same channel).
   // We kick the multi-file batch pipeline on mount and immediately
   // notify the parent so the slot is cleared and we don't re-fire
   // on a future remount (e.g. tab switch back to Library while the

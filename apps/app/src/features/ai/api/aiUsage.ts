@@ -14,7 +14,7 @@ import { presentPaywall, ENTITLEMENT_PRO } from '~/features/billing';
  * before the user's first AI call of the month triggers the server-side roll.
  */
 
-/** Pro plan AI-credit cap — matches App.tsx planLimits + the paywall copy. */
+/** Pro plan AI-credit cap — matches SignedInShell's planLimits + the paywall copy. */
 export const PRO_AI_CREDITS = 500_000;
 
 /** The monthly AI-credit ceiling for the user's plan. */

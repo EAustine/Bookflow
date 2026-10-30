@@ -3,8 +3,8 @@
  *
  * Per the design system spec, sign-in and sign-up share a single component
  * (`<SignInScreen />`) with a `variant` prop. This file exists so screen-level
- * routing reads naturally — App.tsx renders <SignUpScreen /> for the signup
- * stage and <SignInScreen /> for the signin stage.
+ * routing reads naturally — `app/(auth)/sign-up.tsx` renders <SignUpScreen />
+ * and `app/(auth)/sign-in.tsx` renders <SignInScreen />.
  *
  * Per /Users/completefarmer/Downloads/03b_signup.html.
  */

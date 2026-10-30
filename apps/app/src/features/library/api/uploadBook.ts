@@ -252,8 +252,8 @@ export type UseBookUploadResult = {
   /**
    * Skip the picker — run the pipeline with an asset the caller
    * already picked. Used by:
-   *   - Onboarding step 2's "Upload" tab (App.tsx opens the picker
-   *     before routing to Library so the user finishes onboarding +
+   *   - Onboarding step 2's "Upload" tab (the onboarding route opens
+   *     the picker before routing to Library so the user finishes +
    *     starts their first upload in a single flow).
    *   - (Forthcoming) iOS Share Extension / Android Intent handler —
    *     the OS hands us an asset directly when a user "shares" an
@@ -621,7 +621,7 @@ export function useBookUpload(): UseBookUploadResult {
 
   /**
    * Public entry point — skip the picker, run the pipeline against an
-   * asset the caller already picked. Used by onboarding step 2 (App.tsx
+   * asset the caller already picked. Used by onboarding step 2 (which
    * picks the file before routing to Library so the new-user flow is
    * one coherent sequence) and, in a forthcoming patch, the iOS Share
    * Extension / Android Intent handler that hands the OS-provided

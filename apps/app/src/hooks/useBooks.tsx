@@ -12,7 +12,7 @@
  * switch.
  *
  * The fix is a single Provider mounted once per signed-in session
- * (App.tsx wraps LibraryStage with it). All consumers read the SAME
+ * (`app/(tabs)/_layout.tsx` wraps the tab tree with it). All consumers read the SAME
  * cached state via React context. Tab switches no longer remount the
  * underlying fetch hook — books, isLoading, refetch, continueBook are
  * referentially stable across navigations.
@@ -33,9 +33,8 @@ const BooksContext = createContext<UseBooksResult | null>(null);
 
 /**
  * Mount once per signed-in session. Anything that calls `useBooks()`
- * must be a descendant. Recommended placement: just inside the
- * `stage === 'library'` branch of App.tsx so the Provider lifecycle
- * matches the signed-in tab shell.
+ * must be a descendant. Mounted in `app/(tabs)/_layout.tsx` so the
+ * Provider lifecycle matches the signed-in tab shell.
  */
 export function BooksProvider({ children }: { children: ReactNode }) {
   const value = useBooksImpl();

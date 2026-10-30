@@ -18,8 +18,8 @@
  * "still alive, still loading." The loop is infinite, so a slow boot
  * keeps breathing past 3100ms rather than freezing (see below).
  *
- * `onComplete` is a release, not a command. App.tsx only leaves the
- * splash once this has fired *and* session restore has answered, so if
+ * `onComplete` is a release, not a command. The root layout only leaves
+ * the splash once this has fired *and* session restore has answered, so if
  * restore is slow this stays mounted past TOTAL_DURATION_MS — the pulse
  * repeats indefinitely, which is exactly the honest "still working"
  * state we want. (It used to be the other way round: restore set
