@@ -11,10 +11,10 @@ Target: `docs/ARCHITECTURE.md` · Distance to it: `docs/ARCHITECTURE_GAPS.md`
 
 | | |
 |---|---|
-| **Current step** | **M4b — platform adapters.** Nine of the ten adapters that have call sites are built; metro's native-only list is down from 14 packages to 2, both billing |
-| **Branch** | `arch/m4b-platform-adapters`, 10 commits, **not pushed**. Branches from `main` at `2c1a0a3` |
-| **`main`** | Carries M1, M2, M3 and M4a, plus PRs #17–#19. tsc 0, eslint 0 errors, deno check clean, 122 tests |
-| **Next** | `billing`, held until the internal-track build soaks (that path moved real money on 2026-10-30 and should not change while it is being watched). Then the lint gate fix, then M4c (the 8.9 MB bundle) and R-M9 |
+| **Current step** | **M4b — platform adapters. Complete on this branch.** All ten adapters with call sites are built, metro's placeholder list is empty, and rule 4 is a lint error |
+| **Branch** | `arch/m4b-billing-adapter`, 4 commits, **not pushed**. Branches from `main` at `5b88b97` |
+| **`main`** | Carries M1, M2, M3, M4a, and M4b's first nine adapters via PR #20. The tenth and the gate are on the branch above. tsc 0, eslint 0 errors, deno check clean, 125 tests |
+| **Next** | M4c — the 8.9 MB web bundle. Then R-M9. Unscheduled: question 17 (five features, one import knot) and web billing, which §8 gives to M8 |
 
 ---
 
@@ -40,10 +40,13 @@ Target: `docs/ARCHITECTURE.md` · Distance to it: `docs/ARCHITECTURE_GAPS.md`
 
 ### M4b — platform adapters · 2026-10-30
 
-**Nine adapters; metro's native-only list went from 14 packages to 2.**
-`clipboard`, `files`, `speech`, `shareIntent`, `imagePicker`,
-`notifications`, `fileCache`, `audio`, `reader-host`. Only `billing`
-remains, deliberately — see "Next" above.
+**Ten adapters; metro's native-only list went from 14 packages to
+none.** `clipboard`, `files`, `speech`, `shareIntent`, `imagePicker`,
+`notifications`, `fileCache`, `audio`, `reader-host`, `billing`.
+
+Billing came last and separately, after the internal-track build had
+soaked — that path moved real money on 2026-10-30 and should not have
+been changing while it was being watched.
 
 #### The gate that measures this work was blind
 
@@ -70,10 +73,25 @@ That number was not stale by drift — it was frozen at the moment the
 rule went blind. Same file still listed `apps/app/App.tsx`, deleted in
 PR #18.
 
-The fix is the last commit of M4b, not the first: flipping to `error`
-now would mean writing 24 inline exemptions and deleting them over the
-following nine commits. It lands with billing, when there are none to
-write.
+The fix was the last commit of M4b rather than the first, deliberately:
+flipping to `error` at the start would have meant writing 24 inline
+exemptions and deleting them again over the following commits. It
+landed with billing, when there were none left to write.
+
+All three holes are closed. A shared `nativeOnlyPaths` is spread into
+every block that sets the rule, with a note saying why the next one
+has to do the same; the glob covers `apps/app/app/`; and the lazy
+`require()` is inside `platform/notifications.ts` now, which is where
+it is allowed to be. `apps/app/App.tsx` is out of the glob — a glob
+naming a file deleted in PR #18 looks like coverage without being any.
+
+**Verified rather than trusted.** A zero from a rule that cannot see
+the code is precisely the failure being fixed, so the green run proves
+nothing on its own. A banned import was planted in one file per
+region — `features/ai/api/aiUsage.ts`, `app/index.tsx`,
+`components/Icon.tsx`, `shell/useShellSession.ts` — and each reported
+an error: the two formerly blind regions, the newly covered one, and
+the one that always worked.
 
 #### Two packages were never installed
 
@@ -107,6 +125,40 @@ the lists are for packages the code reaches.
   assigning a function onto `expo-audio`'s player object and reading it
   back at unmount. The handle owns its subscriptions now.
 
+#### Billing: three import sites, one of them dead
+
+`useCustomerInfo` imported the SDK and called four of its methods;
+`useEntitlement` was its only consumer; nothing consumed
+`useEntitlement`. With no `hooks/index.ts` neither was reachable
+through a barrel, so a third of this adapter's call sites was a hook
+nobody called — the same residue as `SignedInShell`'s unused
+`useShareIntent`, a hook left behind when the code that used it moved
+and still dragging a native package along. Both deleted. The one
+surviving reference was a comment in `YouDrillScreens` claiming the
+upgrade button's entitlement is read by them on the next render; that
+screen reads `useIsPro`.
+
+**Two platform branches moved off the feature.** RevenueCat issues a
+separate public key per store and configuring with the wrong one
+silently returns no offerings, so key selection needed `Platform.OS`:
+the feature was branching on platform to work around not having a
+platform layer. The `Platform.OS === 'web'` test inside `disabled`
+went with it, along with the eight-line comment explaining that the
+ternary above it fell through to the *Android* key on web.
+
+**Three casts turned out to be guarding against nothing.** The feature
+read `productPlanIdentifier`, `latestPurchaseDate` and
+`originalPurchaseDate` through casts whose comment said the installed
+SDK's types might predate the fields. All three are declared in
+`@revenuecat/purchases-typescript-internal`. The casts defended
+against a version that is not the one installed, at every read.
+`BillingEntitlement` flattens them once.
+
+Also dropped, none of them read anywhere: `PAYWALL_RESULT` from the
+feature's public surface, `presentPaywall`'s `offering` option, and
+`RestoreResult.customerInfo`. Three SDK types that were public only
+because nothing had asked whether they needed to be.
+
 #### Decisions taken here
 
 - **Flat modules, not `platform/<name>/index.ts`.** §8 specified a
@@ -132,6 +184,19 @@ the lists are for packages the code reaches.
   reject. `fileCache` writes reject rather than silently storing
   nothing, because telling someone a book is available offline when it
   is not is a promise the product breaks on a train.
+- **Web billing deferred, not implemented.** §8's web cell for that row
+  is the RevenueCat Web SDK, `@revenuecat/purchases-js` — a dependency
+  the app does not have, and web billing is M8. Adding it unasked to
+  satisfy a table would be the table driving the code. So `billing`
+  takes the deferral rule above: questions answer empty, because "we
+  know of no subscription for you" is true on web today, and anything
+  claiming a change in state rejects, because a restore that restored
+  nothing is a promise broken the next time the app opens.
+- **`BillingPackage.handle` is a deliberate leak.** `purchasePackage`
+  needs the SDK's own package object back, so the adapter carries it
+  through untouched and one function casts it. The alternative was a
+  module-level map from package id to SDK object, which is hidden state
+  that goes stale on a refetch.
 
 #### EPUB reading works on web
 
@@ -195,8 +260,12 @@ its own piece of work and not M4b's; see the new question 17.
 
 #### Gate
 
-tsc 0, eslint 0 errors, 122 tests, web export clean, both Playwright
-widths, on every one of the ten commits. Bundle still 8.9 MB — M4c.
+tsc 0, eslint 0 errors, 125 tests, web and android bundles clean, both
+Playwright widths — on every one of the 16 commits in PR #20 and the
+3 that followed for billing and the gate. The web bundle carries the
+`billing.web.ts` copy and no RevenueCat SDK code at all, which is the
+check that the sibling is really what Metro resolved. Bundle still
+8.9 MB — M4c.
 
 ### M4a — web boot · 2026-10-29
 

@@ -1,55 +1,42 @@
 import { Alert, Linking, Platform } from 'react-native';
 import { useEffect, useState } from 'react';
-import Purchases, {
-  LOG_LEVEL,
-  type CustomerInfo,
-  type PurchasesOffering,
-  type PurchasesPackage,
-} from 'react-native-purchases';
-import RevenueCatUI, { PAYWALL_RESULT } from 'react-native-purchases-ui';
+import {
+  configure,
+  getCustomer,
+  getOfferings,
+  isAvailable,
+  logIn,
+  logOut,
+  onCustomerChange,
+  presentCustomerCenter as openCustomerCenter,
+  presentPaywall as openHostedPaywall,
+  purchase,
+  restore,
+  type BillingCustomer,
+  type BillingOffering,
+  type BillingPackage,
+  type PaywallOutcome,
+} from '~/platform/billing';
 
 export const ENTITLEMENT_PRO = 'Bookflow Pro';
 
 export type ProductId = 'lifetime' | 'yearly' | 'monthly';
 
 /**
- * RevenueCat issues a SEPARATE public SDK key per platform (an
- * `appl_…` key for the iOS app, a `goog_…` key for the Android app).
- * Configuring with the wrong-platform key silently returns no
- * offerings, so production MUST pick the key by platform.
- *
- * Resolution order:
- *   1. Platform-specific key (EXPO_PUBLIC_REVENUECAT_IOS_KEY /
- *      EXPO_PUBLIC_REVENUECAT_ANDROID_KEY) — use these in production.
- *   2. Legacy single EXPO_PUBLIC_REVENUECAT_API_KEY — backward-compat
- *      for the current dev/test setup so nothing breaks before the
- *      per-platform keys are added.
- */
-const apiKey =
-  (Platform.OS === 'ios'
-    ? process.env.EXPO_PUBLIC_REVENUECAT_IOS_KEY
-    : process.env.EXPO_PUBLIC_REVENUECAT_ANDROID_KEY) ??
-  process.env.EXPO_PUBLIC_REVENUECAT_API_KEY;
-
-/**
  * Set `EXPO_PUBLIC_REVENUECAT_DISABLED=1` in `.env` to skip RevenueCat
  * entirely — useful while the billing/paywall flow isn't a priority,
  * since the SDK noisily logs 404s on `configure()` if your project
  * doesn't have offerings set up. Configure / login / logout become
- * no-ops; entitlement checks return false; presentPaywall throws so
- * misuse is loud rather than silent.
+ * no-ops and every entitlement check returns false.
+ *
+ * `isAvailable` covers the other half: a platform with no
+ * implementation (web, until M8) or no key for this one. Per-platform
+ * key selection and the `Platform.OS === 'web'` test both used to live
+ * here; both are the adapter's business now, which is what §8 asks
+ * for. This feature no longer needs to know which platforms can bill.
  */
 const disabled =
-  process.env.EXPO_PUBLIC_REVENUECAT_DISABLED === '1' ||
-  !apiKey ||
-  // Web, until M4b's `billing` adapter (§8). `apiKey` is truthy here —
-  // the ternary above falls through to the *Android* key on any
-  // non-iOS platform — so without this the web build would configure
-  // RevenueCat with a key that is not valid for it. The disabled path
-  // already does the right thing: configure and login become no-ops
-  // and every entitlement check returns false, so web reports "no
-  // subscription" and every screen behind sign-in still loads.
-  Platform.OS === 'web';
+  process.env.EXPO_PUBLIC_REVENUECAT_DISABLED === '1' || !isAvailable;
 
 let configured = false;
 
@@ -61,68 +48,52 @@ let configured = false;
  * Idempotent: the `configured` flag makes a second call a no-op, which
  * matters because React 18 StrictMode mounts effects twice in dev.
  *
- * Returns early on **web** through `disabled`, which includes
- * `Platform.OS === 'web'`. The root layout runs on web too, and
- * `react-native-purchases` resolves to an M4a placeholder there that
- * throws when called — so this guard is what keeps the web bundle
- * loading. M4b's `billing` adapter replaces it with the RevenueCat Web
- * SDK, configured with the same Supabase user id so an Android
- * subscription shows on web.
+ * Returns early on **web** through `disabled`, where the adapter
+ * reports `isAvailable: false`. The root layout runs on web too, and
+ * the adapter's web `configure` is a deliberate no-op rather than a
+ * throw — so this guard is belt and braces now, where it used to be
+ * the thing keeping the web bundle alive while an M4a placeholder
+ * stood in for the package. M8 gives web a real implementation,
+ * configured with the same Supabase user id so an Android
+ * subscription shows there too.
  */
 export function configureRevenueCat(appUserID?: string): void {
   if (configured || disabled) return;
-  if (!apiKey) {
-    // Reachable only if `disabled` is false and apiKey is missing —
-    // shouldn't happen given the disabled-when-no-key rule above, but
-    // keep the throw as a defensive guard for refactors.
-    throw new Error(
-      'Missing EXPO_PUBLIC_REVENUECAT_API_KEY. Add it to .env or set EXPO_PUBLIC_REVENUECAT_DISABLED=1.',
-    );
-  }
-  if (__DEV__) Purchases.setLogLevel(LOG_LEVEL.DEBUG);
-  Purchases.configure({ apiKey, appUserID });
+  configure(appUserID);
   configured = true;
 }
 
-export async function loginRevenueCat(userId: string): Promise<CustomerInfo | null> {
+export async function loginRevenueCat(
+  userId: string,
+): Promise<BillingCustomer | null> {
   if (disabled || !configured) return null;
-  const { customerInfo } = await Purchases.logIn(userId);
-  return customerInfo;
+  return logIn(userId);
 }
 
 /**
- * Log out, but only a real user.
- *
- * RevenueCat errors if you log out an anonymous customer, and after
- * `configure()` with no `appUserID` that is exactly what we are until
- * the first `logIn`. So a sign-out before sign-in — or a second
- * sign-out — would throw into a `console.warn` and look like a billing
- * fault when nothing is wrong.
- *
- * The id prefix is the check rather than an SDK `isAnonymous` getter,
- * because the prefix is stable across SDK versions.
+ * Log out, answering null when there was nobody to log out: either
+ * billing is off, or the adapter found an anonymous customer. Why that
+ * second case has to be checked at all, and how, is in `billing.ts` —
+ * it is a fact about the SDK, not about Bookflow.
  */
-export async function logoutRevenueCat(): Promise<CustomerInfo | null> {
+export async function logoutRevenueCat(): Promise<BillingCustomer | null> {
   if (disabled || !configured) return null;
-  const appUserId = await Purchases.getAppUserID();
-  if (appUserId.startsWith('$RCAnonymousID:')) return null;
-  return Purchases.logOut();
+  return logOut();
 }
 
 export function isEntitlementActive(
-  customerInfo: CustomerInfo | null | undefined,
+  customer: BillingCustomer | null | undefined,
   entitlementId: string,
 ): boolean {
-  return Boolean(customerInfo?.entitlements.active[entitlementId]);
+  return Boolean(customer?.activeEntitlements[entitlementId]);
 }
 
-export async function getCurrentOffering(): Promise<PurchasesOffering | null> {
+export async function getCurrentOffering(): Promise<BillingOffering | null> {
   // When RevenueCat is disabled (test/dev or closed-testing without IAP
   // wired) the SDK isn't configured — calling getOfferings would throw.
   // Return null so the caller can treat it as "no offerings available."
   if (disabled || !configured) return null;
-  const offerings = await Purchases.getOfferings();
-  return offerings.current ?? null;
+  return (await getOfferings()).current;
 }
 
 /** RevenueCat Offering id holding the consumable credit-pack products.
@@ -184,11 +155,11 @@ export function topupMetaFor(
 }
 
 /** Fetch the consumable credit-pack packages, or [] if unavailable. */
-export async function getTopupPackages(): Promise<PurchasesPackage[]> {
+export async function getTopupPackages(): Promise<BillingPackage[]> {
   if (disabled || !configured) return [];
   try {
-    const offerings = await Purchases.getOfferings();
-    return offerings.all[TOPUP_OFFERING_ID]?.availablePackages ?? [];
+    const { byId } = await getOfferings();
+    return byId[TOPUP_OFFERING_ID]?.packages ?? [];
   } catch (err) {
     console.warn('[revenuecat] getTopupPackages failed:', err);
     return [];
@@ -205,40 +176,38 @@ export type TopupResult =
  * the user's balance a few seconds after a successful purchase rather than
  * synchronously here.
  */
-export async function purchaseTopup(pkg: PurchasesPackage): Promise<TopupResult> {
+export async function purchaseTopup(pkg: BillingPackage): Promise<TopupResult> {
   if (disabled || !configured) return { ok: false, error: 'unavailable' };
-  try {
-    await Purchases.purchasePackage(pkg);
-    return { ok: true };
-  } catch (err) {
-    const e = err as { userCancelled?: boolean; message?: string };
-    if (e?.userCancelled) return { ok: false, cancelled: true };
-    return { ok: false, error: e?.message ?? 'purchase_failed' };
+  // No try/catch: the adapter reports a closed sheet as `cancelled`
+  // rather than throwing, which is the reason its result is a union.
+  const result = await purchase(pkg);
+  switch (result.outcome) {
+    case 'purchased':
+      return { ok: true };
+    case 'cancelled':
+      return { ok: false, cancelled: true };
+    case 'unavailable':
+      return { ok: false, error: 'unavailable' };
+    case 'failed':
+      return { ok: false, error: result.message };
   }
 }
 
 export async function presentPaywall(opts?: {
   requiredEntitlement?: string;
-  offering?: PurchasesOffering;
-}): Promise<PAYWALL_RESULT> {
+}): Promise<PaywallOutcome> {
   // When RC is disabled, show a friendly alert instead of crashing the
   // app. Closed testers tap Upgrade out of curiosity; we'd rather they
-  // see "Coming soon" than a hard crash. Returns NOT_PRESENTED so the
+  // see "Coming soon" than a hard crash. Reports not_presented so the
   // caller's flow doesn't think a purchase happened.
   if (disabled || !configured) {
     Alert.alert(
       'Upgrade coming soon',
       'Pro subscriptions are being set up. You can use everything in the free tier in the meantime. Thanks for testing!',
     );
-    return PAYWALL_RESULT.NOT_PRESENTED;
+    return 'not_presented';
   }
-  if (opts?.requiredEntitlement) {
-    return RevenueCatUI.presentPaywallIfNeeded({
-      requiredEntitlementIdentifier: opts.requiredEntitlement,
-      offering: opts.offering,
-    });
-  }
-  return RevenueCatUI.presentPaywall({ offering: opts?.offering });
+  return openHostedPaywall({ requiredEntitlement: opts?.requiredEntitlement });
 }
 
 export async function presentCustomerCenter(): Promise<void> {
@@ -251,7 +220,7 @@ export async function presentCustomerCenter(): Promise<void> {
     );
     return;
   }
-  await RevenueCatUI.presentCustomerCenter();
+  await openCustomerCenter();
 }
 
 const PLAY_PACKAGE = 'com.eaustine.bookflow';
@@ -296,7 +265,7 @@ export async function openManageSubscription(): Promise<void> {
  * so the UI can still acknowledge the tap rather than hanging.
  */
 export type RestoreResult =
-  | { ok: true; pro: boolean; customerInfo: CustomerInfo }
+  | { ok: true; pro: boolean }
   | { ok: false; reason: 'disabled' | 'failed'; message?: string };
 
 export async function restorePurchases(): Promise<RestoreResult> {
@@ -304,12 +273,8 @@ export async function restorePurchases(): Promise<RestoreResult> {
     return { ok: false, reason: 'disabled' };
   }
   try {
-    const customerInfo = await Purchases.restorePurchases();
-    return {
-      ok: true,
-      pro: isEntitlementActive(customerInfo, ENTITLEMENT_PRO),
-      customerInfo,
-    };
+    const customer = await restore();
+    return { ok: true, pro: isEntitlementActive(customer, ENTITLEMENT_PRO) };
   } catch (err) {
     return {
       ok: false,
@@ -318,8 +283,6 @@ export async function restorePurchases(): Promise<RestoreResult> {
     };
   }
 }
-
-export { PAYWALL_RESULT };
 
 // ─── React hook for entitlement state ─────────────────────────────────────
 
@@ -362,7 +325,7 @@ export function useIsPro(): {
    * top-level `restorePurchases` function. */
   restore: () => Promise<RestoreResult>;
 } {
-  const [info, setInfo] = useState<CustomerInfo | null>(null);
+  const [info, setInfo] = useState<BillingCustomer | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
@@ -372,38 +335,36 @@ export function useIsPro(): {
     }
     let cancelled = false;
     // Initial read so we don't wait on the listener for first paint.
-    Purchases.getCustomerInfo()
-      .then((ci) => {
+    getCustomer()
+      .then((customer) => {
         if (!cancelled) {
-          setInfo(ci);
+          setInfo(customer);
           setIsLoading(false);
         }
       })
       .catch((err) => {
-        console.warn('[revenuecat] getCustomerInfo threw:', err);
+        console.warn('[revenuecat] getCustomer threw:', err);
         if (!cancelled) setIsLoading(false);
       });
     // Then subscribe to updates so a purchase / restore / expiry
     // flips state without a manual refresh.
-    const listener = (ci: CustomerInfo) => {
-      if (!cancelled) setInfo(ci);
-    };
-    Purchases.addCustomerInfoUpdateListener(listener);
+    const unsubscribe = onCustomerChange((customer) => {
+      if (!cancelled) setInfo(customer);
+    });
     return () => {
       cancelled = true;
-      Purchases.removeCustomerInfoUpdateListener(listener);
+      unsubscribe();
     };
   }, []);
 
   const isPro = isEntitlementActive(info, ENTITLEMENT_PRO);
+  const entitlement = info?.activeEntitlements[ENTITLEMENT_PRO];
   const plan: CurrentPlan = isPro
     ? {
         tier: 'pro',
         period: derivePeriod(info, ENTITLEMENT_PRO),
-        expiresAt:
-          info?.entitlements.active[ENTITLEMENT_PRO]?.expirationDate ?? null,
-        inTrial:
-          info?.entitlements.active[ENTITLEMENT_PRO]?.periodType === 'TRIAL',
+        expiresAt: entitlement?.expiresAt ?? null,
+        inTrial: entitlement?.inTrial ?? false,
       }
     : { tier: 'free' };
 
@@ -419,11 +380,11 @@ export function useIsPro(): {
  * "Pro" label instead of an inferred-wrong one.
  */
 function derivePeriod(
-  info: CustomerInfo | null,
+  info: BillingCustomer | null,
   entitlementId: string,
 ): 'monthly' | 'yearly' | 'lifetime' | null {
   const productId =
-    info?.entitlements.active[entitlementId]?.productIdentifier ?? '';
+    info?.activeEntitlements[entitlementId]?.productIdentifier ?? '';
   const lower = productId.toLowerCase();
   if (lower.includes('lifetime')) return 'lifetime';
   if (lower.includes('yearly') || lower.includes('annual')) return 'yearly';
@@ -476,18 +437,17 @@ export function useProSubscriptionDetails(): ProSubscriptionDetails {
 
     async function load() {
       try {
-        const ci = await Purchases.getCustomerInfo();
-        const ent = ci.entitlements.active[ENTITLEMENT_PRO];
+        const customer = await getCustomer();
+        const ent = customer.activeEntitlements[ENTITLEMENT_PRO];
         if (!ent) {
           if (!cancelled) setState(EMPTY_SUB_DETAILS);
           return;
         }
-        // Play reports the base-plan id (monthly/annual/student) here —
-        // the most reliable period signal. Cast defensively in case the
-        // installed SDK's types predate the field.
-        const basePlan =
-          (ent as { productPlanIdentifier?: string | null })
-            .productPlanIdentifier ?? null;
+        // Play reports the base-plan id (monthly/annual/student) — the
+        // most reliable period signal. This used to be read through a
+        // cast, as did the period anchor below; the adapter normalises
+        // both, so neither needs one at every read any more.
+        const basePlan = ent.basePlanIdentifier;
 
         // Match the active product to an offering package to read its
         // localized price + authoritative subscription period. Play
@@ -500,11 +460,11 @@ export function useProSubscriptionDetails(): ProSubscriptionDetails {
         try {
           const offering = await getCurrentOffering();
           const pkg =
-            offering?.availablePackages.find(
+            offering?.packages.find(
               (p) => p.product.identifier === ent.productIdentifier,
             ) ??
             (basePlan
-              ? offering?.availablePackages.find((p) =>
+              ? offering?.packages.find((p) =>
                   p.product.identifier.endsWith(`:${basePlan}`),
                 )
               : undefined);
@@ -531,16 +491,12 @@ export function useProSubscriptionDetails(): ProSubscriptionDetails {
         // so the raw expirationDate is only minutes out. In production
         // this equals the real expiry. For a cancelled sub we show the
         // actual expirationDate (when access genuinely ends).
-        const anchor =
-          (ent as { latestPurchaseDate?: string | null }).latestPurchaseDate ??
-          (ent as { originalPurchaseDate?: string | null })
-            .originalPurchaseDate ??
-          null;
+        const anchor = ent.currentPeriodStartedAt;
         let renewalLabel: string | null = null;
         if (ent.willRenew && anchor && subPeriodISO) {
           renewalLabel = formatDate(addPeriod(anchor, subPeriodISO));
-        } else if (ent.expirationDate) {
-          renewalLabel = formatDate(ent.expirationDate);
+        } else if (ent.expiresAt) {
+          renewalLabel = formatDate(ent.expiresAt);
         }
 
         if (!cancelled) {
@@ -557,11 +513,10 @@ export function useProSubscriptionDetails(): ProSubscriptionDetails {
     }
 
     void load();
-    const listener = () => void load();
-    Purchases.addCustomerInfoUpdateListener(listener);
+    const unsubscribe = onCustomerChange(() => void load());
     return () => {
       cancelled = true;
-      Purchases.removeCustomerInfoUpdateListener(listener);
+      unsubscribe();
     };
   }, []);
 

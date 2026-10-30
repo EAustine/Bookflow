@@ -265,8 +265,8 @@ export function DefaultVoiceScreen({ onBack }: { onBack?: () => void }) {
               // RevenueCat's native paywall — handles platform IAP
               // sheets and entitlement activation. The call is
               // fire-and-forget here because the user's resulting
-              // entitlement is read separately by useCustomerInfo
-              // / useEntitlement on the next render.
+              // entitlement is read separately by useIsPro on the
+              // next render.
               onPress={() => {
                 void presentPaywall({
                   requiredEntitlement: ENTITLEMENT_PRO,

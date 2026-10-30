@@ -10,10 +10,20 @@
  *   Importing native-only module "react-native/Libraries/Utilities/
  *   codegenNativeComponent" on web from react-native-pdf
  *
- * Each package resolves to a placeholder that throws when *called*,
- * never when loaded, so every screen still renders and only a path
- * that genuinely needs a native package fails. M4b replaces them one
- * at a time with the §8 adapters, and this list shrinks to nothing.
+ * M4a mapped each one to a placeholder that threw when *called*,
+ * never when loaded, so every screen still rendered and only a path
+ * that genuinely needed a native package failed. M4b replaced them
+ * with the §8 adapters one at a time, and **that list is now empty**:
+ * every native-only package the app reaches has a `platform/<name>.ts`
+ * with a `.web.ts` sibling, so Metro picks the web implementation by
+ * extension and needs no help from here.
+ *
+ * What remains is the deep-import catch-all below, which cannot be
+ * solved by an adapter because the imports come from inside
+ * dependencies. `eslint.config.js` is what now keeps the package-name
+ * case from coming back: rule 4 is an error there, so a native-only
+ * import outside `platform/` fails CI rather than quietly needing a
+ * row in this file.
  *
  * Native resolution is untouched: the override only fires for
  * `platform === 'web'`.
@@ -27,48 +37,32 @@ const config = getDefaultConfig(__dirname);
 const PLACEHOLDERS = path.resolve(__dirname, 'src/platform/web-placeholder');
 
 /**
- * What is left of the §8 adapter list, plus the two the lint rule has
- * never had a row for: `react-native-webview` (named in §8's
- * reader-host prose but missing from that list) and
- * `react-native-purchases-ui` (arrived after the spike, with the
- * hosted paywall). Keep this in step with `NATIVE_ONLY` in
- * `eslint.config.js`.
+ * Every package M4a listed here now has an adapter, so there is no
+ * package-name mapping left:
  *
- * Migrated to a real adapter so far, and therefore absent below:
- * `expo-clipboard` → `src/platform/clipboard.ts`,
- * `expo-document-picker` → `src/platform/files.ts`,
- * `expo-speech` → `src/platform/speech.ts`,
- * `expo-share-intent` → `src/platform/shareIntent.ts`,
- * `expo-image-picker` → `src/platform/imagePicker.ts`,
- * `expo-notifications` → `src/platform/notifications.ts`,
- * `expo-file-system` → `src/platform/fileCache.ts` (plus `readBytes`
- * on the `files` adapter),
- * `expo-audio` → `src/platform/audio.ts`,
- * `react-native-pdf` and `react-native-webview` →
- * `src/platform/readerHost.tsx`.
+ *   `expo-clipboard` → `src/platform/clipboard.ts`
+ *   `expo-document-picker` → `src/platform/files.ts`
+ *   `expo-speech` → `src/platform/speech.ts`
+ *   `expo-share-intent` → `src/platform/shareIntent.ts`
+ *   `expo-image-picker` → `src/platform/imagePicker.ts`
+ *   `expo-notifications` → `src/platform/notifications.ts`
+ *   `expo-file-system` → `src/platform/fileCache.ts` (plus `readBytes`
+ *       on the `files` adapter)
+ *   `expo-audio` → `src/platform/audio.ts`
+ *   `react-native-pdf`, `react-native-webview` →
+ *       `src/platform/readerHost.tsx`
+ *   `react-native-purchases`, `react-native-purchases-ui` →
+ *       `src/platform/billing.ts`
  *
- * `expo-haptics` and `expo-secure-store` left without an adapter:
- * neither is a declared dependency and nothing imports either, so
- * their entries mapped a specifier that never appears. §8 keeps its
- * rows for them as intent; this list is for packages the code
- * actually reaches.
+ * `expo-haptics` and `expo-secure-store` were on the list and never
+ * installed, so their entries mapped a specifier that never appears.
+ * §8 keeps its rows for them as intent.
  */
-const NATIVE_ONLY = new Set([
-  'react-native-purchases',
-  'react-native-purchases-ui',
-]);
 
 const defaultResolve = config.resolver.resolveRequest;
 
 config.resolver.resolveRequest = (context, moduleName, platform) => {
   if (platform === 'web') {
-    if (NATIVE_ONLY.has(moduleName)) {
-      return {
-        type: 'sourceFile',
-        filePath: path.join(PLACEHOLDERS, `${moduleName}.js`),
-      };
-    }
-
     /**
      * The catch-all the spike found necessary. These deep imports come
      * from *inside* dependencies — `react-native-pdf` reaching for

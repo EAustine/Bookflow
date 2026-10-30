@@ -44,9 +44,9 @@ month or more.
 | 5 | Navigation | Hand-rolled `stage` machine in `App.tsx` (1,468 lines) plus local `view` state inside each tab. `expo-router` not installed | Expo Router, typed routes, every screen a URL. The highest-risk structural change in the plan | **L** |
 | 6 | Data layer | `@tanstack/react-query@5.100.5` **is installed** but server state is bespoke hooks (`useBooks`, `useBooksImpl`, `useCurrentUser`, `useBookChapters`) over Supabase. Zustand (2 stores) for client state. No persisted cache, no offline queue | Query for all server state, persisted cache, offline queue. Zustand stays | **L** |
 | 7 | Reader | Four surfaces, 7,852 lines, three rendering strategies — see §4 below | One engine. The highest-consequence change | **L** |
-| 8 | Platform adapters | None. 21 native-only import sites across 18 files. `src/lib/notifications.ts` is already an adapter in all but name | 9 adapters. Smaller than it looks | **M** |
+| 8 | Platform adapters | ~~None. 21 native-only import sites across 18 files~~ — **closed 2026-10-30 in M4b.** Ten adapters, each with a `.web.ts` sibling; metro's placeholder list is empty and rule 4 is a lint error, probe-verified against all four regions. The 21 was itself wrong: the rule that produced it could not see `features/`, and the sweep found 24. `src/lib/notifications.ts` was already an adapter in all but name and still is, now over `platform/notifications` | ~~9 adapters~~ ten — §8 had no row for `speech` or `imagePicker`. Smaller than it looks, and it was | **M** |
 | 9 | Backend | 13 tables, 27 migrations, 20 edge functions. `revenuecat-webhook` already live | Reshape 3, add 2. See §2 | **M** |
-| 10 | Billing | `react-native-purchases@10.0.1` native only. Hosted paywall. No web | RevenueCat Web SDK, entitlements from Supabase | **M** |
+| 10 | Billing | ~~`react-native-purchases@10.0.1` native only~~ — behind `platform/billing` since M4b, but still native-only in substance: web answers honestly rather than implementing. Hosted paywall | RevenueCat Web SDK, entitlements from Supabase. **Still open**, scheduled M8 | **M** |
 | 11 | Tokens | `src/design/tokens.ts`, one file, RN only. Figma parity maintained **by hand** — six rounds of drift corrected manually in the last cleanup round | `packages/tokens` generating RN theme + `tokens.css` + a CI drift check | **M** |
 | 12 | Quality | **Nothing.** No jest, no vitest, zero test files, no CI, no Sentry, no PostHog | All new | **M** |
 
@@ -134,6 +134,14 @@ and should be reconciled or dropped while the schema is open.
 ## 3. Native-only imports
 
 21 import sites across 18 files. Every one must move behind `platform/*` in M4.
+
+**Closed 2026-10-30 in M4b.** The table below is left as the snapshot it was
+rather than rewritten — several of its paths (`App.tsx`, `lib/revenuecat.ts`)
+no longer exist, which is rather the point of a gap record. Two corrections
+worth carrying forward: the real count was **24, not 21**, because the lint
+rule that produced 21 was blind to `features/`; and `expo-clipboard`'s "none
+in §8" was resolved by giving §8 a row for it, since at four call sites it is
+the most-used native-only package in the app.
 
 | Package | §8 adapter | Sites | Where |
 |---|---|---|---|

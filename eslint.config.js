@@ -19,10 +19,22 @@
  */
 const expoConfig = require('eslint-config-expo/flat');
 
-/** The packages that only exist on a native device. From M0 spike 2. */
+/**
+ * The packages that only exist on a native device. M0 spike 2 found
+ * ten; `react-native-webview` and `react-native-purchases-ui` are the
+ * two it missed — the first named in §8's reader-host prose but absent
+ * from the list, the second not yet a dependency when the spike ran.
+ *
+ * `expo-haptics` and `expo-secure-store` are not installed and nothing
+ * imports them, so their rows cannot fire today. They stay because the
+ * cost is nil and the day someone adds `expo-haptics` is exactly when
+ * this rule should be waiting.
+ */
 const NATIVE_ONLY = [
   'react-native-pdf',
+  'react-native-webview',
   'react-native-purchases',
+  'react-native-purchases-ui',
   'expo-audio',
   'expo-speech',
   'expo-file-system',
@@ -34,6 +46,30 @@ const NATIVE_ONLY = [
   'expo-haptics',
   'expo-secure-store',
 ];
+
+/**
+ * Rule 4 as `no-restricted-imports` paths — spread into **every** block
+ * below that sets that rule.
+ *
+ * It has to be every one, because a later block setting the same rule
+ * key REPLACES the earlier config rather than merging into it. That is
+ * the hole M4b found: the `features/*` block set only `patterns`, which
+ * silently dropped these paths for every file beneath it, and M3 had
+ * moved nearly all the app under `features/`. The rule reported five
+ * violations when there were twenty-four, and all nineteen it missed
+ * were under `features/` — no exceptions, which is what made the
+ * diagnosis certain rather than likely.
+ *
+ * A rule that cannot see most of the app is worse than no rule, because
+ * its zero reads as an all-clear. If you add a block here that sets
+ * `no-restricted-imports`, spread this in.
+ */
+const nativeOnlyPaths = NATIVE_ONLY.map((name) => ({
+  name,
+  message:
+    `${name} is native-only. Reach it through src/platform/* so the web ` +
+    'build can resolve it (§4 rule 4, §8).',
+}));
 
 module.exports = [
   ...expoConfig,
@@ -90,22 +126,26 @@ module.exports = [
 
   // ── Rule 4 — native-only packages live behind platform/* ────────────
   //
-  // Reported as a warning, not an error. Twenty-one call sites violate
-  // it today and M4 is where they move; failing the build now would mean
-  // either a red CI for three milestones or a blanket disable, and a
-  // blanket disable is how a rule quietly stops existing.
+  // An error as of M4b, which is when the last adapter landed and the
+  // count reached zero. It was a warning for three milestones because
+  // the call sites genuinely had nowhere to go: failing the build then
+  // would have meant either a red CI throughout or a blanket disable,
+  // and a blanket disable is how a rule quietly stops existing.
+  //
+  // The comment here used to read "twenty-one call sites violate it
+  // today". That number was not stale by drift — it was frozen at the
+  // moment the rule went blind to `features/`. See `nativeOnlyPaths`.
+  //
+  // `apps/app/app/` is in the glob now. Routes were never covered, and
+  // nothing violated it there, which is the kind of luck a gate should
+  // not be resting on. `apps/app/App.tsx` is gone from it: the file was
+  // deleted in #18 and a glob naming a missing file looks like coverage
+  // without being any.
   {
-    files: ['apps/app/src/**/*.{ts,tsx}', 'apps/app/App.tsx'],
+    files: ['apps/app/src/**/*.{ts,tsx}', 'apps/app/app/**/*.{ts,tsx}'],
     ignores: ['apps/app/src/platform/**'],
     rules: {
-      'no-restricted-imports': ['warn', {
-        paths: NATIVE_ONLY.map((name) => ({
-          name,
-          message:
-            `${name} is native-only. Reach it through src/platform/* so the web build can resolve it (§8). ` +
-            'This is a warning until M4 moves the call sites.',
-        })),
-      }],
+      'no-restricted-imports': ['error', { paths: nativeOnlyPaths }],
     },
   },
 
@@ -129,6 +169,7 @@ module.exports = [
     files: ['apps/app/src/features/*/**/*.{ts,tsx}'],
     rules: {
       'no-restricted-imports': ['error', {
+        paths: nativeOnlyPaths,
         patterns: [
           {
             group: ['~/features/*/*', '../../*/!(index)'],
@@ -169,6 +210,7 @@ module.exports = [
     files: ['apps/app/src/ui/**/*.{ts,tsx}', 'apps/app/src/components/**/*.{ts,tsx}'],
     rules: {
       'no-restricted-imports': ['error', {
+        paths: nativeOnlyPaths,
         patterns: [{
           group: ['~/features/*', '~/screens/*'],
           message:
