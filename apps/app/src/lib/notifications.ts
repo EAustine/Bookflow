@@ -24,60 +24,37 @@
 
 import { useEffect, useState } from 'react';
 import { Linking, Platform } from 'react-native';
+import {
+  cancel,
+  getPermissionStatus,
+  isAvailable,
+  onNotificationTapped,
+  requestPermission,
+  scheduleDaily,
+  setForegroundPresentation,
+  showNow,
+  type PermissionStatus,
+} from '~/platform/notifications';
 import { useReaderStore } from '~/stores/readerStore';
 
 /**
- * Defensive lazy load of `expo-notifications`. The package is a
- * native module — its JS wrapper tries to register native modules
- * (`ExpoPushTokenManager` etc) at require-time, and dev-client
- * builds that don't include the plugin throw a red-screen
- * "Cannot find native module" before anything in this file runs.
+ * Everything that touches `expo-notifications` lives in
+ * `~/platform/notifications` (§8), including the defensive load that
+ * keeps a dev-client build without the plugin from red-screening. What
+ * is left here is the app's own logic, and `isAvailable()` is how it
+ * asks whether this platform can deliver anything — false on web, and
+ * false in a build missing the native module, which are the same
+ * answer as far as the UI is concerned.
  *
- * Wrapping the require in try/catch lets the JS bundle finish
- * loading; every public function below checks `notificationsModule`
- * and no-ops when it's null. The user sees the same UI toggles, they
- * just don't actually fire OS notifications until a build that
- * includes the plugin lands (next EAS build).
- *
- * Once `expo-notifications` is in every active dev client + production
- * build, this can revert to a plain `import * as Notifications from`
- * statement.
+ * `null` status means "haven't read the OS yet", which is distinct
+ * from `undetermined` so the toggle waits rather than flashes.
  */
-type NotificationsModule = typeof import('expo-notifications');
-let notificationsModule: NotificationsModule | null = null;
-try {
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  notificationsModule = require('expo-notifications') as NotificationsModule;
-} catch (err) {
-  console.warn(
-    '[notifications] expo-notifications native module unavailable — ' +
-      'local notifications will no-op until the next native build:',
-    err,
-  );
-  notificationsModule = null;
-}
-
-/**
- * Permission status — we only need three states for our UI logic:
- * granted (schedule), denied (show banner + Open Settings), or
- * undetermined (haven't asked yet). `null` represents "haven't read
- * the current status from the OS yet" — distinct from undetermined
- * because we want the toggle UI to wait rather than flash.
- *
- * Defined locally because expo SDK 55's type re-exports don't make
- * `PermissionStatus` reachable from the `expo` package root the
- * way `expo-notifications`' interface declares — typings claim
- * `status` is missing on `NotificationPermissionsStatus`, even though
- * at runtime it's there per the docs. We pull what we need via a
- * minimal shape cast at the read site and stay strict everywhere else.
- */
-type PermissionStatusValue = 'granted' | 'denied' | 'undetermined';
-type PermissionShape = { status: PermissionStatusValue };
+type PermissionStatusValue = PermissionStatus;
 
 /**
  * Stable identifier for the daily reading reminder so cancel /
  * reschedule operations can find it without listing every scheduled
- * notification first. expo-notifications lets us pin an identifier
+ * notification first. The platform lets us pin an identifier
  * at schedule time — see scheduleDailyReadingReminder below.
  */
 const DAILY_REMINDER_ID = 'bookflow:daily-reading-reminder';
@@ -94,16 +71,9 @@ const DAILY_REMINDER_ID = 'bookflow:daily-reading-reminder';
  */
 let handlerInstalled = false;
 export function installNotificationHandler(): void {
-  if (handlerInstalled || !notificationsModule) return;
+  if (handlerInstalled) return;
   handlerInstalled = true;
-  notificationsModule.setNotificationHandler({
-    handleNotification: async () => ({
-      shouldShowBanner: true,
-      shouldShowList: true,
-      shouldPlaySound: true,
-      shouldSetBadge: false,
-    }),
-  });
+  setForegroundPresentation();
 }
 
 // ─── Permission hook ────────────────────────────────────────────────────────
@@ -138,51 +108,34 @@ export function useNotificationPermission(): PermissionState {
   // permission, and returned — we want the UI to reflect that
   // without forcing a manual re-tap.
   useEffect(() => {
-    if (!notificationsModule) {
-      // Native module missing in this build — settle the hook into a
-      // sensible "denied"-equivalent state so the UI shows the
-      // permission CTA but doesn't sit on null forever.
+    if (!isAvailable()) {
+      // This platform or build cannot notify — settle the hook so the
+      // UI shows the permission CTA rather than sitting on null.
       setStatus('undetermined');
       return;
     }
-    const mod = notificationsModule;
     let cancelled = false;
     const sync = () => {
-      mod
-        .getPermissionsAsync()
-        .then((p) => {
-          if (!cancelled) setStatus((p as unknown as PermissionShape).status);
-        })
-        .catch(() => {
-          if (!cancelled) setStatus('undetermined');
-        });
+      void getPermissionStatus().then((next) => {
+        if (!cancelled) setStatus(next);
+      });
     };
     sync();
-    // App state listener — re-check when foregrounded.
-    const sub = mod.addNotificationResponseReceivedListener(() => {
-      // Tapping a notification brings the app forward; reset perm in
-      // case it changed in the interim.
-      sync();
-    });
+    // Tapping a notification brings the app forward; re-read in case
+    // permission changed in Settings in the interim.
+    const unsubscribe = onNotificationTapped(sync);
     return () => {
       cancelled = true;
-      sub.remove();
+      unsubscribe();
     };
   }, []);
 
   const request = async (): Promise<boolean> => {
-    if (!notificationsModule) return false;
+    if (!isAvailable()) return false;
     try {
-      const result = await notificationsModule.requestPermissionsAsync({
-        ios: {
-          allowAlert: true,
-          allowBadge: false,
-          allowSound: true,
-        },
-      });
-      const status = (result as unknown as PermissionShape).status;
-      setStatus(status);
-      return status === 'granted';
+      const next = await requestPermission();
+      setStatus(next);
+      return next === 'granted';
     } catch {
       return false;
     }
@@ -231,48 +184,24 @@ export async function scheduleDailyReadingReminder(
   hour: number,
   minute: number = 0,
 ): Promise<boolean> {
-  if (!notificationsModule) return false;
-  const normalisedHour = Math.max(0, Math.min(23, Math.floor(hour)));
-  const normalisedMinute = Math.max(0, Math.min(59, Math.floor(minute)));
-  try {
-    await cancelDailyReadingReminder();
-    await notificationsModule.scheduleNotificationAsync({
-      identifier: DAILY_REMINDER_ID,
-      content: {
-        title: 'Time to read',
-        body: 'Pick up where you left off. Even ten minutes counts.',
-        // Sound: true uses the default OS sound; iOS rejects custom
-        // sounds without a separate aiff bundled in the app, which
-        // isn't worth the build complexity for a reading reminder.
-        sound: true,
-      },
-      trigger: {
-        type: notificationsModule.SchedulableTriggerInputTypes.DAILY,
-        hour: normalisedHour,
-        minute: normalisedMinute,
-      },
-    });
-    return true;
-  } catch (err) {
-    console.warn('[notifications] schedule failed:', err);
-    return false;
-  }
+  return scheduleDaily({
+    id: DAILY_REMINDER_ID,
+    content: {
+      title: 'Time to read',
+      body: 'Pick up where you left off. Even ten minutes counts.',
+    },
+    hour,
+    minute,
+  });
 }
 
 /**
- * Cancel the daily reminder if one is scheduled. No-op when nothing
- * is scheduled (expo-notifications throws on unknown identifiers; we
- * swallow that case so callers don't have to defensively try/catch).
+ * Cancel the daily reminder if one is scheduled. Silent when nothing
+ * is scheduled — `~/platform/notifications` swallows the unknown-id
+ * throw so callers don't have to defensively try/catch.
  */
 export async function cancelDailyReadingReminder(): Promise<void> {
-  if (!notificationsModule) return;
-  try {
-    await notificationsModule.cancelScheduledNotificationAsync(
-      DAILY_REMINDER_ID,
-    );
-  } catch {
-    // No existing reminder; nothing to cancel.
-  }
+  await cancel(DAILY_REMINDER_ID);
 }
 
 /**
@@ -291,21 +220,11 @@ export async function fireReminderSetConfirmation(
   minute: number,
   granted: boolean,
 ): Promise<void> {
-  if (!notificationsModule || !granted) return;
-  try {
-    await notificationsModule.scheduleNotificationAsync({
-      content: {
-        title: 'Reading reminder set',
-        body: `We'll nudge you to read every day at ${formatReminderTime(hour, minute)}.`,
-        sound: true,
-      },
-      // Null trigger = fire immediately so the user sees confirmation
-      // in the notification shade right away.
-      trigger: null,
-    });
-  } catch (err) {
-    console.warn('[notifications] confirmation fire failed:', err);
-  }
+  if (!granted) return;
+  await showNow({
+    title: 'Reading reminder set',
+    body: `We'll nudge you to read every day at ${formatReminderTime(hour, minute)}.`,
+  });
 }
 
 /**
@@ -355,43 +274,23 @@ export async function scheduleStreakWarning(
   reminderHour: number,
   reminderMinute: number = 0,
 ): Promise<boolean> {
-  if (!notificationsModule) return false;
   // Fire one hour after the primary reminder, same minute. Clamp at
   // 23:xx rather than wrapping past midnight — a streak nudge that
   // fires at 00:30 the next day would be confusing.
   const fireHour = Math.min(23, Math.max(0, Math.floor(reminderHour)) + 1);
-  const fireMinute = Math.max(0, Math.min(59, Math.floor(reminderMinute)));
-  try {
-    await cancelStreakWarning();
-    await notificationsModule.scheduleNotificationAsync({
-      identifier: STREAK_WARNING_ID,
-      content: {
-        title: "Don't break your streak",
-        body: 'A few minutes of reading still counts, so pick up where you left off.',
-        sound: true,
-      },
-      trigger: {
-        type: notificationsModule.SchedulableTriggerInputTypes.DAILY,
-        hour: fireHour,
-        minute: fireMinute,
-      },
-    });
-    return true;
-  } catch (err) {
-    console.warn('[notifications] streak schedule failed:', err);
-    return false;
-  }
+  return scheduleDaily({
+    id: STREAK_WARNING_ID,
+    content: {
+      title: "Don't break your streak",
+      body: 'A few minutes of reading still counts, so pick up where you left off.',
+    },
+    hour: fireHour,
+    minute: reminderMinute,
+  });
 }
 
 export async function cancelStreakWarning(): Promise<void> {
-  if (!notificationsModule) return;
-  try {
-    await notificationsModule.cancelScheduledNotificationAsync(
-      STREAK_WARNING_ID,
-    );
-  } catch {
-    // Not scheduled — no-op.
-  }
+  await cancel(STREAK_WARNING_ID);
 }
 
 /** Effect — mirrors useDailyReminderSync's shape. */
@@ -429,22 +328,12 @@ export async function fireBookReadyNotification(opts: {
   enabled: boolean;
   granted: boolean;
 }): Promise<void> {
-  if (!notificationsModule) return;
   if (!opts.enabled || !opts.granted) return;
-  try {
-    await notificationsModule.scheduleNotificationAsync({
-      content: {
-        title: 'Book ready to read',
-        body: `${opts.title} just finished processing. Tap to open it.`,
-        sound: true,
-        data: { bookId: opts.bookId, kind: 'book-ready' },
-      },
-      // Null trigger = fire immediately.
-      trigger: null,
-    });
-  } catch (err) {
-    console.warn('[notifications] book-ready schedule failed:', err);
-  }
+  await showNow({
+    title: 'Book ready to read',
+    body: `${opts.title} just finished processing. Tap to open it.`,
+    data: { bookId: opts.bookId, kind: 'book-ready' },
+  });
 }
 
 /**
@@ -457,22 +346,11 @@ export async function fireDownloadCompleteNotification(opts: {
   bookId: string;
   title: string;
 }): Promise<void> {
-  if (!notificationsModule) return;
-  try {
-    if (!useReaderStore.getState().notifBookFinishedOn) return;
-    const perm = await notificationsModule.getPermissionsAsync();
-    if (!perm?.granted) return;
-    await notificationsModule.scheduleNotificationAsync({
-      content: {
-        title: 'Download complete',
-        body: `${opts.title} is ready to listen offline.`,
-        sound: true,
-        data: { bookId: opts.bookId, kind: 'download-complete' },
-      },
-      // Null trigger = fire immediately.
-      trigger: null,
-    });
-  } catch (err) {
-    console.warn('[notifications] download-complete schedule failed:', err);
-  }
+  if (!useReaderStore.getState().notifBookFinishedOn) return;
+  if ((await getPermissionStatus()) !== 'granted') return;
+  await showNow({
+    title: 'Download complete',
+    body: `${opts.title} is ready to listen offline.`,
+    data: { bookId: opts.bookId, kind: 'download-complete' },
+  });
 }
