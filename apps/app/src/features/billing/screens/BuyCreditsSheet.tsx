@@ -8,10 +8,10 @@ import {
   useState,
 } from 'react';
 import { ActivityIndicator, Alert, Pressable, StyleSheet, View } from 'react-native';
-import type { PurchasesPackage } from 'react-native-purchases';
 import { Icon, Presenter, type PresenterRef, Text } from '~/components';
 import { tokens } from '~/design/tokens';
 import { toast } from '~/lib/toast';
+import type { BillingPackage } from '~/platform/billing';
 import { getTopupPackages, purchaseTopup, topupMetaFor, type TopupKind, type TopupMeta } from '../api/revenuecat';
 
 /**
@@ -29,7 +29,7 @@ import { getTopupPackages, purchaseTopup, topupMetaFor, type TopupKind, type Top
  */
 
 type CardItem = {
-  pkg: PurchasesPackage;
+  pkg: BillingPackage;
   meta: TopupMeta;
   /** price / units — numeric, for comparing value within a tab. */
   perUnitRaw: number;
@@ -117,7 +117,7 @@ export const BuyCreditsSheet = forwardRef<BuyCreditsSheetRef, BuyCreditsSheetPro
   );
 
   // null = still loading; [] = none available.
-  const [packages, setPackages] = useState<PurchasesPackage[] | null>(null);
+  const [packages, setPackages] = useState<BillingPackage[] | null>(null);
   const [tab, setTab] = useState<TopupKind>('audio');
   const [selected, setSelected] = useState<Partial<Record<TopupKind, string>>>({});
   const [buyingId, setBuyingId] = useState<string | null>(null);
@@ -138,7 +138,7 @@ export const BuyCreditsSheet = forwardRef<BuyCreditsSheetRef, BuyCreditsSheetPro
   const groups = useMemo<Record<TopupKind, Group>>(() => {
     const buckets: Record<TopupKind, CardItem[]> = { audio: [], ai: [] };
     for (const pkg of packages ?? []) {
-      const meta = topupMetaFor(pkg.product?.identifier);
+      const meta = topupMetaFor(pkg.product.identifier);
       if (!meta) continue;
       buckets[meta.kind].push({
         pkg,
@@ -154,9 +154,9 @@ export const BuyCreditsSheet = forwardRef<BuyCreditsSheetRef, BuyCreditsSheetPro
     for (const kind of KIND_ORDER) {
       const items = buckets[kind].sort((a, b) => a.meta.units - b.meta.units);
       for (const it of items) {
-        const price = it.pkg.product?.price ?? 0;
+        const price = it.pkg.product.price ?? 0;
         it.perUnitRaw = it.meta.units > 0 && price > 0 ? price / it.meta.units : 0;
-        it.perUnitLabel = formatPerUnit(it.meta, price, it.pkg.product?.currencyCode);
+        it.perUnitLabel = formatPerUnit(it.meta, price, it.pkg.product.currencyCode);
       }
       const valid = items.filter((it) => it.perUnitRaw > 0);
       if (valid.length > 1) {
@@ -194,7 +194,7 @@ export const BuyCreditsSheet = forwardRef<BuyCreditsSheetRef, BuyCreditsSheetPro
     }
   }, [availableKinds, tab]);
 
-  const buy = useCallback(async (pkg: PurchasesPackage) => {
+  const buy = useCallback(async (pkg: BillingPackage) => {
     setBuyingId(pkg.identifier);
     const res = await purchaseTopup(pkg);
     setBuyingId(null);
@@ -342,7 +342,7 @@ function CreditCard({
         </View>
         <View style={styles.priceCol}>
           <Text style={styles.price} numberOfLines={1}>
-            {pkg.product?.priceString ?? ''}
+            {pkg.product.priceString ?? ''}
           </Text>
           {item.perUnitLabel ? (
             <Text style={styles.pricePer} numberOfLines={1}>
