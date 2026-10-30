@@ -146,13 +146,36 @@ PDF on web says so plainly, which is §8's own "no PDF full mode at
 launch" — §7.6 rules pdf.js out on M0 spike 1's measurements, and web
 PDF rendering is a separate decision with its own budget.
 
-#### Still open from M4
+#### Open question 16, closed — with a correction
 
-Open question 16 — the reader/listen import cycle, where
-`getCachedPages` is shared by both features and should move to
-`~/core/` — is untouched. It is tagged M4 and is lint-gate work rather
-than adapter work, so it belongs with the gate fix at the end of M4b
-rather than between two adapters.
+The reader/listen barrel cycle is gone. `core/offlineLibrary.ts` now
+owns the offline root, the per-book directory and the cached page text
+that both features touched; `PageRow` moved to `core/pageRows.ts`,
+which both already imported. No `~/features/listen` import remains
+under `features/reader`.
+
+**The question's own description of the gate was wrong.** It said
+`import/no-cycle` "reports it when that one file is linted and misses
+it on a whole-tree run". It does not, and did not: both runs report
+zero. The rule is scoped to relative specifiers because the resolver
+cannot follow `~/*` or the workspace exports maps, so a cycle built
+entirely from aliases is invisible to it either way. This one was found
+by reading the barrels.
+
+That leaves a real gap, and closing it is a decision rather than a fix:
+
+- **An import resolver** (`eslint-import-resolver-typescript`) would
+  teach `import/no-cycle` to follow `~/*`. A new dependency, and the
+  baseline comment notes a resolver taught the same thing as `tsc`
+  previously reported 333 false positives.
+- **A test** in `packages/shared/src/__tests__/` that walks the app's
+  import graph, resolving `~/*` by hand, and asserts no feature barrel
+  participates in a cycle. No dependency, runs in the existing vitest
+  job, and is the same move as `bootHandoff` and `revenuecatPlan`:
+  when the gate cannot see a class of bug, make the check a test.
+- **Neither**, and rely on §4 rule 1 plus review.
+
+Unresolved. Needs Austine.
 
 #### Gate
 
@@ -1488,7 +1511,7 @@ migrations, not ten.
 | 12 | `listen_sessions.chapter_id` is a leftover from `0010_chapters_to_pages.sql`. Reconcile or drop while the schema is open | M5 |
 | 15 | **F-46 — two components named `SendFeedbackScreen`.** The standalone 380-line form is dead; the app ships the mail hand-off. Delete the dead one, or wire it and delete the stub | M3 |
 | 13 | **Can Ghanaian customers actually pay?** Web Billing is Stripe-only, card-only, and its purchase links cannot be localised. The persona the web app most helps is the one least served by that checkout. Needs a direct answer from RevenueCat or Stripe | before M8 |
-| 16 | **A real import cycle between the reader and listen barrels.** `reader/api/useBookChapters` → `~/features/listen` → `ListenScreen` → `~/features/reader` → back. `import/no-cycle` reports it when that one file is linted and misses it on a whole-tree run, so the gate is green on a cycle that exists. Harmless today only because every crossing is called from inside a function, never at module load — the same shape that crashed the M3 launch. `getCachedPages` is shared by both features, so the `bookCovers` fix applies: move it to `~/core/` | M4 |
+| ~~16~~ | ~~**A real import cycle between the reader and listen barrels.**~~ — **closed 2026-10-30** in M4b: `getCachedPages`, the offline root and `PageRow` moved to `~/core/`. The row's claim that `import/no-cycle` catches it on a single-file run was wrong; alias cycles are invisible to that rule in both modes. Successor question: whether to add a resolver, write a graph-walking test, or neither | ✅ |
 | ~~14~~ | ~~Real-device confirmation for pdf.js~~ — **closed by the result, 2026-10-22.** The spike failed, and a failure on flattering hardware is conclusive. Successor: confirm **text/EPUB** on a real device before M6 ships, since a *pass* is the case needing confirmation | before M6 |
 
 ---
