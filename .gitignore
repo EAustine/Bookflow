@@ -53,3 +53,9 @@ apps/*/dist/
 # to main"). The write-ups in docs/spikes/ are the deliverable; the
 # corpus, vendored pdf.js, run artefacts and build logs are not.
 spikes/
+
+# Web export output (architecture M4a). Built in CI and locally;
+# never committed.
+apps/app/dist/
+test-results/
+playwright-report/

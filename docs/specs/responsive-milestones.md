@@ -26,7 +26,7 @@ spelled out below.
 | §4 Monetisation | R-M7 | ✅ Buy credits as a 640 modal, Top-up balance as a You page, the banner into the column. Paywall is RevenueCat's |
 | §4 System states | R-M8 | ✅ Skeletons follow the branch, toast over the content area, crash in the 480 lane |
 | §5 Components | with the flow that uses each | Library's are done; the rest land with their flow |
-| §6 Hover and focus | R-M9 | **Blocked on the web bundle.** See below |
+| §6 Hover and focus | R-M9 | **Unblocked by M4a** — the web bundle builds and loads. See below |
 | §7 Copy and product | R-M2b (Library), R-M10 (rest) | Partly done. See the table below |
 | §8 Left out on purpose | — | Nothing to build |
 | §9 Build order | — | This table is it |
@@ -471,8 +471,10 @@ definition — and nothing in §7 asks for one.
 
 ## Carried, with a reason
 
-**Upload drop zone** (`298:573`, §4 Library, §5). Web and desktop only,
-and the web bundle does not resolve at HEAD: `react-native-pdf`,
+**Upload drop zone** (`298:573`, §4 Library, §5). Web and desktop only.
+The web bundle now resolves — architecture M4a — but this one needs the
+`files` adapter, so it unblocks after **M4b**, not M4a. The original
+reason it was held: `react-native-pdf`,
 `react-native-webview` and `react-native-purchases-ui` are imported at
 module load through the `export *` feature barrels, and
 `spikes/web-boot/export-1.log` records the failure. CI exports Android
@@ -480,8 +482,19 @@ only and says so in a comment. It is held for the milestone that
 unblocks web, which is the architecture migration's M4 (native-only
 imports behind `src/platform/*`), not a responsive milestone.
 
-**§6 hover and focus** is blocked by the same thing for the same
-reason: they are web traits, and there is no web build to show them on.
+**§6 hover and focus** was blocked by the same thing for the same
+reason: they are web traits, and there was no web build to show them
+on. **Architecture M4a cleared that** — `npm run build:web` exports and
+`npm run test:web` proves the page loads, both in CI. R-M9 can start.
+
+Two things it should know before it does. The **Upload drop zone**
+still waits for M4b's `files` adapter, not M4a. And **Auth has never
+had a responsive milestone** — Welcome renders at 1440 as a stretched
+phone layout, one column with a full-width CTA, where the build log's
+Phase 5 describes a split screen with a brand panel on the left. §4's
+frame set has nine Auth frames and no milestone in this table covers
+them, which R-M9 will notice immediately since Welcome is the first
+page it can look at.
 
 **Full-mode PDF single/spread toggle** (`Page layout toggle`
 `311:13116`, §4 Reader). `react-native-pdf` 7.0.4 has no dual-page

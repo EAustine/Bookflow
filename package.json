@@ -18,9 +18,12 @@
     "tokens:check-figma": "npm run check-figma -w @bookflow/tokens",
     "db:push": "supabase db push",
     "db:types": "supabase gen types typescript --linked > packages/shared/src/database.ts",
-    "db:diff": "supabase db diff"
+    "db:diff": "supabase db diff",
+    "build:web": "npm run export:web -w @bookflow/app",
+    "test:web": "playwright test"
   },
   "devDependencies": {
+    "@playwright/test": "^1.64.1",
     "eslint": "^9.39.5",
     "eslint-config-expo": "^10.0.0",
     "eslint-plugin-import": "^2.32.0",

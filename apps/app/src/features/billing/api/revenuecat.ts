@@ -40,7 +40,16 @@ const apiKey =
  * misuse is loud rather than silent.
  */
 const disabled =
-  process.env.EXPO_PUBLIC_REVENUECAT_DISABLED === '1' || !apiKey;
+  process.env.EXPO_PUBLIC_REVENUECAT_DISABLED === '1' ||
+  !apiKey ||
+  // Web, until M4b's `billing` adapter (§8). `apiKey` is truthy here —
+  // the ternary above falls through to the *Android* key on any
+  // non-iOS platform — so without this the web build would configure
+  // RevenueCat with a key that is not valid for it. The disabled path
+  // already does the right thing: configure and login become no-ops
+  // and every entitlement check returns false, so web reports "no
+  // subscription" and every screen behind sign-in still loads.
+  Platform.OS === 'web';
 
 let configured = false;
 
