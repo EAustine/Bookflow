@@ -9,12 +9,18 @@ export default function FirstBook() {
   /**
    * Leaving here is what "finished onboarding" means, so record it.
    *
-   * `profiles.onboarding_complete` had no writer anywhere — not in the
-   * app, not in an edge function, not in a migration beyond the
-   * `default false` in 0001. Both readers route on it (session restore
-   * in `app/_layout.tsx` and the magic-link callback in
-   * `app/auth/callback.tsx`), so every user was sent back through
-   * onboarding on every single sign-in.
+   * This restores a write the M2 router cutover lost, rather than
+   * adding a new one. `persistOnboardingComplete` lived in `App.tsx`,
+   * which the cutover orphaned, so the flag stopped being written the
+   * moment routing moved. Both readers still route on it (session
+   * restore in `app/_layout.tsx` and the magic-link callback in
+   * `app/auth/callback.tsx`), so since then every user has been sent
+   * back through onboarding on every sign-in. Same cause as the
+   * RevenueCat and reminder calls the same cutover stranded.
+   *
+   * Production bears it out: of 28 profiles, exactly 14 carry the flag
+   * and 14 do not, split by whether the account onboarded before the
+   * cutover or after it.
    *
    * It stayed hidden because the root layout caps its profile lookup at
    * 4s and a timeout falls through to Library: a slow lookup landed you

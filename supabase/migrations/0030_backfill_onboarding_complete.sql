@@ -1,11 +1,15 @@
 -- Backfill `profiles.onboarding_complete` for users who are evidently
 -- past onboarding.
 --
--- The column has been `default false` since 0001 and, until the app fix
--- that ships with this migration, nothing ever set it to true. Both
--- readers (session restore and the magic-link callback) route on it, so
--- every existing user would otherwise be sent through onboarding once
--- more after updating, despite having used the app for months.
+-- The app did write this flag once: `persistOnboardingComplete` in
+-- App.tsx. The M2 router cutover orphaned that file and the write went
+-- with it, so the column has been stuck at its `default false` for
+-- every account onboarded since. Both readers (session restore and the
+-- magic-link callback) route on it, so those users would otherwise be
+-- sent through onboarding once more after updating.
+--
+-- The split is visible in production: of 28 profiles, 14 carry the flag
+-- (onboarded before the cutover) and 14 do not (since).
 --
 -- It looked intermittent rather than total only because the root
 -- layout caps its profile lookup at 4s and a timeout falls through to
