@@ -2,18 +2,22 @@
  * No-op web placeholders — architecture M4a.
  *
  * The sibling `placeholder.js` throws when called, which is right for
- * a package that owes web a real adapter. **These three do not owe web
- * anything**: §8 gives `notifications`, `shareIntent` and `haptics` the
- * web implementation "no-op at launch", so doing nothing *is* the
- * adapter, and throwing would be wrong rather than loud.
+ * a package that owes web a real adapter. **This one does not owe web
+ * anything**: §8 gives `notifications` the web implementation "no-op
+ * at launch", so doing nothing *is* the adapter, and throwing would be
+ * wrong rather than loud.
  *
  * It is also the difference between a page that loads and one that
  * does not. `SignedInShell` calls `installNotificationHandler()` at
- * module evaluation time — deliberately, so the handler is in place
- * before a notification can arrive during cold start — and
- * `useShareIntent()` runs during the shell's first render. A throwing
- * placeholder in either spot kills the bundle before any screen
- * mounts, which is the blocker again wearing a better error message.
+ * module evaluation time, deliberately, so the handler is in place
+ * before a notification can arrive during cold start. A throwing
+ * placeholder there kills the bundle before any screen mounts, which
+ * is the blocker again wearing a better error message.
+ *
+ * M4b has since taken `shareIntent` and `haptics` off this file —
+ * the first to a real adapter, the second because the package was
+ * never installed. `notifications` is the last occupant and leaves
+ * when its adapter lands.
  *
  * Where a caller destructures the result, the shape has to be real;
  * `overrides` is for those.

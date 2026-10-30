@@ -39,6 +39,12 @@ const PLACEHOLDERS = path.resolve(__dirname, 'src/platform/web-placeholder');
  * `expo-document-picker` → `src/platform/files.ts`,
  * `expo-speech` → `src/platform/speech.ts`,
  * `expo-share-intent` → `src/platform/shareIntent.ts`.
+ *
+ * `expo-haptics` and `expo-secure-store` left without an adapter:
+ * neither is a declared dependency and nothing imports either, so
+ * their entries mapped a specifier that never appears. §8 keeps its
+ * rows for them as intent; this list is for packages the code
+ * actually reaches.
  */
 const NATIVE_ONLY = new Set([
   'react-native-pdf',
@@ -49,8 +55,6 @@ const NATIVE_ONLY = new Set([
   'expo-file-system',
   'expo-image-picker',
   'expo-notifications',
-  'expo-haptics',
-  'expo-secure-store',
 ]);
 
 const defaultResolve = config.resolver.resolveRequest;
