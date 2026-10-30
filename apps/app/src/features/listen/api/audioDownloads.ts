@@ -1,4 +1,15 @@
-import { File, Directory, Paths } from 'expo-file-system';
+import {
+  download as downloadToCache,
+  ensureDir,
+  exists,
+  readText,
+  readTextAt,
+  remove,
+  sizeOf,
+  uriFor,
+  writeText,
+  type CachePath,
+} from '~/platform/fileCache';
 // Deliberate and safe: see the cycle note in audioDownloads.ts. Both sides
 // are hoisted function declarations called only at runtime, so neither is
 // read at module-eval time. Contrast the feature-barrel cycle, where
@@ -44,31 +55,31 @@ const ROOT = 'bookflow-offline';
 
 // ── Path helpers ──────────────────────────────────────────────────────────
 
-function rootDir(): Directory {
-  return new Directory(Paths.document, ROOT);
-}
+const rootDir: CachePath = [ROOT];
 
-function bookDir(bookId: string): Directory {
-  return new Directory(Paths.document, ROOT, bookId);
-}
+const bookDir = (bookId: string): CachePath => [ROOT, bookId];
 
-function audioFileFor(bookId: string, pageIndex: number, voiceId: string): File {
-  return new File(bookDir(bookId), `a_${pageIndex}_${voiceId}.mp3`);
-}
+const audioFileFor = (
+  bookId: string,
+  pageIndex: number,
+  voiceId: string,
+): CachePath => [ROOT, bookId, `a_${pageIndex}_${voiceId}.mp3`];
 
-function alignFileFor(bookId: string, pageIndex: number, voiceId: string): File {
-  return new File(bookDir(bookId), `a_${pageIndex}_${voiceId}.json`);
-}
+const alignFileFor = (
+  bookId: string,
+  pageIndex: number,
+  voiceId: string,
+): CachePath => [ROOT, bookId, `a_${pageIndex}_${voiceId}.json`];
 
-function textFileFor(bookId: string): File {
-  return new File(bookDir(bookId), 'pages.json');
-}
+const textFileFor = (bookId: string): CachePath => [ROOT, bookId, 'pages.json'];
 
-function manifestFileFor(bookId: string): File {
-  return new File(bookDir(bookId), 'manifest.json');
-}
+const manifestFileFor = (bookId: string): CachePath => [
+  ROOT,
+  bookId,
+  'manifest.json',
+];
 
-// ── Synchronous local lookups (playback + reader hot-paths) ─────────────────
+// ── Local lookups (playback + reader hot-paths) ─────────────────────────────
 
 export type LocalAudio = {
   /** `file://…` URI of the downloaded MP3. */
@@ -83,19 +94,17 @@ export type LocalAudio = {
  * getters) so the audio load effect can branch local-vs-stream without
  * an extra await on the hot path.
  */
-export function getLocalAudio(
+export async function getLocalAudio(
   bookId: string,
   pageIndex: number,
   voiceId: string,
-): LocalAudio | null {
-  try {
-    const audio = audioFileFor(bookId, pageIndex, voiceId);
-    if (!audio.exists) return null;
-    const align = alignFileFor(bookId, pageIndex, voiceId);
-    return { audioUri: audio.uri, alignmentUri: align.exists ? align.uri : null };
-  } catch {
-    return null;
-  }
+): Promise<LocalAudio | null> {
+  const audioUri = await uriFor(audioFileFor(bookId, pageIndex, voiceId));
+  if (!audioUri) return null;
+  return {
+    audioUri,
+    alignmentUri: await uriFor(alignFileFor(bookId, pageIndex, voiceId)),
+  };
 }
 
 /**
@@ -106,10 +115,8 @@ export function getLocalAudio(
  */
 export async function readJsonFile<T = unknown>(fileUri: string): Promise<T | null> {
   try {
-    const f = new File(fileUri);
-    if (!f.exists) return null;
-    const text = await f.text();
-    return JSON.parse(text) as T;
+    const text = await readTextAt(fileUri);
+    return text === null ? null : (JSON.parse(text) as T);
   } catch {
     return null;
   }
@@ -121,9 +128,8 @@ export async function readJsonFile<T = unknown>(fileUri: string): Promise<T | nu
  */
 export async function getCachedPages(bookId: string): Promise<PageRow[] | null> {
   try {
-    const f = textFileFor(bookId);
-    if (!f.exists) return null;
-    const text = await f.text();
+    const text = await readText(textFileFor(bookId));
+    if (text === null) return null;
     const parsed = JSON.parse(text);
     return Array.isArray(parsed) ? (parsed as PageRow[]) : null;
   } catch {
@@ -134,23 +140,13 @@ export async function getCachedPages(bookId: string): Promise<PageRow[] | null> 
 // ── Sizes ───────────────────────────────────────────────────────────────────
 
 /** Bytes on disk for a single book's downloads (0 if none). */
-export function bookDownloadBytes(bookId: string): number {
-  try {
-    const d = bookDir(bookId);
-    return d.exists ? d.size ?? 0 : 0;
-  } catch {
-    return 0;
-  }
+export async function bookDownloadBytes(bookId: string): Promise<number> {
+  return sizeOf(bookDir(bookId));
 }
 
 /** Total bytes across all offline downloads (0 if none). */
-export function totalDownloadBytes(): number {
-  try {
-    const d = rootDir();
-    return d.exists ? d.size ?? 0 : 0;
-  } catch {
-    return 0;
-  }
+export async function totalDownloadBytes(): Promise<number> {
+  return sizeOf(rootDir);
 }
 
 /** Human-readable byte size, e.g. "12.4 MB". */
@@ -167,27 +163,19 @@ export function formatBytes(bytes: number): string {
 // ── Deletion ─────────────────────────────────────────────────────────────────
 
 /** Delete one book's downloads (audio + text) and drop its store record. */
-export function deleteBookDownload(bookId: string): void {
+export async function deleteBookDownload(bookId: string): Promise<void> {
   cancelDownload(bookId);
-  try {
-    const d = bookDir(bookId);
-    if (d.exists) d.delete();
-  } catch {
-    // already gone / no access — fall through and clear the record anyway
-  }
+  // `remove` is already silent on a missing path or no access, and the
+  // record is cleared either way.
+  await remove(bookDir(bookId));
   useDownloadsStore.getState().remove(bookId);
 }
 
 /** Delete every offline download and clear the registry. */
-export function deleteAllDownloads(): void {
+export async function deleteAllDownloads(): Promise<void> {
   // Abort anything in flight first.
   for (const id of Array.from(inFlight.keys())) cancelDownload(id);
-  try {
-    const d = rootDir();
-    if (d.exists) d.delete();
-  } catch {
-    // ignore
-  }
+  await remove(rootDir);
   useDownloadsStore.getState().clearAll();
 }
 
@@ -241,8 +229,8 @@ async function downloadOnePage(
   signal: AbortSignal,
 ): Promise<number> {
   // Resume: skip pages already on disk.
-  const existing = audioFileFor(bookId, pageIndex, voiceId);
-  if (existing.exists) return existing.size ?? 0;
+  const audioPath = audioFileFor(bookId, pageIndex, voiceId);
+  if (await exists(audioPath)) return sizeOf(audioPath);
 
   const res = await fetchPageAudio({ bookId, pageIndex, voiceId });
   if (signal.aborted) return 0;
@@ -255,22 +243,18 @@ async function downloadOnePage(
     throw new Error(res.message || res.error || 'download_failed');
   }
 
-  await File.downloadFileAsync(res.data.url, audioFileFor(bookId, pageIndex, voiceId), {
-    idempotent: true,
-  });
+  const bytes = await downloadToCache(res.data.url, audioPath);
   if (res.data.alignmentUrl) {
     try {
-      await File.downloadFileAsync(
+      await downloadToCache(
         res.data.alignmentUrl,
         alignFileFor(bookId, pageIndex, voiceId),
-        { idempotent: true },
       );
     } catch {
       // Alignment is optional (read-along highlight only); audio still works.
     }
   }
-  const f = audioFileFor(bookId, pageIndex, voiceId);
-  return f.exists ? f.size ?? 0 : 0;
+  return bytes;
 }
 
 /**
@@ -308,7 +292,7 @@ export async function downloadBook(book: Book, voiceId: AudioVoice): Promise<voi
     voiceId,
     totalPages: total,
     completedPages: 0,
-    bytes: bookDownloadBytes(bookId),
+    bytes: await bookDownloadBytes(bookId),
     textCached: false,
     status: 'downloading',
     error: undefined,
@@ -316,7 +300,7 @@ export async function downloadBook(book: Book, voiceId: AudioVoice): Promise<voi
   });
 
   try {
-    bookDir(bookId).create({ intermediates: true, idempotent: true });
+    await ensureDir(bookDir(bookId));
 
     // 1. Cache page text so reading + read-along work offline.
     let textCached = false;
@@ -324,7 +308,7 @@ export async function downloadBook(book: Book, voiceId: AudioVoice): Promise<voi
       const pages = await fetchAllPages(bookId);
       if (ctrl.signal.aborted) throw new DOMException('aborted', 'AbortError');
       if (pages.length) {
-        textFileFor(bookId).write(JSON.stringify(pages));
+        await writeText(textFileFor(bookId), JSON.stringify(pages));
         textCached = true;
         useDownloadsStore.getState().upsert(bookId, { textCached: true });
       }
@@ -358,9 +342,10 @@ export async function downloadBook(book: Book, voiceId: AudioVoice): Promise<voi
     if (ctrl.signal.aborted) throw new DOMException('aborted', 'AbortError');
 
     // 3. Manifest + mark complete.
-    const bytes = bookDownloadBytes(bookId);
+    const bytes = await bookDownloadBytes(bookId);
     try {
-      manifestFileFor(bookId).write(
+      await writeText(
+        manifestFileFor(bookId),
         JSON.stringify({
           bookId,
           voiceId,
@@ -410,7 +395,7 @@ export async function downloadBook(book: Book, voiceId: AudioVoice): Promise<voi
     useDownloadsStore.getState().upsert(bookId, {
       status: 'error',
       error: friendly,
-      bytes: bookDownloadBytes(bookId),
+      bytes: await bookDownloadBytes(bookId),
       updatedAt: Date.now(),
     });
   } finally {

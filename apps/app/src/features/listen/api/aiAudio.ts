@@ -397,7 +397,7 @@ export function useAudio(args: {
       let playUri: string;
       let durationSeed: number;
       let alignmentSource: string | null;
-      const local = getLocalAudio(bookId, pageIndex, voiceId);
+      const local = await getLocalAudio(bookId, pageIndex, voiceId);
       if (local) {
         playUri = local.audioUri;
         durationSeed = 0; // expo-audio fills the real duration on load
