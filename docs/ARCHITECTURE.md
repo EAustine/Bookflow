@@ -273,13 +273,23 @@ does not depend on it.
 
 ## 8. Platform adapters
 
-Each adapter is one interface in `platform/<name>/index.ts` with `.native.ts` and `.web.ts` implementations.
+Each adapter is a module in `platform/<name>.ts` with a `.web.ts` sibling that
+Metro resolves for the web bundle. A directory with `index.ts` when one needs
+more than a file; most do not, and `platform/orientation.ts` set the pattern
+before this section was written.
+
+An adapter's job is to expose what the app needs, **not** to re-export its
+package. `clipboard` is one function because every call site wrote a string and
+none read one back; `notifications` is seven because that is what the
+notification policy does, not what `expo-notifications` offers. An adapter
+shaped like its native implementation is an alias, and the web side cannot
+honour it.
 
 | Adapter | Native | Web |
 |---|---|---|
 | `reader-host` | `react-native-webview` for text/EPUB, **`react-native-pdf` for PDF full mode** (§7.6) | same-origin iframe; **no PDF full mode at launch** |
 | `audio` | `expo-audio` (background, lock screen) | `HTMLAudioElement` + Media Session |
-| `files` | `expo-document-picker` | file input + drag and drop |
+| `files` | `expo-document-picker` (+ `expo-file-system` to read picked bytes) | file input; object URLs |
 | `fileCache` | `expo-file-system` | Cache API / IndexedDB |
 | `secureStorage` | `expo-secure-store` | Supabase session storage |
 | `billing` | `react-native-purchases` | RevenueCat Web SDK |
@@ -287,9 +297,32 @@ Each adapter is one interface in `platform/<name>/index.ts` with `.native.ts` an
 | `notifications` | `expo-notifications` | no-op at launch |
 | `haptics` | `expo-haptics` | no-op |
 | `clipboard` | `expo-clipboard` | `navigator.clipboard` |
+| `speech` | `expo-speech` | Web Speech API |
+| `imagePicker` | `expo-image-picker` | file input; **no crop** |
+
+`speech` and `imagePicker` were missing until M4b, which is why
+`expo-image-picker` and `expo-speech` sat in the lint rule's native-only list
+with nowhere to go. `speech` is the *device's* voice behind the reader's
+sentence and word taps, not the app's audiobook narration — that is `audio`,
+metered and cached.
 
 `clipboard` is the most-used native-only package in the app — four call sites,
 more than any other — which is why it gets a row despite looking incidental.
+
+Two rows describe intent rather than code. `haptics` and `secureStorage` have
+no call sites and **neither package is installed**; they are kept because
+`secureStorage` in particular is a real future need (web uses Supabase session
+storage where native would use the keychain). A row here is a design, not a
+claim about today.
+
+Where a web implementation is a later milestone's work, the import still moves
+behind the adapter at M4 and the web side answers honestly — `fileCache` reads
+report "nothing stored", while its writes reject, because telling someone a
+book is available offline when it is not is a promise the product would break
+on a train. Signatures are designed for the eventual implementation rather than
+the current one: `fileCache` is asynchronous throughout even where
+`expo-file-system` answers synchronously, since the Cache API and IndexedDB
+cannot be anything else.
 
 ## 9. Backend
 

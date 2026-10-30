@@ -46,7 +46,8 @@ The full product scope, personas, MVP features, pricing, and beta plan are in `/
 - `@tabler/icons-react-native` for icons (with `react-native-svg`), wrapped by `src/components/Icon.tsx` — **never import Tabler directly**. The wrapper applies `tokens.iconStrokeWidth` (1.0); don't pass `strokeWidth` at all. The one exception is `strokeWidth={0}` on Tabler's `*Filled` glyphs (Play, Pause, ThumbUpFilled), which paint from `fill`.
 - `@gorhom/bottom-sheet` for bottom sheets (don't roll our own)
 - `expo-audio` for audio playback (not `expo-av` or `react-native-track-player`)
-- `react-native-webview` + injected CSS for EPUB Full mode (not `epubjs`); **`react-native-pdf` for PDF Full mode, permanently** — M0 spike 1 measured pdf.js in a WebView at 42 dropped frames in 60 during ordinary reading scroll on a low-end device, so it is ruled out of the unified reader engine. See `/docs/ARCHITECTURE.md` §7.6.
+- `react-native-webview` + injected CSS for EPUB Full mode (not `epubjs`); **`react-native-pdf` for PDF Full mode, permanently** — M0 spike 1 measured pdf.js in a WebView at 42 dropped frames in 60 during ordinary reading scroll on a low-end device, so it is ruled out of the unified reader engine. See `/docs/ARCHITECTURE.md` §7.6. Both are reached through `~/platform/readerHost`, not imported directly.
+- **Native-only packages live behind `~/platform/*`** (`audio`, `clipboard`, `fileCache`, `files`, `imagePicker`, `notifications`, `readerHost`, `shareIntent`, `speech`), each a module with a `.web.ts` sibling Metro resolves for the web bundle. Never import `expo-audio`, `expo-clipboard`, `expo-file-system`, `expo-document-picker`, `expo-image-picker`, `expo-notifications`, `expo-share-intent`, `expo-speech`, `react-native-pdf` or `react-native-webview` from a screen — same rule as Tabler icons, and for the same reason: the wrapper is where the platform differences are decided. An adapter exposes what the app needs rather than re-exporting its package. `react-native-purchases` is the last holdout, moving once the current release soaks. See `/docs/ARCHITECTURE.md` §8.
 - Read `/docs/specs/bookflow_engineering_scoping.md` for the full rationale on each choice
 
 **Don't suggest alternatives** like "have you considered Flutter?" or "we should use Redux instead." These were debated; the answers are above. If a genuinely new constraint emerges, then revisit — but don't second-guess proactively.
@@ -90,6 +91,11 @@ apps/app/src/
 │   ├── anthropic.ts
 │   ├── elevenlabs.ts
 │   └── revenuecat.ts
+├── platform/            # Native-only packages, one module per
+│   │                    # adapter with a .web.ts sibling (§8)
+│   ├── audio.ts / audio.web.ts
+│   ├── readerHost.tsx / readerHost.web.tsx
+│   └── ...
 ├── hooks/               # Custom React hooks
 ├── stores/              # Zustand stores
 ├── types/               # TypeScript type definitions
