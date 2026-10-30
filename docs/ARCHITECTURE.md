@@ -300,7 +300,12 @@ honour it.
 | `speech` | `expo-speech` | Web Speech API |
 | `imagePicker` | `expo-image-picker` | file input; **no crop** |
 
-`speech` and `imagePicker` were missing until M4b, which is why
+All ten rows with call sites were built in M4b (2026-10-30), and rule 4 is a
+lint error from that point: a native-only import outside `platform/` fails CI
+rather than needing a row in `metro.config.js`, whose placeholder list is now
+empty.
+
+`speech` and `imagePicker` were missing from this table until M4b, which is why
 `expo-image-picker` and `expo-speech` sat in the lint rule's native-only list
 with nowhere to go. `speech` is the *device's* voice behind the reader's
 sentence and word taps, not the app's audiobook narration — that is `audio`,
@@ -319,7 +324,11 @@ Where a web implementation is a later milestone's work, the import still moves
 behind the adapter at M4 and the web side answers honestly — `fileCache` reads
 report "nothing stored", while its writes reject, because telling someone a
 book is available offline when it is not is a promise the product would break
-on a train. Signatures are designed for the eventual implementation rather than
+on a train. `billing` is the other one, on the same split and for the same
+reason: it answers "no entitlements, no offerings" to anything shaped like a
+question, because that is true on web today, and rejects anything that would
+claim a change in state, because a restore that restored nothing is a promise
+broken the next time the app opens. Signatures are designed for the eventual implementation rather than
 the current one: `fileCache` is asynchronous throughout even where
 `expo-file-system` answers synchronously, since the Cache API and IndexedDB
 cannot be anything else.
