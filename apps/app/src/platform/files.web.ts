@@ -61,3 +61,13 @@ export const pickFiles: typeof import('./files').pickFiles = ({
     document.body.appendChild(input);
     input.click();
   });
+
+/**
+ * `fetch` reads a `blob:` url, which is what `pickFiles` hands out, and
+ * an http(s) one too. The native note about zero-byte XHR reads is an
+ * iOS `file://` problem and has no web counterpart.
+ */
+export const readBytes: typeof import('./files').readBytes = async (uri) => {
+  const response = await fetch(uri);
+  return response.arrayBuffer();
+};

@@ -20,6 +20,7 @@
  */
 
 import * as DocumentPicker from 'expo-document-picker';
+import { File } from 'expo-file-system';
 
 /** A file the user chose, in the only terms the upload pipeline uses. */
 export type PickedFile = {
@@ -68,4 +69,21 @@ export async function pickFiles({
     size: asset.size ?? undefined,
     mimeType: asset.mimeType ?? undefined,
   }));
+}
+
+/**
+ * Read the bytes at a `PickedFile.uri` (or any other uri this platform
+ * can read).
+ *
+ * Here rather than in `fileCache` because it is the other half of
+ * picking: the caller has a uri this adapter produced and wants what
+ * is behind it. `fileCache` is the app's own on-disk store, which is a
+ * different concern with a different lifetime.
+ *
+ * The avatar upload needs this specifically because an XHR blob read
+ * of a `file://` uri returns zero bytes on iOS — the bug that made
+ * picked photos upload empty before `expo-file-system` was brought in.
+ */
+export async function readBytes(uri: string): Promise<ArrayBuffer> {
+  return new File(uri).arrayBuffer();
 }

@@ -38,7 +38,8 @@ const PLACEHOLDERS = path.resolve(__dirname, 'src/platform/web-placeholder');
  * `expo-clipboard` → `src/platform/clipboard.ts`,
  * `expo-document-picker` → `src/platform/files.ts`,
  * `expo-speech` → `src/platform/speech.ts`,
- * `expo-share-intent` → `src/platform/shareIntent.ts`.
+ * `expo-share-intent` → `src/platform/shareIntent.ts`,
+ * `expo-image-picker` → `src/platform/imagePicker.ts`.
  *
  * `expo-haptics` and `expo-secure-store` left without an adapter:
  * neither is a declared dependency and nothing imports either, so
@@ -53,7 +54,6 @@ const NATIVE_ONLY = new Set([
   'react-native-purchases-ui',
   'expo-audio',
   'expo-file-system',
-  'expo-image-picker',
   'expo-notifications',
 ]);
 
