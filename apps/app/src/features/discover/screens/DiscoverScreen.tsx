@@ -268,9 +268,9 @@ export type DiscoverScreenProps = {
   onTabChange: (tab: TabKey) => void;
   /**
    * Fired whenever Discover pushes/pops a sub-view (category list,
-   * book detail). App.tsx uses this to hide the global mini-player
-   * overlay on drill-ins. Mirrors the pattern on LibraryScreen
-   * (`onReaderOpenChange`) and YouScreen (`onSubViewOpenChange`).
+   * book detail). `SignedInShell` uses this to hide the global
+   * mini-player overlay on drill-ins. Mirrors the pattern on
+   * LibraryScreen (`onReaderOpenChange`).
    */
   onSubViewOpenChange?: (open: boolean) => void;
   /**

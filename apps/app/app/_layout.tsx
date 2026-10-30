@@ -30,6 +30,14 @@ import { StatusBar } from "expo-status-bar";
 import { supabase } from "~/lib/supabase";
 import { useAppFonts } from "~/lib/useAppFonts";
 import { applyOrientationPolicy } from "~/platform/orientation";
+import { configureRevenueCat } from "~/features/billing";
+import { setupRevenueCatAuthSync } from "~/features/auth";
+import {
+  useDailyReminderSync,
+  useNotificationPermission,
+  useStreakWarningSync,
+} from "~/lib/notifications";
+import { useReaderStore } from "~/stores/readerStore";
 
 /**
  * Last-resort ceiling on the splash. Every branch of session restore
@@ -79,6 +87,58 @@ export default function RootLayout() {
   useEffect(() => {
     void applyOrientationPolicy();
   }, []);
+
+  /**
+   * RevenueCat identity. **Here, not in `SignedInShell`** — this has to
+   * be live before any screen can open a paywall, and the shell only
+   * mounts once you are already signed in.
+   *
+   * This ran nowhere at all between the M2 router cutover and now. Both
+   * calls lived in `App.tsx`, which the cutover orphaned, and the shell
+   * imported them without calling either. `configureRevenueCat` is what
+   * sets the module's `configured` flag, and every other billing
+   * function returns early without it — so `Purchases.logIn` never ran,
+   * no customer was ever created, and nobody could subscribe or be
+   * granted an entitlement.
+   *
+   * Order matters: configure first, because login guards on it.
+   * `setupRevenueCatAuthSync` then logs in with the Supabase user id on
+   * session restore and on every `SIGNED_IN`, and returns its own
+   * unsubscribe. Both are no-ops on web until M4b's billing adapter.
+   */
+  useEffect(() => {
+    configureRevenueCat();
+    return setupRevenueCatAuthSync();
+  }, []);
+
+  /**
+   * Daily reading reminder and streak nudge — same story, same cause.
+   * Both hooks were called only from `App.tsx`, so since the cutover
+   * Settings has been writing a reminder time that nothing acted on.
+   *
+   * `useNotificationPermission` only *reads* the permission
+   * (`getPermissionsAsync`); it never prompts. And both syncs schedule
+   * only when the toggle is on **and** permission is already granted,
+   * so launching the app can neither raise a prompt nor schedule
+   * anything the user did not ask for.
+   */
+  const reminderEnabled = useReaderStore((s) => s.notifReminderOn);
+  const reminderHour = useReaderStore((s) => s.notifReminderHour);
+  const reminderMinute = useReaderStore((s) => s.notifReminderMinute);
+  const streakWarningEnabled = useReaderStore((s) => s.notifStreakWarningOn);
+  const { granted: notifGranted } = useNotificationPermission();
+  useDailyReminderSync(
+    reminderEnabled,
+    reminderHour,
+    reminderMinute,
+    notifGranted,
+  );
+  useStreakWarningSync(
+    streakWarningEnabled,
+    reminderHour,
+    reminderMinute,
+    notifGranted,
+  );
 
   // The hand-off. Both conditions must hold: a destination to go to, and
   // a splash that has finished saying what it had to say.
