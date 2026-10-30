@@ -13,6 +13,7 @@
   },
   "scripts": {
     "build": "tsc -b",
+    "prepare": "npm run build",
     "typecheck": "tsc -b --force"
   },
   "devDependencies": {

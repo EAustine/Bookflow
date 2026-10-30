@@ -5,6 +5,9 @@
     "declaration": true,
     "noEmit": false,
     "outDir": "dist",
+    // Inside outDir on purpose: deleting dist must invalidate the
+    // incremental marker, or `tsc -b` no-ops and never recreates it.
+    "tsBuildInfoFile": "dist/tsconfig.tsbuildinfo",
     "rootDir": "src",
     "target": "ES2022",
     "module": "CommonJS",
