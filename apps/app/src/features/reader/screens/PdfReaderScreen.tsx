@@ -1,5 +1,5 @@
 /**
- * PdfReaderScreen — native PDF rendering via react-native-pdf.
+ * PdfReaderScreen — PDF rendering through ~/platform/readerHost.
  *
  * Trade-off (intentional): PDFs are rendered as the original file with
  * full fidelity (layout, fonts, embedded images). The EPUB paginated
@@ -26,7 +26,8 @@ import {
   useWindowDimensions,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import Pdf from 'react-native-pdf';
+
+import { PdfHost } from '~/platform/readerHost';
 import {
   ModeTogglePill,
   Presenter,
@@ -72,10 +73,9 @@ const PDF_URL_CACHE_REFRESH_MS = (PDF_SIGNED_URL_TTL_S - 10 * 60) * 1000;
 /**
  * Module-level cache keyed by book id. Re-opening a PDF the user has
  * opened in this session before skips the Supabase signed-URL round-
- * trip entirely (~200–500ms on a slow network), AND lets
- * react-native-pdf hit its own URL-keyed file cache because the URL
- * is byte-for-byte identical. Without this cache, every mount got a
- * fresh signed URL and the PDF was re-downloaded.
+ * trip entirely (~200–500ms on a slow network). Without it every
+ * mount got a fresh signed URL, so nothing downstream could treat two
+ * opens of the same book as the same document.
  *
  * Lives outside the component so it survives unmount + remount as
  * the user navigates Library → Reader → Library → Reader. Capped
@@ -184,9 +184,9 @@ export function PdfReaderScreen({
   const pageLabels = usePageLabels(book.id);
   const [totalPages, setTotalPages] = useState<number>(book.totalPages ?? 0);
 
-  // The `<Pdf page>` prop is decoupled from `currentPage` to keep
+  // The host's `page` prop is decoupled from `currentPage` to keep
   // user-driven swipes butter-smooth on Android. When the user
-  // swipes, react-native-pdf fires `onPageChanged` → we update
+  // swipes, the host fires `onPageChanged` → we update
   // `currentPage` for the header / progress / persistence → that
   // re-renders the JSX. If we passed `page={currentPage}` straight
   // through, the native PDF view would see "navigate to N" on every
@@ -261,9 +261,8 @@ export function PdfReaderScreen({
   // Single-tap anywhere on the PDF toggles chrome visibility.
   // Previously the only way to summon chrome was a tiny 56-pt strip
   // at the bottom of the screen, which testers consistently missed.
-  // react-native-pdf's `onPageSingleTap` fires reliably and doesn't
-  // interfere with horizontal swipe / pinch-zoom, so it's the right
-  // hook for this.
+  // The host's `onTap` fires reliably and doesn't interfere with
+  // horizontal swipe / pinch-zoom, so it's the right hook for this.
   const toggleChrome = useCallback(() => {
     if (chromeVisibleRef.current) {
       hideChrome();
@@ -296,8 +295,8 @@ export function PdfReaderScreen({
   // Cache hit: useState above already seeded pdfUri from the
   // module-level cache, so this effect's only job is the slow path
   // (cold open or expired cache entry). Bailing early avoids
-  // double-signing and stays out of react-native-pdf's way during
-  // its initial layout pass.
+  // double-signing and stays out of the renderer's way during its
+  // initial layout pass.
   useEffect(() => {
     if (getCachedPdfUrl(book.id)) return;
     let cancelled = false;
@@ -384,24 +383,6 @@ export function PdfReaderScreen({
     getProgress: () => progressFractionRef.current,
   });
 
-  const pdfSource = useMemo(
-    // cache: false. react-native-pdf's on-disk cache writes the PDF
-    // to a hashed `.tmp` file in the app's cache directory, then
-    // renames to `.pdf` on completion. On Android the OS occasionally
-    // garbage-collects the cache directory mid-session (low storage,
-    // pause-resume cycles, app standby), and the next render that
-    // tries to re-open the cached path crashes with
-    //   ENOENT (No such file or directory)
-    //   /data/user/0/.../cache/<hash>.pdf.tmp
-    // Disabling the library's own cache makes it download fresh into
-    // a managed temp directory per mount. We already cache the signed
-    // URL in memory (pdfUrlCache above), so re-opens within a session
-    // still skip the Supabase round-trip — the actual PDF bytes
-    // re-download from Storage, which is fast over WiFi and avoids
-    // the .tmp race entirely.
-    () => (pdfUri ? { uri: pdfUri, cache: false } : null),
-    [pdfUri],
-  );
   // Memoised style object so the Pdf component doesn't see a fresh
   // style reference every render — RN's diff would otherwise hand
   // a "new style" to the native view on every parent re-render
@@ -584,9 +565,9 @@ export function PdfReaderScreen({
     >
       <View style={styles.contentColumn}>
       <View style={styles.pdfArea}>
-        {pdfSource ? (
-          <Pdf
-            source={pdfSource}
+        {pdfUri ? (
+          <PdfHost
+            uri={pdfUri}
             // `pdfNavTarget.page` only changes on initial mount and
             // explicit jumps (ChapterSheet, etc.) — never on user
             // swipes. That keeps the prop stable during gesture-
@@ -594,9 +575,7 @@ export function PdfReaderScreen({
             // re-snap to a page it's already at. See the comment on
             // `pdfNavTarget` for the full reasoning.
             page={pdfNavTarget.page}
-            onLoadComplete={(pages) => {
-              if (pages > 0) setTotalPages(pages);
-            }}
+            onLoadComplete={setTotalPages}
             onPageChanged={(page) => {
               // User-driven page change: update `currentPage` (for
               // header / persistence / AI tools) but do NOT touch
@@ -606,9 +585,9 @@ export function PdfReaderScreen({
               showChromeThrottled();
             }}
             onError={(error) => {
-              // react-native-pdf's onError fires for both network
-              // (signed-URL expired, fetch failed mid-render) and
-              // render-time issues (encrypted file, malformed PDF).
+              // onError fires for both network (signed-URL expired,
+              // fetch failed mid-render) and render-time issues
+              // (encrypted file, malformed PDF).
               // Route through the friendly mapper — the network
               // patterns surface a real "you're offline" message,
               // everything else falls back to a generic friendly
@@ -621,23 +600,8 @@ export function PdfReaderScreen({
               // so the user gets back the toolbar instead.
               showChrome();
             }}
-            onPageSingleTap={() => toggleChrome()}
+            onTap={() => toggleChrome()}
             onLoadProgress={() => showChromeThrottled()}
-            trustAllCerts={false}
-            enablePaging
-            horizontal
-            // Fit the WIDTH (0), not both axes. The library default is
-            // 2 ("fit both"), which was fine while this view was sized
-            // to the whole window — once it is capped at 680 on a wide
-            // screen, "fit both" letterboxes to the taller axis and the
-            // page stops filling the column. §4 asks for scaled to fit
-            // the width.
-            fitPolicy={0}
-            // Annotations off — none of our content is annotated,
-            // and the renderer skipping that pass measurably tightens
-            // the swipe on Android.
-            enableAnnotationRendering={false}
-            spacing={8}
             style={pdfStyle}
           />
         ) : loadError ? (
@@ -793,7 +757,7 @@ export function PdfReaderScreen({
 
       {/* The old `tapToShow` Pressable was a 56-pt bottom strip used
           to summon the chrome back. That's been replaced by
-          `onPageSingleTap` on the Pdf component, which fires for any
+          `onTap` on the PDF host, which fires for any
           tap anywhere on the page and toggles chrome visibility
           (show when hidden, hide when shown). Same affordance the
           user expects from Apple Books / Kindle. */}

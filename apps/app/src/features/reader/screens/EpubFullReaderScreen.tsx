@@ -31,7 +31,8 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { WebView } from 'react-native-webview';
+
+import { HtmlHost } from '~/platform/readerHost';
 import {
   ModeTogglePill,
   Presenter,
@@ -536,44 +537,22 @@ export function EpubFullReaderScreen({
       */}
       <View style={styles.webviewWrap}>
         {resolvedHtml ? (
-          <WebView
-            originWhitelist={['*']}
-            source={{ html: resolvedHtml }}
+          <HtmlHost
+            html={resolvedHtml}
             style={styles.webview}
-            startInLoadingState={false}
-            androidLayerType="hardware"
-            setSupportMultipleWindows={false}
-            automaticallyAdjustContentInsets={false}
-            showsVerticalScrollIndicator
-            // Numeric form, not the "normal" string alias. The
-            // string alias works on the old Paper renderer (which
-            // converts internally) but the new Fabric renderer on
-            // Android — enabled in app.json via `newArchEnabled` —
-            // enforces strict prop types and throws
-            // `ClassCastException: String cannot be cast to Double`
-            // on the alias. 0.998 is the documented iOS value that
-            // "normal" used to map to.
-            decelerationRate={0.998}
             // Restore scroll on first load + post scroll position on
             // every scroll event. The injected script reports the
-            // 0..1 fraction so the RN side doesn't need to know the
-            // document height. It also posts a `tap` message so RN
+            // 0..1 fraction so this side doesn't need to know the
+            // document height. It also posts a `tap` message so we
             // can toggle the chrome — see buildScrollBridge for the
             // tap-vs-scroll discrimination.
-            injectedJavaScript={buildScrollBridge(initialScrollFraction)}
-            onMessage={(event) => {
-              try {
-                const data = JSON.parse(event.nativeEvent.data) as {
-                  type: string;
-                  fraction?: number;
-                };
-                if (data.type === 'scroll' && typeof data.fraction === 'number') {
-                  handleScrollMessage(data.fraction);
-                } else if (data.type === 'tap') {
-                  toggleChrome();
-                }
-              } catch {
-                // ignore non-JSON payloads from the WebView
+            bridgeScript={buildScrollBridge(initialScrollFraction)}
+            onMessage={(message) => {
+              const data = message as { type?: string; fraction?: number };
+              if (data.type === 'scroll' && typeof data.fraction === 'number') {
+                handleScrollMessage(data.fraction);
+              } else if (data.type === 'tap') {
+                toggleChrome();
               }
             }}
           />

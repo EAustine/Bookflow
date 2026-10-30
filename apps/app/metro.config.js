@@ -43,7 +43,9 @@ const PLACEHOLDERS = path.resolve(__dirname, 'src/platform/web-placeholder');
  * `expo-notifications` → `src/platform/notifications.ts`,
  * `expo-file-system` → `src/platform/fileCache.ts` (plus `readBytes`
  * on the `files` adapter),
- * `expo-audio` → `src/platform/audio.ts`.
+ * `expo-audio` → `src/platform/audio.ts`,
+ * `react-native-pdf` and `react-native-webview` →
+ * `src/platform/readerHost.tsx`.
  *
  * `expo-haptics` and `expo-secure-store` left without an adapter:
  * neither is a declared dependency and nothing imports either, so
@@ -52,8 +54,6 @@ const PLACEHOLDERS = path.resolve(__dirname, 'src/platform/web-placeholder');
  * actually reaches.
  */
 const NATIVE_ONLY = new Set([
-  'react-native-pdf',
-  'react-native-webview',
   'react-native-purchases',
   'react-native-purchases-ui',
 ]);
