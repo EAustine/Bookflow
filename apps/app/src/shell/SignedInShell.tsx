@@ -34,19 +34,6 @@ import type { PickedFile } from '~/platform/files';
 import { useShellChromeStore } from '~/stores/shellChrome';
 import { SideRail } from '~/components/SideRail';
 import { useSizeClass } from '~/hooks/useSizeClass';
-import { useFonts } from 'expo-font';
-import * as Linking from 'expo-linking';
-import {
-  Fraunces_400Regular_Italic,
-  Fraunces_600SemiBold,
-  Fraunces_700Bold,
-} from '@expo-google-fonts/fraunces';
-import {
-  Geist_400Regular,
-  Geist_500Medium,
-} from '@expo-google-fonts/geist';
-import { Lexend_400Regular } from '@expo-google-fonts/lexend';
-import { Literata_400Regular } from '@expo-google-fonts/literata';
 import { installRejectionTracker } from '~/lib/installRejectionTracker';
 import {
   useIsPro,

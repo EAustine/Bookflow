@@ -10,76 +10,94 @@
  * Per /docs/specs/bookflow_input_system.html, icon library section.
  */
 
-import {
-  IconAlertCircle,
-  IconAlertTriangle,
-  IconCamera,
-  IconCircleCheck,
-  IconCopy,
-  IconThumbDown,
-  IconThumbDownFilled,
-  IconThumbUp,
-  IconThumbUpFilled,
-  IconArrowLeft,
-  IconArrowRight,
-  IconArrowsSort,
-  IconBell,
-  IconBrandAppleFilled,
-  IconCompassFilled,
-  IconHeadphonesFilled,
-  IconUserFilled,
-  IconBook,
-  IconBookFilled,
-  IconBooks,
-  IconBrain,
-  IconCheck,
-  IconChevronDown,
-  IconChevronLeft,
-  IconClock,
-  IconChevronRight,
-  IconCloudUpload,
-  IconCompass,
-  IconCreditCard,
-  IconDownload,
-  IconEye,
-  IconFileText,
-  IconFilter,
-  IconHeadphones,
-  IconHelpCircle,
-  IconInfoCircle,
-  IconListDetails,
-  IconLoader2,
-  IconLock,
-  IconLogout,
-  IconMail,
-  IconMessageCircle,
-  IconMicrophone,
-  IconMusic,
-  IconNotebook,
-  IconMoon,
-  IconPhone,
-  IconPlayerPauseFilled,
-  IconPlayerPlayFilled,
-  IconPlayerSkipBack,
-  IconPlayerSkipForward,
-  IconPlayerTrackNext,
-  IconPlayerTrackPrev,
-  IconPlus,
-  IconRefresh,
-  IconSearch,
-  IconSettings,
-  IconShield,
-  IconSparkles,
-  IconStar,
-  IconTextSize,
-  IconTrash,
-  IconUpload,
-  IconUser,
-  IconWand,
-  IconWifiOff,
-  IconWorld,
-  IconX,
-} from '@tabler/icons-react-native';
+/**
+ * ## Why each icon is imported from its own subpath
+ *
+ * `@tabler/icons-react-native` ships ~6,000 icons and its barrel
+ * re-exports all of them. Metro does not tree-shake those re-exports,
+ * so importing any named icon from the package root pulled the whole
+ * library into the bundle: **4.6 MB of an 8.5 MiB web bundle, 53% of
+ * it**, against 602 KB for every feature in the app put together. It
+ * was the single largest thing Bookflow shipped to a browser, for 68
+ * icons.
+ *
+ * The package's `exports` map has a `./*` subpath giving one module per
+ * icon, so each import below costs exactly the icon it names. Keep it
+ * that way: a single named import from `@tabler/icons-react-native`
+ * anywhere in the graph brings all 6,000 back, and nothing in CI would
+ * tell you except the bundle size.
+ *
+ * Sorted alphabetically, which is the only ordering that makes a
+ * 68-line import block reviewable and a duplicate visible.
+ */
+import IconAlertCircle from '@tabler/icons-react-native/IconAlertCircle';
+import IconAlertTriangle from '@tabler/icons-react-native/IconAlertTriangle';
+import IconArrowLeft from '@tabler/icons-react-native/IconArrowLeft';
+import IconArrowRight from '@tabler/icons-react-native/IconArrowRight';
+import IconArrowsSort from '@tabler/icons-react-native/IconArrowsSort';
+import IconBell from '@tabler/icons-react-native/IconBell';
+import IconBook from '@tabler/icons-react-native/IconBook';
+import IconBookFilled from '@tabler/icons-react-native/IconBookFilled';
+import IconBooks from '@tabler/icons-react-native/IconBooks';
+import IconBrain from '@tabler/icons-react-native/IconBrain';
+import IconBrandAppleFilled from '@tabler/icons-react-native/IconBrandAppleFilled';
+import IconCamera from '@tabler/icons-react-native/IconCamera';
+import IconCheck from '@tabler/icons-react-native/IconCheck';
+import IconChevronDown from '@tabler/icons-react-native/IconChevronDown';
+import IconChevronLeft from '@tabler/icons-react-native/IconChevronLeft';
+import IconChevronRight from '@tabler/icons-react-native/IconChevronRight';
+import IconCircleCheck from '@tabler/icons-react-native/IconCircleCheck';
+import IconClock from '@tabler/icons-react-native/IconClock';
+import IconCloudUpload from '@tabler/icons-react-native/IconCloudUpload';
+import IconCompass from '@tabler/icons-react-native/IconCompass';
+import IconCompassFilled from '@tabler/icons-react-native/IconCompassFilled';
+import IconCopy from '@tabler/icons-react-native/IconCopy';
+import IconCreditCard from '@tabler/icons-react-native/IconCreditCard';
+import IconDownload from '@tabler/icons-react-native/IconDownload';
+import IconEye from '@tabler/icons-react-native/IconEye';
+import IconFileText from '@tabler/icons-react-native/IconFileText';
+import IconFilter from '@tabler/icons-react-native/IconFilter';
+import IconHeadphones from '@tabler/icons-react-native/IconHeadphones';
+import IconHeadphonesFilled from '@tabler/icons-react-native/IconHeadphonesFilled';
+import IconHelpCircle from '@tabler/icons-react-native/IconHelpCircle';
+import IconInfoCircle from '@tabler/icons-react-native/IconInfoCircle';
+import IconListDetails from '@tabler/icons-react-native/IconListDetails';
+import IconLoader2 from '@tabler/icons-react-native/IconLoader2';
+import IconLock from '@tabler/icons-react-native/IconLock';
+import IconLogout from '@tabler/icons-react-native/IconLogout';
+import IconMail from '@tabler/icons-react-native/IconMail';
+import IconMessageCircle from '@tabler/icons-react-native/IconMessageCircle';
+import IconMicrophone from '@tabler/icons-react-native/IconMicrophone';
+import IconMoon from '@tabler/icons-react-native/IconMoon';
+import IconMusic from '@tabler/icons-react-native/IconMusic';
+import IconNotebook from '@tabler/icons-react-native/IconNotebook';
+import IconPhone from '@tabler/icons-react-native/IconPhone';
+import IconPlayerPauseFilled from '@tabler/icons-react-native/IconPlayerPauseFilled';
+import IconPlayerPlayFilled from '@tabler/icons-react-native/IconPlayerPlayFilled';
+import IconPlayerSkipBack from '@tabler/icons-react-native/IconPlayerSkipBack';
+import IconPlayerSkipForward from '@tabler/icons-react-native/IconPlayerSkipForward';
+import IconPlayerTrackNext from '@tabler/icons-react-native/IconPlayerTrackNext';
+import IconPlayerTrackPrev from '@tabler/icons-react-native/IconPlayerTrackPrev';
+import IconPlus from '@tabler/icons-react-native/IconPlus';
+import IconRefresh from '@tabler/icons-react-native/IconRefresh';
+import IconSearch from '@tabler/icons-react-native/IconSearch';
+import IconSettings from '@tabler/icons-react-native/IconSettings';
+import IconShield from '@tabler/icons-react-native/IconShield';
+import IconSparkles from '@tabler/icons-react-native/IconSparkles';
+import IconStar from '@tabler/icons-react-native/IconStar';
+import IconTextSize from '@tabler/icons-react-native/IconTextSize';
+import IconThumbDown from '@tabler/icons-react-native/IconThumbDown';
+import IconThumbDownFilled from '@tabler/icons-react-native/IconThumbDownFilled';
+import IconThumbUp from '@tabler/icons-react-native/IconThumbUp';
+import IconThumbUpFilled from '@tabler/icons-react-native/IconThumbUpFilled';
+import IconTrash from '@tabler/icons-react-native/IconTrash';
+import IconUpload from '@tabler/icons-react-native/IconUpload';
+import IconUser from '@tabler/icons-react-native/IconUser';
+import IconUserFilled from '@tabler/icons-react-native/IconUserFilled';
+import IconWand from '@tabler/icons-react-native/IconWand';
+import IconWifiOff from '@tabler/icons-react-native/IconWifiOff';
+import IconWorld from '@tabler/icons-react-native/IconWorld';
+import IconX from '@tabler/icons-react-native/IconX';
 import type { ComponentType } from 'react';
 import { tokens } from '~/design/tokens';
 
