@@ -262,8 +262,10 @@ npx expo start --ios
 # Run on Android emulator
 npx expo start --android
 
-# Type check
-npx tsc --noEmit
+# Type check (NOT `npx tsc --noEmit` — the root tsconfig is a solution
+# file with `files: []` and project references, so a bare `tsc` there
+# checks nothing and exits 0. This runs each workspace's own.)
+npm run typecheck
 
 # Run tests (Vitest, on the pure packages — there is no RN test runner)
 npm test
