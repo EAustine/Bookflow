@@ -59,6 +59,14 @@ jobs:
       - name: Web bundle
         run: npm run build:web -- --clear
 
+      # A barrel import once added 11 MB to this export without failing
+      # anything else here: it typechecked, it linted, it bundled, it
+      # booted, and every pixel rendered. The only symptom of that class
+      # is the number, so the number gets an assertion. Verified to fail
+      # on the pre-M4c bundle and pass on the current one.
+      - name: Web payload budget
+        run: npm run check:bundle-size
+
       # Then LOAD it. `expo export` exiting 0 means nothing on its own:
       # it writes a valid bundle and still ships a blank page if
       # `import.meta` is anywhere in the graph, because Expo serves the

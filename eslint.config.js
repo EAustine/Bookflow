@@ -71,6 +71,50 @@ const nativeOnlyPaths = NATIVE_ONLY.map((name) => ({
     'build can resolve it (§4 rule 4, §8).',
 }));
 
+/**
+ * Barrels that pull a whole library in for one named export.
+ *
+ * These are **exact specifiers**, which is the whole trick: `paths`
+ * matches the import string exactly, so `@tabler/icons-react-native` is
+ * banned while `@tabler/icons-react-native/IconBook` is not. Nothing
+ * needs an exemption, because after M4c nothing legitimately imports
+ * the roots.
+ *
+ * Measured in M4c, on the web export:
+ *
+ *   `@tabler/icons-react-native` re-exports ~6,000 icons and Metro does
+ *   not tree-shake those re-exports. One named import from the root
+ *   cost **4.6 MB of an 8.5 MiB bundle, 53% of it**, for 68 icons. Per
+ *   icon it is 28.8 KB in total.
+ *
+ *   Each `@expo-google-fonts/*` root does an eager top-level
+ *   `require()` of every weight it ships. Seven faces were being asked
+ *   for; 52 `.ttf` files and 6.7 MB were being shipped.
+ *
+ * Both are invisible to every other check in CI. They typecheck, they
+ * lint, they bundle, they boot, and they render correctly. The only
+ * symptom is the size, which is why this is a lint error and why
+ * `scripts/check-bundle-size.mjs` exists as well: this rule catches the
+ * two known causes by name, and the budget catches the next one.
+ */
+const barrelPaths = [
+  {
+    name: '@tabler/icons-react-native',
+    message:
+      'Import one icon per module: `@tabler/icons-react-native/IconFoo`. ' +
+      'The package root re-exports ~6,000 icons and Metro does not ' +
+      'tree-shake them, so naming the root costs 4.6 MB (M4c). Screens ' +
+      'should use `~/components` Icon anyway.',
+  },
+  ...['fraunces', 'geist', 'lexend', 'literata'].map((family) => ({
+    name: `@expo-google-fonts/${family}`,
+    message:
+      `Import one weight per module: '@expo-google-fonts/${family}/400Regular'. ` +
+      'The package root eagerly requires every weight it ships, which put ' +
+      '52 font files and 6.7 MB in the export for the seven the app uses (M4c).',
+  })),
+];
+
 module.exports = [
   ...expoConfig,
 
@@ -145,7 +189,7 @@ module.exports = [
     files: ['apps/app/src/**/*.{ts,tsx}', 'apps/app/app/**/*.{ts,tsx}'],
     ignores: ['apps/app/src/platform/**'],
     rules: {
-      'no-restricted-imports': ['error', { paths: nativeOnlyPaths }],
+      'no-restricted-imports': ['error', { paths: [...nativeOnlyPaths, ...barrelPaths] }],
     },
   },
 
@@ -169,7 +213,7 @@ module.exports = [
     files: ['apps/app/src/features/*/**/*.{ts,tsx}'],
     rules: {
       'no-restricted-imports': ['error', {
-        paths: nativeOnlyPaths,
+        paths: [...nativeOnlyPaths, ...barrelPaths],
         patterns: [
           {
             group: ['~/features/*/*', '../../*/!(index)'],
@@ -210,7 +254,7 @@ module.exports = [
     files: ['apps/app/src/ui/**/*.{ts,tsx}', 'apps/app/src/components/**/*.{ts,tsx}'],
     rules: {
       'no-restricted-imports': ['error', {
-        paths: nativeOnlyPaths,
+        paths: [...nativeOnlyPaths, ...barrelPaths],
         patterns: [{
           group: ['~/features/*', '~/screens/*'],
           message:
