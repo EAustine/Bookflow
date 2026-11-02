@@ -27,6 +27,15 @@
  * `row` insets, `card` outsets. The reasoning for the two is on
  * `tokens.focusRing`; the short version is that a row has neighbours
  * flush against it and a card has gutter.
+ *
+ * **A filled control takes `card`, whatever its shape.** An inset ring
+ * is drawn *in* the element, so on a control whose fill is already the
+ * accent colour it is the accent on the accent: present in the DOM,
+ * invisible on the screen. Figma settles it for the one component that
+ * has a Focus-visible variant — `Button`'s ring layer is 128 x 60
+ * around a 120 x 52 button — and `AddPill` and the Discover category
+ * chip follow it for the same reason. Found in the R-M10 sign-off
+ * pass, by looking rather than by reading.
  */
 
 import { StyleSheet, View } from 'react-native';
@@ -42,6 +51,16 @@ export type FocusRingProps = {
   visible: boolean;
   shape: FocusRingShape;
   /**
+   * Override the stroke colour.
+   *
+   * For a surface that is not the app's own: the reader's action bar
+   * sits on a page the user has themed, and `border/accent` on the
+   * dark theme is #1B4332 on #1A1F1B — about 1.4:1, which is not a
+   * ring, it is a rumour. Callers on a themed surface pass that
+   * theme's own accent.
+   */
+  color?: string;
+  /**
    * Override the shape's radius, for an element whose own corners are
    * not the 8 or 12 the brief assumes.
    *
@@ -55,7 +74,7 @@ export type FocusRingProps = {
   radius?: number;
 };
 
-export function FocusRing({ visible, shape, radius }: FocusRingProps) {
+export function FocusRing({ visible, shape, color, radius }: FocusRingProps) {
   // Unmounted rather than transparent: there is nothing to animate, and
   // a list of 200 rows should not carry 200 invisible overlays.
   if (!visible) return null;
@@ -63,8 +82,15 @@ export function FocusRing({ visible, shape, radius }: FocusRingProps) {
   return (
     <View
       pointerEvents="none"
+      // react-native-web renders this as `data-testid`, which is what
+      // `e2e/focus-ring.spec.ts` counts: the ring either exists in the
+      // DOM inside the focused element or it does not, which is a
+      // stronger assertion than reading a computed border off a
+      // screenshot. No cost on native — `testID` is inert there.
+      testID="focus-ring"
       style={[
         shape === 'row' ? styles.row : styles.card,
+        color !== undefined && { borderColor: color },
         radius !== undefined && { borderRadius: radius },
       ]}
     />

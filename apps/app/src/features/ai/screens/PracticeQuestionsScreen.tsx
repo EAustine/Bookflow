@@ -765,8 +765,10 @@ function QuestionScreen({
 
         {twoUp ? (
           <View style={[styles.sessionRow, { gap: cols.gap }]}>
-            <View style={{ width: cols.question }}>{questionPane}</View>
-            <View style={{ width: cols.source }}>
+            <View style={[styles.sessionCol, { width: cols.question }]}>
+              {questionPane}
+            </View>
+            <View style={[styles.sessionCol, { width: cols.source }]}>
               <SourcePane book={book} pageIndex={pageIndex} />
             </View>
           </View>
@@ -1599,7 +1601,7 @@ const styles = StyleSheet.create({
 
   // Question body
   questionBody: {
-    paddingHorizontal: 18,
+    paddingHorizontal: tokens.layout.practice.paddingX,
     paddingTop: 14,
     paddingBottom: 24,
   },
@@ -1615,6 +1617,28 @@ const styles = StyleSheet.create({
   sessionRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
+  },
+  /**
+   * Both columns shrink below the width their frames were drawn at.
+   *
+   * The two widths come from `AI tools / Practice / MCQ session / *`,
+   * which are 1180 and 1440 frames — but the class that uses the
+   * Expanded pair **starts at 1024**, and 520 + 40 + 440 plus the
+   * session's own 18 either side is 1036. An iPad Pro 12.9 in portrait
+   * is exactly 1024, so the source column lost 12pt off its right edge
+   * there, inside a vertical ScrollView that cannot scroll sideways to
+   * reveal it. §10: "no container runs off screen."
+   *
+   * `flexShrink` rather than a narrower token, because the frame
+   * numbers are right at the width they were drawn at — this only has
+   * to give way below it, and it gives way proportionally, so the
+   * question stays the wider of the two. `minWidth: 0` is for
+   * react-native-web, where a flex child otherwise refuses to shrink
+   * past its text's min-content width.
+   */
+  sessionCol: {
+    flexShrink: 1,
+    minWidth: 0,
   },
   /**
    * The passage card. It prints the book's words, so the body is the

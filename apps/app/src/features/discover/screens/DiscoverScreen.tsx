@@ -2192,6 +2192,9 @@ function RailSkeletonRow() {
  * An active chip keeps its forest fill: lightening a selected chip on
  * hover would read as deselecting it.
  */
+/** The chip's corner. Named so the focus ring can be derived from it. */
+const CHIP_RADIUS = 16;
+
 function CategoryChip({
   label,
   active,
@@ -2223,9 +2226,14 @@ function CategoryChip({
         {label}
       </Text>
 
-      {/* The chip's own radius less the inset, so the ring follows the
-          pill rather than cutting corners off it. */}
-      <FocusRing visible={ringVisible} shape="row" radius={14} />
+      {/* Outset, like `Button`: an active chip is filled forest-800 and
+          an inset accent ring inside it is invisible. 16 plus the
+          outset, so the ring follows the pill's corner. */}
+      <FocusRing
+        visible={ringVisible}
+        shape="card"
+        radius={CHIP_RADIUS + tokens.focusRing.card.outset}
+      />
     </Pressable>
   );
 }
@@ -2737,7 +2745,7 @@ const s = StyleSheet.create({
   chip: {
     height: 32,
     paddingHorizontal: 14,
-    borderRadius: 16,
+    borderRadius: CHIP_RADIUS,
     alignItems: 'center',
     justifyContent: 'center',
   },

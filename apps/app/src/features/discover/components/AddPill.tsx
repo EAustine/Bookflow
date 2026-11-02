@@ -19,7 +19,8 @@
  */
 
 import { Pressable, StyleSheet, type GestureResponderEvent } from 'react-native';
-import { Icon, Spinner, Text } from '~/components';
+import { FocusRing, Icon, Spinner, Text } from '~/components';
+import { useInteractive } from '~/hooks/useInteractive';
 import { tokens } from '~/design/tokens';
 
 export type AddPillProps = {
@@ -60,6 +61,20 @@ export function AddPill({
 
   const disabled = pending || (inLibrary && !removable);
 
+  /**
+   * §6, added in the R-M10 sign-off pass. The pill is a button by every
+   * definition §10 uses and it was missed twice: it is not in the build
+   * log's Phase 7 table of components that gained an Interaction
+   * property, and R-M9 wired the row around it rather than the control
+   * inside it. Tabbing a Discover result row stopped here second and
+   * showed nothing.
+   *
+   * Hover is the filled-control rule rather than the row fill: this has
+   * no surface to tint, and on the Featured card it is amber, a ramp
+   * with no darker step to move to.
+   */
+  const { interactiveProps, hovered, ringVisible } = useInteractive();
+
   return (
     <Pressable
       onPress={(e) => {
@@ -69,7 +84,13 @@ export function AddPill({
       disabled={disabled}
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel}
-      style={[styles.pill, { backgroundColor: background }, pending && styles.pending]}
+      {...interactiveProps}
+      style={[
+        styles.pill,
+        { backgroundColor: background },
+        hovered && !disabled && { opacity: tokens.hover.filledOpacity },
+        pending && styles.pending,
+      ]}
     >
       {pending ? (
         <Spinner size={12} color={content} />
@@ -79,9 +100,19 @@ export function AddPill({
       <Text style={[styles.label, { color: content }]} numberOfLines={1}>
         {inLibrary ? 'In library' : pending ? 'Adding…' : addLabel}
       </Text>
+      {/* Outset, like `Button` — a filled control cannot show an inset
+          ring in its own fill colour. The pill's 14 plus the outset. */}
+      <FocusRing
+        visible={ringVisible}
+        shape="card"
+        radius={PILL_RADIUS + tokens.focusRing.card.outset}
+      />
     </Pressable>
   );
 }
+
+/** The pill's corner. Named so the focus ring can be derived from it. */
+const PILL_RADIUS = 14;
 
 const styles = StyleSheet.create({
   pill: {
@@ -91,7 +122,7 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-start',
     height: 28,
     paddingHorizontal: 12,
-    borderRadius: 14,
+    borderRadius: PILL_RADIUS,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 5,

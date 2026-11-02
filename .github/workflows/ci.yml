@@ -56,8 +56,16 @@ jobs:
       # is not the one the config describes. Measured while building
       # M4a: the same source exported with and without a cleared cache
       # gave different bundles.
+      # `EXPO_PUBLIC_UI_GALLERY` adds `src/gallery` — the §6 component
+      # gallery that `e2e/focus-ring.spec.ts` tabs through. It is a
+      # route-less surface the root layout renders only for `?gallery=1`,
+      # so the pages this export otherwise serves are unchanged, and the
+      # payload budget below measures the bundle WITH it: a ceiling that
+      # is, if anything, slightly generous to the deployed one.
       - name: Web bundle
         run: npm run build:web -- --clear
+        env:
+          EXPO_PUBLIC_UI_GALLERY: '1'
 
       # A barrel import once added 11 MB to this export without failing
       # anything else here: it typechecked, it linted, it bundled, it
