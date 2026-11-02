@@ -32,6 +32,8 @@ import {
   type TabKey,
   Text,
 } from '~/components';
+import { NoResultsIllustration } from '~/components/illustrations/NoResultsIllustration';
+import { SomethingWentWrongIllustration } from '~/components/illustrations/SomethingWentWrongIllustration';
 import { tokens } from '~/design/tokens';
 import { useInteractive } from '~/hooks/useInteractive';
 import { useSizeClass } from '~/hooks/useSizeClass';
@@ -1620,6 +1622,8 @@ function HomeView({
               </View>
             ) : error ? (
               <View style={s.errorZone}>
+                {/* §4 gives the error zone a 120 illustration. */}
+                <SomethingWentWrongIllustration size={120} />
                 <Text style={s.errorTitle}>Couldn't reach the catalog</Text>
                 <Text style={s.errorBody}>
                   {/* Map the raw fetcher error through the shared
@@ -2026,6 +2030,12 @@ function SearchEmptyState({ query }: { query: string }) {
 
   return (
     <View style={[s.searchRequestZone, gutterStyle]}>
+      {/* §4 gives this zone a 120 illustration; it was text only. The
+          same drawing serves Library's "no results" search state. The
+          zone stretches its children, so the drawing centres itself. */}
+      <View style={s.requestIllustration}>
+        <NoResultsIllustration size={120} />
+      </View>
       <Text style={s.errorTitle}>No matches</Text>
       <Text style={s.errorBody}>
         We couldn't find "{trimmed}" in our catalog. Tap each field
@@ -2704,6 +2714,9 @@ const s = StyleSheet.create({
     paddingVertical: 24,
     alignItems: 'stretch',
     gap: 6,
+  },
+  requestIllustration: {
+    alignSelf: 'center',
   },
   requestCardStack: {
     marginTop: 18,

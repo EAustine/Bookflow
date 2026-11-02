@@ -8,7 +8,7 @@ blocked on a piece of work that has not started.
 
 | § | Bullet | State |
 |---|---|---|
-| 10.1 | Every Figma frame has a matching screen at its size class | **Not started** |
+| 10.1 | Every Figma frame has a matching screen at its size class | **Signed off**, 2 frames deliberately unbuilt |
 | 10.2 | 820 / 1180 / 1440 screenshots match the frames | **Blocked** past Auth — needs a session |
 | 10.3 | No container runs off screen; pop-over falls back to the gutter | **Signed off**, 1 finding fixed, 1 recorded |
 | 10.4 | Keyboard tabbing shows the focus ring on every row, card and button | **Partly** — 7 of 13 proven with real input, 5 findings fixed |
@@ -215,13 +215,148 @@ opening a book, which means 10.2's blocker.
 
 ---
 
-## 10.1, 10.2 and 10.6 — not closable here
+## 10.1 — frame coverage
 
-**10.1, frame coverage.** Not started. It is an inventory of every frame
-in the Figma file against the screen that renders it, minus §8's
-intentional gaps and the carried items in
-`docs/specs/responsive-milestones.md`. It needs a frame list, not a
-browser, so it is the next thing this pass can do unaided.
+The ten screen pages hold **424 frames**: 111 Compact, 105 Medium, 105
+Expanded, 103 Desktop. The three wide bands total 313, which is exactly
+the count the build log's Phase 7 gives for "every component used on the
+313 tablet and desktop frames" — an independent check that the inventory
+is the whole file and not a slice of it.
+
+Merging each screen's size variants gives **154 distinct screens**. Four
+of the 424 are not screens at all and are excluded: `note /
+returning-user routing`, the two `⚠ Annotation` frames on Monetisation
+and System states, and `Monetisation / Hosted paywall (not in repo)`,
+which says so in its own name.
+
+**Every remaining screen has code**, at every size class the file draws
+it at, with one exception:
+
+- **`Reader / Full / PDF spread`, Expanded and Desktop.** Two frames,
+  permanently unbuilt. `react-native-pdf` 7.0.4 has no dual-page
+  capability and CLAUDE.md pins that engine after M0 spike 1 measured
+  pdf.js at 42 dropped frames in 60. Already recorded under "Carried,
+  with a reason" in `responsive-milestones.md`.
+
+Two apparent gaps were my own search terms rather than missing code:
+`Buy credits / Loading` and `Buy credits / Purchasing` are
+`packages === null` and `buyingId` in `BuyCreditsSheet`, which its own
+comment spells out ("null = still loading; [] = none available").
+Checked rather than counted, because a grep that reports zero is a
+hypothesis, not a finding.
+
+**Gaps in the file itself**, where no frame exists so there is nothing
+to build against. Worth knowing before anyone reads a missing screen as
+a missing implementation:
+
+| Screen | Missing |
+|---|---|
+| `Discover / Home / Refreshing` | Desktop |
+| `Monetisation / Buy credits / Audio time` | Expanded |
+| `You / Home / Free plan` | every wide class (only Pro is drawn wide) |
+
+`Auth / Splash` and `Auth / Returning user / Session restore` also stop
+at Expanded, but that one is deliberate and implemented: §4 says
+"Desktop has no Splash or Session restore", and `splashDone` starts
+`true` on web.
+
+**What this does not prove.** Existence, not fidelity. A screen that
+renders at the right size class can still look nothing like its frame,
+and the illustration audit below is exactly that case. Fidelity is 10.2.
+
+## The illustrations
+
+Checked because the set is large, finished, and barely used.
+
+The `Illustrations` page carries **17 components** with their own rules
+page: 200 x 200 canvas, forest-900 outline at 3px, a solid offset depth
+copy 5 to 8px down and right, forest-400 fills, one amber area per
+scene. `apps/app/assets/illustrations/` tracks 19 SVGs: those 17, plus
+`reading_nook` and `reading_nook_medium`, which are Discover's Featured
+card art and do not belong to the set.
+
+`apps/app/assets/svg/` and `apps/app/assets/illustrations.zip` are
+untracked and are a byte-identical copy of 17 of the 19 (`cmp` on every
+file). They are leftovers from the original export and nothing reads
+them.
+
+### Only 3 of the 17 are wired in Figma
+
+Across all 424 screen frames there are **11 illustration slots on 10
+screens**. Three are real instances of the components, all in Auth. The
+other eight are unnamed 120 or 140 placeholder frames called
+`Illustration`, so the design file has not finished this either.
+
+Eight of the seventeen drawings have no slot on any screen: No
+highlights, Processing, Upload failed, Offline, Ask the book, Practice,
+Out of credits, Notifications.
+
+### 2 of the 11 slots matched, before this pass
+
+| Figma slot | Slot | Was | Now |
+|---|---|---|---|
+| `Auth / Welcome` | 280 / 336 | its own line drawing | `WelcomeHeroIllustration` |
+| `Auth / Sign in / Check your email` | 96 | an inline 44px envelope | `CheckEmailIllustration` |
+| `Auth / Callback / Link expired` | 80 | Tabler `AlertTriangle` at 36 | `LinkExpiredIllustration` |
+| `Library / Empty` | 140 | `EmptyLibraryIllustration` | unchanged |
+| `Library / Search / No results` | 120 | nothing, text only | `NoResultsIllustration` |
+| `Library / Upload / Scanned PDF error` | 120 | Tabler `FileText` at 34 | `ScannedPdfIllustration` |
+| `Listen / Tab / Empty` | 140 | Tabler `Headphones` at 36 in a bubble | `EmptyListenIllustration` |
+| `Discover / Home / Error` | 120 | nothing, text only | `SomethingWentWrongIllustration` |
+| `Discover / Search / No matches` | 120 | nothing, the request form | `NoResultsIllustration` |
+| `Discover / Category / Empty` | 120 | nothing, text only | still nothing, see below |
+| `System / Error / Crash boundary` | 120 | nothing, text only | still nothing, see below |
+
+The second match is `Library / Upload / Failed`, which renders
+`UploadFailedIllustration` **where Figma has no slot at all** — the
+inverse mistake, and the reason the count is 2 of 11 rather than 1.
+
+The three components that do exist are faithful conversions, checked
+path for path: `empty_library.svg` is 200 x 200 with 21 paths and
+`EmptyLibraryIllustration` is 200 x 200 with 21 `Path`s carrying the
+same `d` data and the same `translate(5 5)` depth copies;
+`upload_failed` matches 10 for 10.
+
+**The Welcome hero is the one that looks right and is not.**
+`welcome_hero.svg` is 320 x 240, 27 filled paths, forest-400 on
+forest-900 with the offset depth copy, exactly as the rules page
+describes. `WelcomeScreen`'s `HeroIllustration` is 280 x 240 line art:
+`fill="none"` throughout, 1.6px strokes, amber arcs. Two different
+drawings in two different styles, and the one on screen is not the one
+in the file.
+
+### Wired, after the audit
+
+Nine of the ten mismatched slots had an unambiguous answer in the set,
+using seven drawings. Eight of them are now wired; `UploadFailed` and
+`EmptyLibrary` were already.
+
+`svg2tsx` in the session scratchpad did the conversion rather than a
+hand transcription, so the only judgement in each component is the
+hex-to-token lookup. Verified by diffing every `d` attribute against
+its source: **113 paths and 4 circles, all identical**, across the
+seven new components. Each renders in the gallery at the size its
+frame draws it at.
+
+Two slots are still empty on purpose:
+
+- **`Discover / Category / Empty`** has no answer in the set. There is
+  no "empty category" drawing and the placeholder frame is unnamed.
+- **`System / Error / Crash boundary`** will not get one.
+  `RootErrorBoundary`'s own contract is that it survives "a bad import,
+  missing env var, **native module failure**", and `react-native-svg`
+  is a native module. Rendering an `Svg` inside the fallback would put
+  the suspect back on the stand. It stays text only, and the
+  illustration component says so.
+
+Still unresolved, and not a code question: **eight of the seventeen
+drawings have no slot on any screen** (No highlights, Processing,
+Upload failed, Offline, Ask the book, Practice, Out of credits,
+Notifications), and `Library / Upload / Failed` renders one where the
+file asks for none. That is a Figma decision, not an implementation
+one.
+
+## 10.2 and 10.6 — not closable here
 
 **10.2, screenshots at three widths.** Auth is reachable without a
 session and R-M9 measured Welcome and sign-in at 820, 1180 and 1440.

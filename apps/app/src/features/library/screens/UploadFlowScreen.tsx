@@ -3,6 +3,7 @@ import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 're
 import { Animated, Easing, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { type BottomSheetRef, Icon, Presenter, ProgressRing, Text } from '~/components';
+import { ScannedPdfIllustration } from '~/components/illustrations/ScannedPdfIllustration';
 import { UploadFailedIllustration } from '~/components/illustrations/UploadFailedIllustration';
 import { tokens } from '~/design/tokens';
 
@@ -914,9 +915,11 @@ export function ScannedPdfErrorScreen({
         showsVerticalScrollIndicator={false}
         alwaysBounceVertical={false}
       >
-        {/* Error icon */}
-        <View style={scanStyles.iconCircle}>
-          <Icon name="FileText" size={34} color={tokens.colors.error} />
+        {/* §4 draws `Illustration / Scanned PDF` at 120 with 12 under
+            it, in place of the 34pt FileText glyph in an error circle
+            that was standing in for it. */}
+        <View style={scanStyles.illustration}>
+          <ScannedPdfIllustration size={120} />
         </View>
 
         <Text style={scanStyles.errorTitle}>This PDF is a scanned image</Text>
@@ -1074,14 +1077,9 @@ const scanStyles = StyleSheet.create({
   },
 
   // Error icon
-  iconCircle: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: tokens.bgColors.errorMuted,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 22,
+  illustration: {
+    // The frame measures 12 between the drawing and the title.
+    marginBottom: 12,
   },
   errorTitle: {
     fontFamily: tokens.fonts.display,

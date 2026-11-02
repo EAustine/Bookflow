@@ -19,6 +19,11 @@
  * mock props, `e2e/focus-ring.spec.ts` tabs through them in CI, and the
  * claim stops depending on anyone remembering to check.
  *
+ * It carries the illustration set too, added in the R-M10 sign-off
+ * pass. Those are not interactive and add no tab stops; they are here
+ * for the same reason the components are, which is that the screens
+ * that use them need a session and this does not.
+ *
  * ## What it deliberately is not
  *
  * Not a screen harness. Seven of the thirteen components are local to
@@ -42,6 +47,15 @@
 import { ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Button, Input, ListRow, RecentListenRow, Text } from '~/components';
+import { CheckEmailIllustration } from '~/components/illustrations/CheckEmailIllustration';
+import { EmptyLibraryIllustration } from '~/components/illustrations/EmptyLibraryIllustration';
+import { EmptyListenIllustration } from '~/components/illustrations/EmptyListenIllustration';
+import { LinkExpiredIllustration } from '~/components/illustrations/LinkExpiredIllustration';
+import { NoResultsIllustration } from '~/components/illustrations/NoResultsIllustration';
+import { ScannedPdfIllustration } from '~/components/illustrations/ScannedPdfIllustration';
+import { SomethingWentWrongIllustration } from '~/components/illustrations/SomethingWentWrongIllustration';
+import { UploadFailedIllustration } from '~/components/illustrations/UploadFailedIllustration';
+import { WelcomeHeroIllustration } from '~/components/illustrations/WelcomeHeroIllustration';
 import {
   DiscoverBookRow,
   RailCard,
@@ -176,6 +190,43 @@ export const UiGallery: typeof import('./uiGallery').UiGallery = function UiGall
         <Stop id="book-grid-tile" label="Book grid tile (card ring)">
           <BookGridTile book={BOOK} width={150} now={NOW} onPress={noop} />
         </Stop>
+
+        <Text variant="display-sm" style={styles.heading}>
+          Illustrations
+        </Text>
+        <Text variant="body-sm" color="muted" style={styles.blurb}>
+          Each at the size its screen's frame draws it. They are not
+          interactive and add no tab stops; they are here because the
+          screens that use them need a session and this does not.
+        </Text>
+
+        <Specimen label="Welcome hero, 280">
+          <WelcomeHeroIllustration width={280} />
+        </Specimen>
+        <Specimen label="Check email, 96">
+          <CheckEmailIllustration size={96} />
+        </Specimen>
+        <Specimen label="Link expired, 80">
+          <LinkExpiredIllustration size={80} />
+        </Specimen>
+        <Specimen label="Empty library, 140">
+          <EmptyLibraryIllustration size={140} />
+        </Specimen>
+        <Specimen label="Empty listen, 140">
+          <EmptyListenIllustration size={140} />
+        </Specimen>
+        <Specimen label="No results, 120">
+          <NoResultsIllustration size={120} />
+        </Specimen>
+        <Specimen label="Scanned PDF, 120">
+          <ScannedPdfIllustration size={120} />
+        </Specimen>
+        <Specimen label="Something went wrong, 120">
+          <SomethingWentWrongIllustration size={120} />
+        </Specimen>
+        <Specimen label="Upload failed, 120">
+          <UploadFailedIllustration size={120} />
+        </Specimen>
       </ScrollView>
     </SafeAreaView>
   );
@@ -188,6 +239,18 @@ export const UiGallery: typeof import('./uiGallery').UiGallery = function UiGall
  * the stop itself — that would be the harness hiding the bug it is
  * here to find.
  */
+/** A drawing with its label. No wrapper id: nothing here is focusable. */
+function Specimen({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <View style={styles.stop}>
+      <Text variant="label-sm" color="muted">
+        {label}
+      </Text>
+      {children}
+    </View>
+  );
+}
+
 function Stop({
   id,
   label,

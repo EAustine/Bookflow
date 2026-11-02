@@ -38,6 +38,7 @@ import { tokens } from '~/design/tokens';
 import { useInteractive } from '~/hooks/useInteractive';
 import { useSizeClass } from '~/hooks/useSizeClass';
 import { EmptyLibraryIllustration } from '~/components/illustrations/EmptyLibraryIllustration';
+import { NoResultsIllustration } from '~/components/illustrations/NoResultsIllustration';
 import { BookCover, ProgressBar } from '../components/BookCover';
 import { UploadDropZone } from '../components/UploadDropZone';
 import { bookStatusLine } from '../components/bookStatus';
@@ -1621,6 +1622,8 @@ function NoResults({
   return (
     <>
       <View style={styles.noResults}>
+        {/* §4 gives this a 120 illustration; the state was text only. */}
+        <NoResultsIllustration size={120} />
         <Text style={styles.noResultsTitle}>
           Nothing in your library{'\n'}matches "{query}"
         </Text>
@@ -2957,6 +2960,9 @@ const styles = StyleSheet.create({
     paddingVertical: 48,
     paddingHorizontal: tokens.space.xl,
     alignItems: 'center',
+    // 8 between the illustration and the title, which is what the frame
+    // measures: the drawing ends at 168 and the title starts at 176.
+    gap: tokens.space.sm,
   },
   noResultsTitle: {
     fontFamily: tokens.fonts.display,

@@ -32,7 +32,7 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 import { Button } from '~/components/Button';
-import { Icon } from '~/components/Icon';
+import { LinkExpiredIllustration } from '~/components/illustrations/LinkExpiredIllustration';
 import { Logomark } from '~/components/Logomark';
 import { Text } from '~/components/Text';
 import { tokens } from '~/design/tokens';
@@ -185,9 +185,11 @@ function ErrorState({
   return (
     <View style={styles.errorContent}>
       <View style={styles.errorIllustration}>
-        <View style={styles.errorIcon}>
-          <Icon name="AlertTriangle" size={36} color={tokens.colors.ink[700]} />
-        </View>
+        {/* §4 draws `Illustration / Link expired` at 80, on the page
+            rather than in a bubble (`316:14701`). This is the one error
+            in the app with its own drawing; the generic AlertTriangle
+            in an error-muted circle was standing in for it. */}
+        <LinkExpiredIllustration size={80} />
 
         <View style={styles.errorTextBlock}>
           <RNText style={styles.errorTitle}>{copy.title}</RNText>
@@ -297,14 +299,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 28,
     paddingBottom: tokens.space['2xl'],
-  },
-  errorIcon: {
-    width: 88,
-    height: 88,
-    borderRadius: 44,
-    backgroundColor: tokens.bgColors.errorMuted,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   errorTextBlock: {
     alignItems: 'center',
