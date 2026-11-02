@@ -226,6 +226,12 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
+    // §4 Auth: a centred 480 lane at every size. On a phone the lane
+    // is wider than the window, so this is inert there and only takes
+    // effect from Medium up, where the column would otherwise stretch.
+    width: '100%',
+    maxWidth: tokens.layout.lane.width,
+    alignSelf: 'center',
     padding: 40,
     gap: 28,
   },
@@ -275,6 +281,12 @@ const styles = StyleSheet.create({
   // Error
   errorContent: {
     flex: 1,
+    // §4 Auth: a centred 480 lane at every size. On a phone the lane
+    // is wider than the window, so this is inert there and only takes
+    // effect from Medium up, where the column would otherwise stretch.
+    width: '100%',
+    maxWidth: tokens.layout.lane.width,
+    alignSelf: 'center',
     paddingTop: tokens.space['2xl'],
     paddingHorizontal: 28,
     paddingBottom: tokens.space.lg,

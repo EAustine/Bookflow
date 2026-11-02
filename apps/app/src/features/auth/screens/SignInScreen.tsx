@@ -473,6 +473,12 @@ const styles = StyleSheet.create({
   },
   content: {
     flex: 1,
+    // §4 Auth: a centred 480 lane at every size. On a phone the lane
+    // is wider than the window, so this is inert there and only takes
+    // effect from Medium up, where the column would otherwise stretch.
+    width: '100%',
+    maxWidth: tokens.layout.lane.width,
+    alignSelf: 'center',
     paddingTop: 12,
     paddingHorizontal: 28,
     paddingBottom: tokens.space.lg,
