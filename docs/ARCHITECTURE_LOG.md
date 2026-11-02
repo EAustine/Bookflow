@@ -11,10 +11,10 @@ Target: `docs/ARCHITECTURE.md` · Distance to it: `docs/ARCHITECTURE_GAPS.md`
 
 | | |
 |---|---|
-| **Current step** | **M4c — the web bundle.** 15.29 MiB of served payload to 4.16 MiB; the native bundle 14 MB to 7.7 MB |
-| **Branch** | `arch/m4c-web-bundle`, 5 commits, **not pushed**. Branches from `main` at `0a051e8` |
-| **`main`** | Carries M1, M2, M3, M4a and M4b, through PR #21. Typecheck 0, eslint 0 errors, deno check clean, 125 tests |
-| **Next** | R-M9 — Auth responsive, the one flow with no responsive milestone. Unscheduled: question 17 (five features, one import knot), question 18 (no icon is rendered by any test), and web billing, which §8 gives to M8 |
+| **Current step** | **Android payload.** 6.45 MiB of Material Symbols font out of the android export: assets 7.16 MiB to 0.71 MiB, 38 files to 31. A transitive barrel, so the shim is in `metro.config.js` rather than an import rewrite |
+| **Branch** | `claude/strange-haibt-aafbad`. Branches from `main` at `29bbe90` |
+| **`main`** | Carries M1, M2, M3, M4a, M4b and M4c, through PR #22. Typecheck 0, eslint 0 errors, deno check clean, 125 tests |
+| **Next** | R-M9 — Auth responsive, the one flow with no responsive milestone. Unscheduled: question 17 (five features, one import knot), question 18 (no icon is rendered by any test), question 19 (no payload guard on native), and web billing, which §8 gives to M8 |
 
 ---
 
@@ -37,6 +37,110 @@ Target: `docs/ARCHITECTURE.md` · Distance to it: `docs/ARCHITECTURE_GAPS.md`
 ---
 
 ## Progress
+
+### Android payload — the Material Symbols font · `claude/strange-haibt-aafbad` 2026-11-02
+
+**6.45 MiB of font that nothing in Bookflow references, gone from the
+android export.** M4c's cause, one level down: an eager barrel require
+pulling a whole family in for nothing. The difference is that this
+barrel sits inside a dependency, so M4c's fix — name the one weight by
+subpath — was not available.
+
+| | Before | After |
+|---|---|---|
+| Assets | 38 files, 7.16 MiB | 31 files, 0.71 MiB |
+| Bundle (`.hbc`) | 7.66 MiB | 7.65 MiB |
+| **Assets + bundle** | **14.82 MiB** | **8.36 MiB** |
+
+The 31 remaining assets are the seven faces `useAppFonts.ts` asks for
+plus icons and images. The bundle barely moves, because the fix removes
+the font *assets*, not the expo-symbols code that reached them; its
+`symbols.json` glyph table, 111 KB, is still in there.
+
+#### The require chain
+
+Seven weights of `@expo-google-fonts/material-symbols`, 954-983 KB
+each, were in the export while `grep -rn "material-symbols\|MaterialSymbols"`
+over `apps/app` and `packages/` returned nothing. Every step of the
+chain is unconditional:
+
+```
+expo-router/build/exports.js
+  → layouts/withLayoutContext.js
+  → native-tabs/NativeTabTrigger.js
+  → native-tabs/utils/materialIconConverter.android.js
+  → expo-symbols
+  → build/SymbolView.js
+      import { useFonts } from '@expo-google-fonts/material-symbols'
+  → the barrel, which eagerly requires all seven weights
+```
+
+**It is not a dev-only screen.** That was the first thing worth ruling
+out, because it would have changed the fix: if only the sitemap and the
+unmatched-route screens reached it, the answer would have been to stop
+shipping those. But `withLayoutContext` is reached from expo-router's
+main entry, so importing `expo-router` at all is enough, and every
+route does.
+
+Nor is it reachable at runtime. `SymbolView` draws Material glyphs as
+text, and Bookflow draws Tabler icons through `~/components/Icon`.
+`unstable_getMaterialSymbolSourceAsync` is called only from the
+`loader` of a `NativeTabsTriggerPromiseIcon`, which expo-router builds
+only for a `<NativeTabs.Trigger md="...">`; there are no NativeTabs in
+this app, since `app/(tabs)/_layout.tsx` is a `<Slot>` inside
+`SignedInShell`. So the font was shipped for a code path that cannot
+execute.
+
+#### Android only, and why the fix is not
+
+iOS and web never resolved the font. `utils.ios.ts` and
+`materialImageSource.ios.ts` are noops expo wrote "to improve tree
+shaking", and the non-android `materialIconConverter.js` does not
+import `expo-symbols` at all. Android got the eager require instead,
+which is why the web payload budget stayed green at `fonts 0.69 MiB of
+1.00` the whole time: **the guard M4c added cannot see this.**
+
+The shim is still unconditional. There is no platform where Bookflow
+wants this font, and a `platform === 'android'` guard would quietly
+ship 6.45 MiB the day expo changes which platform takes the noop path.
+
+#### The fix
+
+`metro.config.js` resolves `@expo-google-fonts/material-symbols`, and
+every subpath of it, to `src/platform/stubs/material-symbols.js`. Both
+forms are matched because the two importers disagree: `SymbolView.js`
+names the root, `android/weights/regular/index.js` names
+`/400Regular`, and catching one would leave a weight behind.
+
+No `node_modules` was patched and no dependency was added or removed.
+`expo-symbols` is still a transitive dependency of `expo-router`; only
+the font it reaches for is replaced.
+
+The stub follows `web-placeholder/placeholder.js`'s rule — **throw when
+called, never when loaded** — and here that rule is load-bearing rather
+than tidy. Both consumers read a property at module-eval time:
+`weights/regular/index.js` puts `MaterialSymbols_400Regular` in an
+object field, and `SymbolView.js` imports `useFonts`. A stub that
+threw on import would have passed the export and crashed on a device,
+which no CI step boots. So the seven weight names are present as plain
+`null` fields, and only `useFonts` throws, because a call means
+something genuinely wants a font that is no longer in the bundle and a
+blank glyph would be the dishonest answer.
+
+`eslint.config.js` gains the package root as a banned barrel, with a
+different message from the other four: this family is not wanted by
+weight either, so the rule says "stubbed out of the bundle" rather than
+"import one weight per module".
+
+#### What still has no guard
+
+Nothing in CI would catch the next transitive barrel on native.
+`scripts/check-bundle-size.mjs` walks a web `dist` and buckets by file
+extension, and neither applies to an android export: its assets are
+written to `assets/` as extensionless hashed files and its bundle is
+`.hbc`. An android budget would have to read `metadata.json` instead,
+which is a separate piece of work rather than a parameter on the
+existing script. Recorded as question 19.
 
 ### M4c — the web bundle · 2026-10-31
 
@@ -1735,6 +1839,7 @@ migrations, not ten.
 | ~~16~~ | ~~**A real import cycle between the reader and listen barrels.**~~ — **closed 2026-10-30** in M4b: `getCachedPages`, the offline root and `PageRow` moved to `~/core/`. The row's claim that `import/no-cycle` catches it on a single-file run was wrong; alias cycles are invisible to that rule in both modes. Successor question: whether to add a resolver, write a graph-walking test, or neither | ✅ |
 | 18 | **No test renders an icon.** The web smoke test asserts the Welcome screen paints, and Welcome has no icons, so M4c's 68 icons could all have become `undefined` without a single check failing — which is exactly what nearly happened. The type declaration added in M4c catches that specific mechanism; nothing catches the general one. The only pre-auth surface with a Tabler icon is the auth-callback error state, 15 s behind a ceiling timeout, so the cheap fix is not obvious. Likely shape: a fixture route that renders every approved icon, asserted in Playwright, which would also catch a name removed from `ICON_MAP` | unscheduled |
 | 17 | **Five features are one import knot.** `ai`, `billing`, `library`, `listen` and `reader` reach each other through ten barrel edges, every one a latent `export *` cycle. Harmless only because no crossing is read at module-eval time, which is exactly what was true of the cycle that crashed M3. Baselined by `importCycles.test.ts` so it cannot grow; untangling it is unscheduled work. Likely shape: the shared screens move to `~/core/` or a feature stops reaching into another's screens | unscheduled |
+| 19 | **No payload guard on native.** `scripts/check-bundle-size.mjs` is web-only, and not by a parameter: it walks a `dist` and buckets by file extension, while an android export writes extensionless hashed files to `assets/` and a `.hbc` bundle. 6.45 MiB of font rode along for as long as expo-router has been in the graph while the web budget read `fonts 0.69 MiB of 1.00`, so the one class of regression this project has hit twice is still unguarded on the platform Ama uses. Likely shape: read the asset manifest out of the export's `metadata.json` and give it its own budget | unscheduled |
 | ~~14~~ | ~~Real-device confirmation for pdf.js~~ — **closed by the result, 2026-10-22.** The spike failed, and a failure on flattering hardware is conclusive. Successor: confirm **text/EPUB** on a real device before M6 ships, since a *pass* is the case needing confirmation | before M6 |
 
 ---
