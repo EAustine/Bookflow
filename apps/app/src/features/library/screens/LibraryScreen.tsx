@@ -2,7 +2,6 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -72,6 +71,7 @@ import { HighlightsScreen } from '~/features/reader';
 import { PdfReaderScreen } from '~/features/reader';
 import { EpubFullReaderScreen } from '~/features/reader';
 import { useReadingStats } from '~/features/reader';
+import { alert } from '~/platform/alert';
 
 /**
  * Flip to `true` to preview the library first-load skeleton.
@@ -103,7 +103,7 @@ async function confirmAndDownload(book: Book, voiceId: AudioVoice): Promise<void
     body =
       'This generates audio for the whole book, which uses your monthly audio allowance.';
   }
-  Alert.alert('Download for offline?', body, [
+  alert('Download for offline?', body, [
     { text: 'Cancel', style: 'cancel' },
     { text: 'Download', onPress: () => void downloadBook(book, voiceId) },
   ]);
@@ -669,7 +669,7 @@ export function LibraryScreen({
       const { error } = await supabase.from('books').delete().eq('id', book.id);
       if (error) {
         console.warn('[Library] removeBook delete failed:', error);
-        Alert.alert('Could not remove', formatNetworkError(error, 'removing this book'));
+        alert('Could not remove', formatNetworkError(error, 'removing this book'));
       } else {
         removeConfirmSheetRef.current?.dismiss();
         setBookToRemove(null);
@@ -677,7 +677,7 @@ export function LibraryScreen({
       }
     } catch (err) {
       console.warn('[Library] removeBook threw:', err);
-      Alert.alert('Could not remove', formatNetworkError(err, 'removing this book'));
+      alert('Could not remove', formatNetworkError(err, 'removing this book'));
     } finally {
       setRemoving(false);
     }
@@ -701,7 +701,7 @@ export function LibraryScreen({
       void refetch();
     } catch (err) {
       console.warn('[Library] reprocessBook threw:', err);
-      Alert.alert('Re-process failed', formatNetworkError(err, 'restarting processing'));
+      alert('Re-process failed', formatNetworkError(err, 'restarting processing'));
     }
   }, [actionBook, refetch]);
 

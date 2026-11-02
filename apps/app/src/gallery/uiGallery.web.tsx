@@ -62,6 +62,7 @@ import {
   type DiscoverBookRowProps,
 } from '~/features/discover';
 import { BookGridTile } from '~/features/library';
+import { alert } from '~/platform/alert';
 import type { Book } from '~/types/book';
 import { tokens } from '~/design/tokens';
 
@@ -189,6 +190,43 @@ export const UiGallery: typeof import('./uiGallery').UiGallery = function UiGall
 
         <Stop id="book-grid-tile" label="Book grid tile (card ring)">
           <BookGridTile book={BOOK} width={150} now={NOW} onPress={noop} />
+        </Stop>
+
+        <Text variant="display-sm" style={styles.heading}>
+          Alerts
+        </Text>
+        <Text variant="body-sm" color="muted" style={styles.blurb}>
+          `Alert.alert` draws nothing on web, so these raise the real
+          thing through `platform/alert` and `AlertHost` answers. The
+          second queues two, because two failures in one handler are two
+          things to read.
+        </Text>
+
+        <Stop id="alert-one-button" label="One button">
+          <Button
+            label="Raise a one-button alert"
+            variant="secondary"
+            onPress={() =>
+              alert(
+                'Could not add book',
+                'We could not reach the server. Check your connection and try again.',
+              )
+            }
+          />
+        </Stop>
+
+        <Stop id="alert-two-buttons" label="Cancel and a destructive action">
+          <Button
+            label="Raise two alerts"
+            variant="secondary"
+            onPress={() => {
+              alert('Remove this book?', 'It will leave your library.', [
+                { text: 'Cancel', style: 'cancel' },
+                { text: 'Remove', style: 'destructive' },
+              ]);
+              alert('And one behind it', 'The queue holds them in order.');
+            }}
+          />
         </Stop>
 
         <Text variant="display-sm" style={styles.heading}>

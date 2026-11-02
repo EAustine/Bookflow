@@ -64,12 +64,34 @@ const NATIVE_ONLY = [
  * its zero reads as an all-clear. If you add a block here that sets
  * `no-restricted-imports`, spread this in.
  */
-const nativeOnlyPaths = NATIVE_ONLY.map((name) => ({
-  name,
-  message:
-    `${name} is native-only. Reach it through src/platform/* so the web ` +
-    'build can resolve it (§4 rule 4, §8).',
-}));
+const nativeOnlyPaths = [
+  ...NATIVE_ONLY.map((name) => ({
+    name,
+    message:
+      `${name} is native-only. Reach it through src/platform/* so the web ` +
+      'build can resolve it (§4 rule 4, §8).',
+  })),
+  /**
+   * `Alert` is not a native-only *package*, it is a native-only
+   * *export*, and that is worse: importing it on web resolves fine and
+   * then does nothing. `react-native-web` ships
+   * `class Alert { static alert() {} }`, so for as long as this was
+   * unguarded the web build silently swallowed 30 confirmations and
+   * error messages across seven files. Nothing threw and nothing
+   * logged.
+   *
+   * `importNames` is the whole trick: the module stays importable and
+   * only the one export is banned. `src/platform/**` is exempt by the
+   * ignore on the block below, which is where the real one lives.
+   */
+  {
+    name: 'react-native',
+    importNames: ['Alert'],
+    message:
+      "Alert.alert does nothing on web. Use `alert` from '~/platform/alert', " +
+      'which keeps the OS alert on native and draws the 400 dialog on web (§4).',
+  },
+];
 
 /**
  * Barrels that pull a whole library in for one named export.

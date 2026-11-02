@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Alert, Linking, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Linking, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
@@ -30,6 +30,7 @@ import {
   formatReminderTime,
   useNotificationPermission,
 } from '~/lib/notifications';
+import { alert } from '~/platform/alert';
 
 const WARN = tokens.colors.warn;
 const WARN_BG = tokens.colors.warnBg;
@@ -138,7 +139,7 @@ export function SettingsScreen({
   // while clearing the Library / Discover / audio-session caches.
   const [clearingCache, setClearingCache] = useState(false);
   const handleClearCache = useCallback(() => {
-    Alert.alert(
+    alert(
       'Clear cache?',
       'Clears cached library + Discover lists and the last-listened pointer. Your books and progress stay put, and only the local cache is dropped.',
       [
@@ -159,9 +160,9 @@ export function SettingsScreen({
               if (ours.length > 0) {
                 await AsyncStorage.multiRemove(ours);
               }
-              Alert.alert('Cache cleared', `Removed ${ours.length} cached item(s).`);
+              alert('Cache cleared', `Removed ${ours.length} cached item(s).`);
             } catch (err) {
-              Alert.alert(
+              alert(
                 'Cache clear failed',
                 err instanceof Error ? err.message : 'Unknown error',
               );
@@ -426,7 +427,7 @@ function StorageRow() {
   const totalBytes = storeBytes || diskBytes;
 
   const confirmRemoveAll = () => {
-    Alert.alert(
+    alert(
       'Remove all downloads?',
       'Deletes all offline audio + text from this device. Your books and reading progress stay.',
       [
@@ -441,7 +442,7 @@ function StorageRow() {
   };
 
   const confirmRemoveOne = (bookId: string, title: string) => {
-    Alert.alert(
+    alert(
       'Remove download?',
       `Delete the offline copy of "${title || 'this book'}"? You can re-download it anytime.`,
       [

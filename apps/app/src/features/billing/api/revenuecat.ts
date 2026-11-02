@@ -1,4 +1,4 @@
-import { Alert, Linking, Platform } from 'react-native';
+import { Linking, Platform } from 'react-native';
 import { useEffect, useState } from 'react';
 import {
   configure,
@@ -17,6 +17,7 @@ import {
   type BillingPackage,
   type PaywallOutcome,
 } from '~/platform/billing';
+import { alert } from '~/platform/alert';
 
 export const ENTITLEMENT_PRO = 'Bookflow Pro';
 
@@ -201,7 +202,7 @@ export async function presentPaywall(opts?: {
   // see "Coming soon" than a hard crash. Reports not_presented so the
   // caller's flow doesn't think a purchase happened.
   if (disabled || !configured) {
-    Alert.alert(
+    alert(
       'Upgrade coming soon',
       'Pro subscriptions are being set up. You can use everything in the free tier in the meantime. Thanks for testing!',
     );
@@ -214,7 +215,7 @@ export async function presentCustomerCenter(): Promise<void> {
   // Same disabled-safe behaviour — show an Alert instead of letting
   // the SDK throw an "SDK not configured" runtime error.
   if (disabled || !configured) {
-    Alert.alert(
+    alert(
       'Subscription management coming soon',
       'You can cancel a subscription via your Apple ID / Google account settings in the meantime.',
     );
@@ -243,7 +244,7 @@ export async function openManageSubscription(): Promise<void> {
   try {
     await Linking.openURL(url);
   } catch {
-    Alert.alert(
+    alert(
       'Manage subscription',
       Platform.OS === 'ios'
         ? 'Open Settings → your Apple ID → Subscriptions to manage your plan.'
