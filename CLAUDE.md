@@ -257,11 +257,29 @@ The user is building this alone. That means:
 ## Useful commands
 
 ```bash
-# Start the dev server
-npx expo start
+# Start the dev server. `--dev-client` because the simulator holds a
+# development build, not Expo Go: without Metro running it shows
+# "No development servers found" and looks broken.
+npx expo start --dev-client
 
-# Run on iOS simulator
-npx expo start --ios
+# Run on iOS simulator. NOT `expo run:ios` — on this machine it
+# classifies the booted simulator as a physical device and dies with
+# "No code signing certificates are available", with or without
+# --device, and with no iPhone paired. Build directly instead; a
+# simulator build needs no signing. The native project is
+# `apps/app/ios`, prebuilt from `apps/app/app.json`.
+cd apps/app/ios && xcodebuild -workspace bookflow.xcworkspace \
+  -scheme bookflow -configuration Debug -sdk iphonesimulator \
+  -destination 'platform=iOS Simulator,id=<udid>' \
+  -derivedDataPath build CODE_SIGNING_ALLOWED=NO build
+xcrun simctl install <udid> \
+  apps/app/ios/build/Build/Products/Debug-iphonesimulator/bookflow.app
+
+# Regenerate the native projects after a native dependency changes.
+# Run it from apps/app: the Expo config lives there, and a prebuild
+# from the repo root produces a stub app.json and an ios/ that cannot
+# resolve its own Podfile.
+cd apps/app && npx expo prebuild -p ios
 
 # Run on Android emulator
 npx expo start --android
