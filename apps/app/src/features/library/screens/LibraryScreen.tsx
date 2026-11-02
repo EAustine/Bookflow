@@ -22,6 +22,7 @@ import Svg, {
 import type { PickedFile } from '~/platform/files';
 import { CURATED_LIBRARY } from '~/data/curatedLibrary';
 import {
+  FocusRing,
   type BottomSheetRef,
   Modal,
   Presenter,
@@ -34,6 +35,7 @@ import {
   Text,
 } from '~/components';
 import { tokens } from '~/design/tokens';
+import { useInteractive } from '~/hooks/useInteractive';
 import { useSizeClass } from '~/hooks/useSizeClass';
 import { EmptyLibraryIllustration } from '~/components/illustrations/EmptyLibraryIllustration';
 import { BookCover, ProgressBar } from '../components/BookCover';
@@ -1725,19 +1727,30 @@ function CircleIconButton({
   /** Set when a wide-screen popover anchors to this button. */
   anchorRef?: React.RefObject<View | null>;
 }) {
+  const { interactiveProps, hovered, ringVisible } = useInteractive();
+
   return (
     <Pressable
       ref={anchorRef}
       accessibilityRole="button"
       onPress={onPress}
       disabled={dimmed}
+      {...interactiveProps}
       style={({ pressed }) => [
         styles.circleButton,
-        pressed && !dimmed && { backgroundColor: tokens.bgColors.raised },
+        // Its resting fill is already `bgColors.surface`, which is what
+        // §6 gives a hovered row, so the literal rule would paint
+        // nothing here. One step up the same ramp instead, matching the
+        // treatment it already uses for pressed.
+        (hovered || pressed) && !dimmed && { backgroundColor: tokens.bgColors.raised },
         dimmed && styles.circleButtonDimmed,
       ]}
     >
       <Icon name={icon} size={18} color={tokens.textColors.secondary} />
+
+      {/* A circle, so the ring is one too rather than a rounded square
+          floating inside it. 36 wide less the 2 inset on each side. */}
+      <FocusRing visible={ringVisible} shape="row" radius={16} />
     </Pressable>
   );
 }
@@ -1996,6 +2009,7 @@ function BookListItem({
    */
   selected?: boolean;
 }) {
+  const { interactiveProps, hovered, ringVisible } = useInteractive();
   const rowRef = useRef<View | null>(null);
   const status = book.processingStatus;
   const isProcessing = status === 'pending' || status === 'processing';
@@ -2029,9 +2043,12 @@ function BookListItem({
       onPress={handlePress}
       onLongPress={onLongPress ? () => onLongPress(book, rowRef.current) : undefined}
       delayLongPress={350}
+      {...interactiveProps}
       style={({ pressed }) => [
         styles.bookRow,
         selected && styles.bookRowSelected,
+        // Hover first: a press on a hovered row still reads as pressed.
+        hovered && !isProcessing && { backgroundColor: tokens.hover.rowBackground },
         pressed && !isProcessing && { backgroundColor: tokens.bgColors.raised },
         isProcessing && { opacity: 0.7 },
       ]}
@@ -2083,6 +2100,8 @@ function BookListItem({
       ) : (
         <Icon name="ChevronRight" size={16} color={tokens.textColors.disabled} />
       )}
+
+      <FocusRing visible={ringVisible} shape="row" />
     </Pressable>
   );
 }
@@ -2329,15 +2348,19 @@ function ActionRow({
       ? tokens.colors.error
       : tokens.textColors.primary;
 
+  const { interactiveProps, hovered, ringVisible } = useInteractive();
+
   return (
     <Pressable
       accessibilityRole="button"
       accessibilityState={{ disabled }}
       disabled={disabled}
       onPress={onPress}
+      {...interactiveProps}
       // Hard rule 6: the whole row is the target, not the label.
       style={({ pressed }) => [
         styles.actionRow,
+        hovered && !disabled && { backgroundColor: tokens.hover.rowBackground },
         pressed && !disabled && { backgroundColor: tokens.bgColors.raised },
       ]}
     >
@@ -2352,6 +2375,8 @@ function ActionRow({
       {trailing ? (
         <Text style={styles.actionRowTrailing}>{trailing}</Text>
       ) : null}
+
+      <FocusRing visible={ringVisible} shape="row" />
     </Pressable>
   );
 }

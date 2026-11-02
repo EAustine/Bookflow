@@ -20,6 +20,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { copyText } from '~/platform/clipboard';
 import {
+  FocusRing,
   Badge,
   type BottomSheetRef,
   Button,
@@ -32,6 +33,7 @@ import {
   Text,
 } from '~/components';
 import { tokens } from '~/design/tokens';
+import { useInteractive } from '~/hooks/useInteractive';
 import { useSizeClass } from '~/hooks/useSizeClass';
 import type { Book } from '~/types/book';
 import { SUPPORT_EMAIL } from '~/lib/legalUrls';
@@ -1594,24 +1596,16 @@ function HomeView({
               {CATEGORIES.map((cat) => {
                 const active = cat === activeCategory;
                 return (
-                  <Pressable
+                  <CategoryChip
                     key={cat}
+                    label={cat}
+                    active={active}
                     onPress={() =>
                       cat === 'For you'
                         ? pageScrollRef.current?.scrollTo({ y: 0, animated: true })
                         : onCategory(cat)
                     }
-                    style={[s.chip, active ? s.chipActive : s.chipInactive]}
-                  >
-                    <Text
-                      style={[
-                        s.chipText,
-                        { color: active ? tokens.colors.cream[50] : tokens.colors.ink[700] },
-                      ]}
-                    >
-                      {cat}
-                    </Text>
-                  </Pressable>
+                  />
                 );
               })}
             </ScrollView>
@@ -2182,16 +2176,76 @@ function RailSkeletonRow() {
   );
 }
 
-function ShortCard({ book, onPress }: { book: DiscoverBook; onPress: () => void }) {
+/**
+ * One category chip, extracted so it can hold its own hover and focus
+ * state (§6). The chips are built with `.map`, and a hook cannot live
+ * in a map callback.
+ *
+ * **The hover fill is a judgement call, not a spec value.** §6's rule
+ * for a hovered row is `color/bg/surface`, which is cream-100 — and
+ * cream-100 is already this chip's resting fill, so following the rule
+ * literally would paint nothing. `bgColors.raised` is the next step on
+ * the same ramp, so the chip reads as one level more prominent, which
+ * is what the rule is doing everywhere else. Worth confirming against
+ * the Figma chip's Hover variant before sign-off.
+ *
+ * An active chip keeps its forest fill: lightening a selected chip on
+ * hover would read as deselecting it.
+ */
+function CategoryChip({
+  label,
+  active,
+  onPress,
+}: {
+  label: string;
+  active: boolean;
+  onPress: () => void;
+}) {
+  const { interactiveProps, hovered, ringVisible } = useInteractive();
+
   return (
-    <Pressable onPress={onPress} style={s.shortCard}>
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      {...interactiveProps}
+      style={[
+        s.chip,
+        active ? s.chipActive : s.chipInactive,
+        hovered && !active && { backgroundColor: tokens.bgColors.raised },
+      ]}
+    >
+      <Text
+        style={[
+          s.chipText,
+          { color: active ? tokens.colors.cream[50] : tokens.colors.ink[700] },
+        ]}
+      >
+        {label}
+      </Text>
+
+      {/* The chip's own radius less the inset, so the ring follows the
+          pill rather than cutting corners off it. */}
+      <FocusRing visible={ringVisible} shape="row" radius={14} />
+    </Pressable>
+  );
+}
+
+function ShortCard({ book, onPress }: { book: DiscoverBook; onPress: () => void }) {
+  const { interactiveProps, hovered, ringVisible } = useInteractive();
+
+  return (
+    <Pressable onPress={onPress} {...interactiveProps} style={s.shortCard}>
+      {/* The cover lifts, not the card: §6's rule, and a shadow under
+          the whole card would fall under the title and author. */}
       <CoverBox
         book={book}
-        style={s.shortCover}
+        style={[s.shortCover, hovered && tokens.elevation[2]]}
         fallbackTextStyle={s.shortCoverText}
       />
       <Text style={[s.railCardTitle, { fontSize: 11 }]} numberOfLines={2}>{book.title}</Text>
       <Text style={s.railCardMeta} numberOfLines={1}>{book.author}</Text>
+
+      <FocusRing visible={ringVisible} shape="card" />
     </Pressable>
   );
 }
