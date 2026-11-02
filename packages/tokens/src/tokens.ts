@@ -722,6 +722,13 @@ export const layout = {
   },
   popover: {
     width: 340,
+    /**
+     * The reader's tap-to-translate card, which is its own size:
+     * `AI tools / Translate / Word popover` is 260, narrow enough to
+     * sit over a line of text without covering the sentence the word
+     * came from.
+     */
+    word: 260,
   },
   /**
    * Context menu — narrower than a popover because it holds one line

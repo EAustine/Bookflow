@@ -1,9 +1,33 @@
 /**
- * TranslateWordPopover — tap-to-translate popover.
+ * TranslateWordPopover — the content of the reader's tap-to-translate
+ * pop-over. `AI tools / Translate / Word popover / *` (`314:14135`).
  *
- * Per /docs/specs/b4_01_reader_microinteractions.html. Floats above the tapped
- * word with caret pointing down at it. Dark surface (ink-900) for max contrast
- * against the cream reader background.
+ * ## Why this file was dead, and is not any more
+ *
+ * It was written from `b4_01_reader_microinteractions.html`, exported
+ * from the feature barrel, and had **no call sites**: the live pop-over
+ * was a separate `TranslatePopover` inside `ReaderScreen` showing a
+ * dictionary definition and nothing else. Two components for one
+ * surface, and the one on screen was not the one in the file.
+ *
+ * R-M3c anchored the live one over the tapped word, which is what §4
+ * asks for, and left the content alone because a translation is a data
+ * change rather than a layout one. This is that follow-up: the frame's
+ * content, driven by the translation service, with `ReaderScreen` now
+ * reduced to fetching and placing it.
+ *
+ * ## What the frame draws
+ *
+ * 260 wide, dark, with five stacked blocks: the language pair and a
+ * close button, the word and its phonetic, the definition, the
+ * translation under its own language label, and Play / Save. The
+ * component in Figma carries **no caret** — the earlier version here
+ * drew one, from the older spec, and it is gone.
+ *
+ * Two states the frame does not draw but the app needs: the lookup and
+ * the translation each arrive on their own, so each line says it is
+ * working rather than leaving a gap that shifts when it fills, and
+ * Save becomes Saved once the word is in the notebook.
  */
 
 import { Pressable, StyleSheet, View } from 'react-native';
@@ -13,14 +37,17 @@ import { tokens } from '~/design/tokens';
 export type TranslateWordPopoverProps = {
   word: string;
   phonetic?: string;
-  definition: string;
-  translation: string;
-  fromLang?: string; // e.g. "EN"
-  toLang?: string; // e.g. "TWI"
-  /** Horizontal anchor offset for the caret (px from popover left). */
-  caretOffset?: number;
-  onPlayAudio?: () => void;
-  onSave?: () => void;
+  /** Null while the dictionary is still answering. */
+  definition: string | null;
+  /** Null while the translation is still answering. */
+  translation: string | null;
+  /** Shown in the header and above the translation, e.g. "TWI". */
+  toLang: string;
+  fromLang?: string;
+  /** The word is already in the notebook. */
+  saved: boolean;
+  onPlayAudio: () => void;
+  onSave: () => void;
   onDismiss: () => void;
 };
 
@@ -29,93 +56,96 @@ export function TranslateWordPopover({
   phonetic,
   definition,
   translation,
+  toLang,
   fromLang = 'EN',
-  toLang = 'TWI',
-  caretOffset = 62,
+  saved,
   onPlayAudio,
   onSave,
   onDismiss,
 }: TranslateWordPopoverProps) {
   return (
-    <View style={styles.popover} pointerEvents="box-none">
-      {/* Header: language pair + close */}
+    <View style={styles.popover}>
       <View style={styles.header}>
         <View style={styles.langPair}>
           <Text style={styles.langFrom}>{fromLang}</Text>
           <Text style={styles.langArrow}>→</Text>
           <Text style={styles.langTo}>{toLang}</Text>
         </View>
-        <Pressable onPress={onDismiss} style={styles.closeBtn} hitSlop={8} accessibilityLabel="Close">
+        <Pressable
+          onPress={onDismiss}
+          style={styles.closeBtn}
+          hitSlop={8}
+          accessibilityRole="button"
+          accessibilityLabel="Close"
+        >
           <Icon name="X" size={9} color={tokens.colors.ink[400]} />
         </Pressable>
       </View>
 
-      {/* Word + phonetic */}
       <View style={styles.wordRow}>
-        <Text style={styles.word}>{word}</Text>
-        {phonetic && <Text style={styles.phonetic}>{phonetic}</Text>}
+        <Text style={styles.word} numberOfLines={2}>
+          {word}
+        </Text>
+        {phonetic ? <Text style={styles.phonetic}>{phonetic}</Text> : null}
       </View>
 
-      {/* Definition */}
-      <Text style={styles.definition}>{definition}</Text>
+      <Text style={styles.definition}>
+        {definition ?? 'Looking up…'}
+      </Text>
 
-      {/* Translation */}
       <View style={styles.translationRow}>
         <Text style={styles.translationLabel}>{toLang}</Text>
-        <Text style={styles.translation}>{translation}</Text>
+        <Text style={styles.translation}>
+          {translation ?? 'Translating…'}
+        </Text>
       </View>
 
-      {/* Actions */}
       <View style={styles.actions}>
         <Pressable
-          style={({ pressed }) => [styles.btn, styles.btnAudio, pressed && { opacity: 0.85 }]}
-          onPress={onPlayAudio ?? (() => {})}
+          style={({ pressed }) => [styles.btn, pressed && styles.btnPressed]}
+          onPress={onPlayAudio}
           accessibilityRole="button"
+          accessibilityLabel="Play pronunciation"
         >
-          <Icon name="Music" size={11} color={tokens.colors.cream[50]} />
-          <Text style={styles.btnAudioLabel}>Play</Text>
+          <Icon name="Music" size={14} color={tokens.colors.cream[50]} />
+          <Text style={styles.btnLabel}>Play</Text>
         </Pressable>
         <Pressable
-          style={({ pressed }) => [styles.btn, styles.btnSave, pressed && { opacity: 0.85 }]}
-          onPress={onSave ?? (() => {})}
+          style={({ pressed }) => [
+            styles.btn,
+            pressed && styles.btnPressed,
+            saved && styles.btnSaved,
+          ]}
+          onPress={onSave}
+          disabled={saved}
           accessibilityRole="button"
         >
-          <Text style={styles.btnSaveLabel}>Save word</Text>
+          <Icon
+            name={saved ? 'Check' : 'Notebook'}
+            size={14}
+            color={tokens.colors.cream[50]}
+          />
+          <Text style={styles.btnLabel}>{saved ? 'Saved' : 'Save'}</Text>
         </Pressable>
       </View>
-
-      {/* Down-pointing caret */}
-      <View style={[styles.caret, { left: caretOffset }]} />
     </View>
   );
 }
 
-// ─── Styles ───────────────────────────────────────────────────────────────────
-
-const POPOVER_BG = tokens.colors.ink[900];
-
 const styles = StyleSheet.create({
   popover: {
-    backgroundColor: POPOVER_BG,
+    backgroundColor: tokens.colors.ink[900],
     borderRadius: 14,
-    overflow: 'visible',
-    shadowColor: '#000',
-    shadowOpacity: 0.3,
-    shadowRadius: 16,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 12,
+    paddingBottom: 12,
+    ...tokens.elevation[4],
   },
 
-  // Header
   header: {
+    height: 36,
+    paddingHorizontal: 14,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 14,
-    paddingTop: 10,
-    paddingBottom: 8,
-    borderBottomWidth: 0.5,
-    borderBottomColor: 'rgba(255,255,255,0.1)',
   },
   langPair: {
     flexDirection: 'row',
@@ -124,135 +154,93 @@ const styles = StyleSheet.create({
   },
   langFrom: {
     fontFamily: tokens.fonts.uiMedium,
-    fontSize: 9,
-    fontWeight: '500',
-    letterSpacing: 0.06,
-    textTransform: 'uppercase',
+    fontSize: 11,
     color: tokens.colors.ink[400],
   },
   langArrow: {
-    fontSize: 10,
-    color: tokens.colors.ink[500],
+    fontSize: 11,
+    color: tokens.colors.ink[400],
   },
   langTo: {
     fontFamily: tokens.fonts.uiMedium,
-    fontSize: 9,
-    fontWeight: '500',
-    letterSpacing: 0.06,
-    textTransform: 'uppercase',
+    fontSize: 11,
     color: tokens.colors.amber[500],
   },
   closeBtn: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    backgroundColor: 'rgba(255,255,255,0.1)',
+    width: 20,
+    height: 20,
     alignItems: 'center',
     justifyContent: 'center',
   },
 
-  // Word
   wordRow: {
     paddingHorizontal: 14,
-    paddingTop: 10,
-    paddingBottom: 6,
+    gap: 2,
   },
   word: {
-    fontFamily: tokens.fonts.reading,
-    fontSize: 22,
-    fontWeight: '500',
-    letterSpacing: -0.22,
-    color: '#fff',
-    marginBottom: 3,
+    fontFamily: tokens.fonts.display,
+    fontSize: 24,
+    lineHeight: 30,
+    color: tokens.colors.cream[50],
   },
   phonetic: {
-    fontFamily: tokens.fonts.reading,
-    fontSize: 11,
-    fontStyle: 'italic',
-    color: tokens.colors.ink[400],
-    marginBottom: 6,
-  },
-
-  // Definition
-  definition: {
     fontFamily: tokens.fonts.ui,
     fontSize: 12,
-    color: tokens.colors.ink[300],
-    lineHeight: 18,
-    paddingHorizontal: 14,
-    paddingBottom: 10,
-    borderBottomWidth: 0.5,
-    borderBottomColor: 'rgba(255,255,255,0.1)',
+    color: tokens.colors.ink[400],
   },
 
-  // Translation
-  translationRow: {
+  definition: {
     paddingHorizontal: 14,
     paddingTop: 10,
-    paddingBottom: 8,
+    fontFamily: tokens.fonts.ui,
+    fontSize: 13,
+    lineHeight: 18,
+    color: tokens.colors.ink[200],
+  },
+
+  translationRow: {
+    paddingHorizontal: 14,
+    paddingTop: 12,
+    gap: 4,
   },
   translationLabel: {
     fontFamily: tokens.fonts.uiMedium,
-    fontSize: 9,
-    fontWeight: '500',
-    letterSpacing: 0.06,
-    textTransform: 'uppercase',
-    color: tokens.colors.ink[500],
-    marginBottom: 4,
+    fontSize: 10,
+    letterSpacing: 0.5,
+    color: tokens.colors.ink[400],
   },
   translation: {
-    fontFamily: tokens.fonts.reading,
+    fontFamily: tokens.fonts.uiMedium,
     fontSize: 16,
-    color: tokens.colors.amber[500],
     lineHeight: 21,
+    color: tokens.colors.amber[500],
   },
 
-  // Actions
   actions: {
     flexDirection: 'row',
-    gap: 7,
     paddingHorizontal: 14,
-    paddingBottom: 12,
+    paddingTop: 12,
+    gap: 7,
   },
   btn: {
+    flex: 1,
     height: 30,
-    paddingHorizontal: 12,
     borderRadius: 8,
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
     gap: 5,
+    backgroundColor: tokens.colors.ink[700],
   },
-  btnAudio: {
-    backgroundColor: 'rgba(255,255,255,0.1)',
+  btnPressed: {
+    opacity: tokens.hover.filledOpacity,
   },
-  btnAudioLabel: {
+  btnSaved: {
+    backgroundColor: tokens.colors.forest[700],
+  },
+  btnLabel: {
     fontFamily: tokens.fonts.uiMedium,
-    fontSize: 11,
-    fontWeight: '500',
-    color: '#fff',
-  },
-  btnSave: {
-    backgroundColor: tokens.colors.forest[800],
-    marginLeft: 'auto',
-  },
-  btnSaveLabel: {
-    fontFamily: tokens.fonts.uiMedium,
-    fontSize: 11,
-    fontWeight: '500',
+    fontSize: 12,
     color: tokens.colors.cream[50],
-  },
-
-  // Caret pointing down at the tapped word
-  caret: {
-    position: 'absolute',
-    bottom: -7,
-    width: 14,
-    height: 7,
-    backgroundColor: POPOVER_BG,
-    // Triangle approximation via transform (RN doesn't support clip-path).
-    // We keep this as a small filled rect; real implementation uses an SVG.
-    borderBottomLeftRadius: 2,
-    borderBottomRightRadius: 2,
-    transform: [{ scaleX: 0.6 }],
   },
 });

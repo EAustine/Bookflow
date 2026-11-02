@@ -46,7 +46,16 @@
 
 import { ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Button, Input, ListRow, RecentListenRow, Text } from '~/components';
+import { useRef } from 'react';
+import {
+  Button,
+  Input,
+  ListRow,
+  Presenter,
+  RecentListenRow,
+  Text,
+  type BottomSheetRef,
+} from '~/components';
 import { CheckEmailIllustration } from '~/components/illustrations/CheckEmailIllustration';
 import { EmptyLibraryIllustration } from '~/components/illustrations/EmptyLibraryIllustration';
 import { EmptyListenIllustration } from '~/components/illustrations/EmptyListenIllustration';
@@ -62,6 +71,7 @@ import {
   type DiscoverBookRowProps,
 } from '~/features/discover';
 import { BookGridTile } from '~/features/library';
+import { TranslateWordPopover } from '~/features/reader';
 import { alert } from '~/platform/alert';
 import type { Book } from '~/types/book';
 import { tokens } from '~/design/tokens';
@@ -119,6 +129,10 @@ const NOW = new Date('2026-11-02T09:00:00Z');
 const noop = () => {};
 
 export const UiGallery: typeof import('./uiGallery').UiGallery = function UiGallery() {
+  // Presented exactly as the Listen tab presents it: a `Presenter`
+  // with an anchor ref, which does the measuring for its callers.
+  const sideAnchorRef = useRef<View>(null);
+  const sideRef = useRef<BottomSheetRef>(null);
   return (
     <SafeAreaView style={styles.root} testID="ui-gallery">
       <ScrollView contentContainerStyle={styles.content}>
@@ -190,6 +204,54 @@ export const UiGallery: typeof import('./uiGallery').UiGallery = function UiGall
 
         <Stop id="book-grid-tile" label="Book grid tile (card ring)">
           <BookGridTile book={BOOK} width={150} now={NOW} onPress={noop} />
+        </Stop>
+
+        <Text variant="display-sm" style={styles.heading}>
+          Popovers
+        </Text>
+        <Text variant="body-sm" color="muted" style={styles.blurb}>
+          Every popover in the app drops below its trigger. The Listen
+          tab's voice pill is the one that sits beside it, so this is
+          `placePopover`'s side axis with the arrow on the card's own
+          left edge.
+        </Text>
+
+        <Stop id="popover-side" label="Side axis">
+          <View ref={sideAnchorRef} collapsable={false}>
+            <Button
+              label="Open beside me"
+              variant="secondary"
+              onPress={() => sideRef.current?.present()}
+            />
+          </View>
+          <Presenter
+            kind="menu"
+            axis="side"
+            anchorRef={sideAnchorRef}
+            ref={sideRef}
+            title="Voice"
+          >
+            <Text variant="body-sm" color="muted">
+              Beside the trigger, top aligned with it, arrow pointing
+              back at it.
+            </Text>
+          </Presenter>
+        </Stop>
+
+        <Stop id="translate-word-popover" label="Translate word popover, 260">
+          <View style={styles.translateCard}>
+            <TranslateWordPopover
+              word="acknowledged"
+              phonetic="/əkˈnɒlɪdʒd/"
+              definition="Accepted or admitted to be true."
+              translation="agye tom"
+              toLang="TWI"
+              saved={false}
+              onPlayAudio={noop}
+              onSave={noop}
+              onDismiss={noop}
+            />
+          </View>
         </Stop>
 
         <Text variant="display-sm" style={styles.heading}>
@@ -331,5 +393,8 @@ const styles = StyleSheet.create({
   },
   specimen: {
     padding: tokens.focusRing.card.outset + tokens.focusRing.width,
+  },
+  translateCard: {
+    width: tokens.layout.popover.word,
   },
 });

@@ -127,3 +127,84 @@ describe('placePopover', () => {
     }
   });
 });
+
+/**
+ * The `side` axis, added for the Listen tab's voice pill. Every other
+ * popover in the app drops below its trigger; this one sits beside it,
+ * because the pill is small enough to point an arrow at and the picker
+ * is taller than the room underneath.
+ */
+describe('placePopover, side axis', () => {
+  const SIDE = { ...OPTS, axis: 'side' as const };
+  /** The voice pill on the Listen tab's player card. */
+  const pill: AnchorRect = { x: 120, y: 293, width: 150, height: 36 };
+
+  it('puts the card to the trigger\'s right, arrow on its own left', () => {
+    const p = placePopover(pill, W, H, SIDE);
+    // 120 + 150 + the 8 default gap.
+    expect(p.left).toBe(278);
+    expect(p.arrowSide).toBe('left');
+    expect(p.arrowLeft).toBeNull();
+  });
+
+  it('aligns the card top with the trigger top, as the frame draws it', () => {
+    // `Listen / Voice / Popover / Expanded` puts the card at y 293,
+    // which is the pill's own y.
+    const p = placePopover(pill, W, H, SIDE);
+    expect(p.from).toBe('top');
+    expect(p.offset).toBe(293);
+  });
+
+  it('points the arrow at the trigger centre, not at the card top', () => {
+    const p = placePopover(pill, W, H, SIDE);
+    // Pill centre is 293 + 18 = 311, card top is 293, arrow is 10 tall.
+    expect(p.arrowTop).toBe(311 - 293 - 5);
+  });
+
+  it('prefers the right even when both sides fit', () => {
+    // The pill above sits too far left for the left side to be an
+    // option, so it cannot tell a preference from a fallback. This one
+    // fits either way: right is what the frame draws.
+    const middle: AnchorRect = { x: 500, y: 300, width: 150, height: 36 };
+    const p = placePopover(middle, W, H, SIDE);
+    expect(p.left).toBe(500 + 150 + 8);
+    expect(p.arrowSide).toBe('left');
+  });
+
+  it('flips to the left when the right would cross the gutter', () => {
+    // A pill hard against the right edge: 340 + 8 will not fit after it.
+    const nearRight: AnchorRect = { x: W - 200, y: 300, width: 150, height: 36 };
+    const p = placePopover(nearRight, W, H, SIDE);
+    expect(p.left).toBe(W - 200 - 8 - 340);
+    expect(p.arrowSide).toBe('right');
+  });
+
+  it('gives up the arrow when neither side fits', () => {
+    // A 600 window cannot hold a 340 card beside a centred 150 trigger
+    // on either side, so the card is clamped and the arrow goes, which
+    // is the same concession the vertical axis makes at an edge.
+    const p = placePopover({ x: 225, y: 300, width: 150, height: 36 }, 600, H, SIDE);
+    expect(p.arrowSide).toBeNull();
+    expect(p.arrowTop).toBeNull();
+    expect(p.left).toBeGreaterThanOrEqual(32);
+    expect(p.left + 340).toBeLessThanOrEqual(600 - 32);
+  });
+
+  it('pulls the card up rather than squeezing it at the bottom edge', () => {
+    const low: AnchorRect = { x: 120, y: H - 60, width: 150, height: 36 };
+    const p = placePopover(low, W, H, SIDE);
+    expect(p.offset).toBeLessThan(low.y);
+    expect(p.maxHeight).toBeGreaterThanOrEqual(160);
+    // Still on screen.
+    expect(p.offset).toBeGreaterThanOrEqual(32);
+  });
+
+  it('keeps the arrow inside the card at every trigger height', () => {
+    for (const y of [0, 40, 300, 700, 819]) {
+      const p = placePopover({ x: 120, y, width: 150, height: 36 }, W, H, SIDE);
+      if (p.arrowTop === null) continue;
+      expect(p.arrowTop).toBeGreaterThanOrEqual(12);
+      expect(p.arrowTop).toBeLessThanOrEqual(p.maxHeight - 12 - 10);
+    }
+  });
+});

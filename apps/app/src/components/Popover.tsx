@@ -60,6 +60,13 @@ export type PopoverProps = {
   arrow?: boolean;
   /** Gap between the trigger and the card. Defaults to 8. */
   offset?: number;
+  /**
+   * Beside the trigger rather than under it. One popover in the app
+   * wants it: the Listen tab's voice pill, which
+   * `Listen / Voice / Popover / *` draws to the pill's right with the
+   * arrow on the card's own left edge. See `placePopover`.
+   */
+  axis?: 'vertical' | 'side';
 };
 
 const ARROW = 10;
@@ -74,6 +81,7 @@ export function Popover({
   width = tokens.layout.popover.width,
   arrow = true,
   offset,
+  axis = 'vertical',
 }: PopoverProps) {
   const { width: winW, height: winH } = useWindowDimensions();
   const { sizeClass } = useSizeClass();
@@ -88,8 +96,10 @@ export function Popover({
     offset,
     arrow: ARROW,
     arrowInset: tokens.space.md,
+    axis,
   });
   const arrowLeft = arrow ? placement.arrowLeft : null;
+  const arrowTop = arrow ? placement.arrowTop : null;
 
   return (
     <RNModal
@@ -121,6 +131,17 @@ export function Popover({
               styles.arrow,
               { left: arrowLeft },
               placement.from === 'top' ? styles.arrowUp : styles.arrowDown,
+            ]}
+          />
+        )}
+        {arrowTop !== null && (
+          <View
+            style={[
+              styles.arrow,
+              { top: arrowTop },
+              placement.arrowSide === 'left'
+                ? styles.arrowLeftEdge
+                : styles.arrowRightEdge,
             ]}
           />
         )}
@@ -165,6 +186,14 @@ const styles = StyleSheet.create({
   },
   arrowDown: {
     bottom: -ARROW / 2,
+  },
+  // `placePopover`'s `arrowSide` names the card's own edge, so a card
+  // to the trigger's right carries its arrow on the left.
+  arrowLeftEdge: {
+    left: -ARROW / 2,
+  },
+  arrowRightEdge: {
+    right: -ARROW / 2,
   },
   title: {
     fontFamily: tokens.fonts.display,

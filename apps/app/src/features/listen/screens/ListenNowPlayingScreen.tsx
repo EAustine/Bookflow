@@ -102,6 +102,15 @@ export type ListenNowPlayingScreenProps = {
   onScrubTo?: (percent: number) => void;
   onSpeedChange: (next: Speed) => void;
   onOpenVoiceSheet: () => void;
+  /**
+   * Above Compact the voice pill opens a popover beside itself
+   * (`Listen / Voice / Popover / *`) rather than expanding to the
+   * foreground. The picker lives in `ListenScreen`, which owns
+   * `VoiceSheet`, so the tab hands it an anchor and a callback instead
+   * of hosting one of its own.
+   */
+  voiceAnchorRef?: RefObject<View | null>;
+  onOpenVoicePopover?: () => void;
   onOpenRecent: (id: string) => void;
   onSeeAllRecent?: () => void;
   onOpenProfile?: () => void;
@@ -130,6 +139,8 @@ export function ListenNowPlayingScreen({
   onScrubTo,
   onSpeedChange,
   onOpenVoiceSheet,
+  voiceAnchorRef,
+  onOpenVoicePopover,
   onOpenRecent,
   onSeeAllRecent,
   onOpenProfile,
@@ -315,7 +326,18 @@ export function ListenNowPlayingScreen({
           onPress={() => speedSheetRef.current?.present()}
           opacity={dimOpacity}
         />
-        <Pill icon="Microphone" label={voice} onPress={onOpenVoiceSheet} opacity={dimOpacity} />
+        <Pill
+          icon="Microphone"
+          label={voice}
+          anchorRef={voiceAnchorRef}
+          // Compact keeps what it had: the pill expands to the
+          // foreground player, where the picker already lives. The
+          // frames only draw the popover from Medium up.
+          onPress={
+            isWide && onOpenVoicePopover ? onOpenVoicePopover : onOpenVoiceSheet
+          }
+          opacity={dimOpacity}
+        />
       </View>
     </View>
   );

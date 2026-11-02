@@ -97,12 +97,19 @@ states centred, and the "Listen" title held to one line.
   build log keeps Expanded on the bottom bar.
 
 **Carried from M4b:** Figma's **Voice popover on the Now playing tab**
-(`329:2927` and its Medium and Desktop twins). It is side-anchored
-beside the pill with a left-pointing arrow, and `placePopover` does
-above and below only. The tab's voice pill still expands to the
-foreground, where the picker lives. Building it means teaching the
-shared module side placement for the one popover in the app that wants
-it.
+(`329:2927` and its Medium and Desktop twins). ✅ **Done.**
+`placePopover` gained a `side` axis: the card sits beside the trigger
+with the arrow on its own leading edge, top-aligned with the trigger
+as the frame draws it (the card's 293 is the pill's), flipping to the
+other side when the preferred one would cross the gutter and giving up
+the arrow when neither fits. Eight tests, and a gallery specimen that
+measures 522 against a trigger ending at 514, which is the 8 gap.
+
+The picker itself is `ListenScreen`'s `VoiceSheet`, now exported and
+presented twice. The tab is not that screen's child, so the popover is
+hosted in `ListenHomeScreen`, the nearest surface that can see both.
+Compact still expands to the foreground, which is what the frames
+draw: the popover exists only from Medium up.
 
 ## R-M5 is two milestones
 
@@ -475,11 +482,18 @@ Save, at **260** wide. That is also the prop shape of
 from the barrel and **has no call sites** — the live component is a
 separate, module-local `TranslatePopover` inside `ReaderScreen`.
 
-So the follow-up is: move the pop-over to that content, driven by the
-existing translation service, and delete whichever of the two
-components loses. Held separate from R-M3c because it is a content and
-data change — the pop-over would need a translation as well as a
-definition — and nothing in §7 asks for one.
+✅ **Done.** `TranslateWordPopover` is the frame's content at its 260
+(`layout.popover.word`), and `ReaderScreen`'s `TranslatePopover` is now
+only the fetching and the placing: `lookupWord` for the word, phonetic
+and definition, `translateSnippet` for the translation, into the
+language the You tab's picker set. The two requests land separately
+and each line says it is working rather than leaving a gap that shifts
+when it fills.
+
+The duplicate lost: ReaderScreen's hand-rolled card, its twelve
+`popover*` styles and the `abbreviatePos` helper that served its
+part-of-speech gutter are gone. The caret went too — the earlier file
+drew one from an older spec and the Figma component has none.
 
 ## Carried, with a reason
 
