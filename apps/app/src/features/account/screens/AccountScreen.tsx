@@ -1,7 +1,6 @@
 import { useCallback, useRef, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   Image,
   Linking,
   Pressable,
@@ -37,6 +36,7 @@ import type { YouPlan, YouProfile } from './YouScreen';
 // External URLs for the Privacy & data rows live in a shared
 // constants module so a marketing change is a one-line edit.
 import { PRIVACY_POLICY_URL, TERMS_OF_SERVICE_URL } from '~/lib/legalUrls';
+import { alert } from '~/platform/alert';
 
 // ─── Props ────────────────────────────────────────────────────────────────────
 
@@ -87,10 +87,10 @@ export function AccountScreen({
       if (supported) {
         await Linking.openURL(url);
       } else {
-        Alert.alert("Can't open link", url);
+        alert("Can't open link", url);
       }
     } catch (err) {
-      Alert.alert("Can't open link", err instanceof Error ? err.message : 'Unknown error');
+      alert("Can't open link", err instanceof Error ? err.message : 'Unknown error');
     }
   }, []);
 
@@ -101,7 +101,7 @@ export function AccountScreen({
       const result = await restorePurchases();
       if (result.ok) {
         if (result.pro) {
-          Alert.alert(
+          alert(
             'Purchases restored',
             "Your Pro subscription is active again. You're all set.",
           );
@@ -109,18 +109,18 @@ export function AccountScreen({
           // ok:true but no Pro entitlement = restore succeeded, found
           // nothing. Don't title it "restored" — that reads like it did
           // something. Tell them what to check (different Google account).
-          Alert.alert(
+          alert(
             'No purchases found',
             "We couldn't find any past purchases on this Google account. If you subscribed with a different account, switch to it in the Play Store and try again.",
           );
         }
       } else if (result.reason === 'disabled') {
-        Alert.alert(
+        alert(
           'Restore unavailable',
           'In-app purchases are not configured for this build.',
         );
       } else {
-        Alert.alert(
+        alert(
           "Couldn't restore purchases",
           result.message ?? 'Please try again in a moment.',
         );
@@ -149,7 +149,7 @@ export function AccountScreen({
     } catch {
       // fall through to the manual instruction
     }
-    Alert.alert(
+    alert(
       'Student verification',
       `Email ${email} from your school (.edu) address and we'll apply the student rate to your account.`,
     );
@@ -169,7 +169,7 @@ export function AccountScreen({
       if (error || !data?.ok) {
         const message =
           error?.message ?? data?.message ?? 'Please try again in a moment.';
-        Alert.alert("Couldn't delete account", message);
+        alert("Couldn't delete account", message);
         return;
       }
       deleteSheetRef.current?.dismiss();
@@ -177,7 +177,7 @@ export function AccountScreen({
       // the session). Triggers the App-level redirect to Welcome.
       await onSignOut();
     } catch (err) {
-      Alert.alert(
+      alert(
         "Couldn't delete account",
         err instanceof Error ? err.message : 'Unknown error',
       );
@@ -201,7 +201,7 @@ export function AccountScreen({
         message: blob,
       });
     } catch (err) {
-      Alert.alert(
+      alert(
         "Couldn't export your data",
         err instanceof Error ? err.message : 'Something went wrong.',
       );
@@ -450,7 +450,7 @@ function EditProfileScreen({
    */
   const removeAvatar = useCallback(() => {
     const hasServerAvatar = !!avatarUrl;
-    Alert.alert(
+    alert(
       'Remove profile photo?',
       hasServerAvatar
         ? 'Your profile will go back to showing your initials.'
@@ -693,7 +693,7 @@ function EditProfileScreen({
       // takes a second to propagate through useCurrentUser's
       // realtime → public URL → Image fetch chain.
       if (nextAvatarPath) {
-        Alert.alert(
+        alert(
           'Photo saved',
           'Your profile photo has been updated.',
           [{ text: 'OK', onPress: onBack }],

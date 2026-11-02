@@ -8,7 +8,6 @@ import {
 } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -76,6 +75,7 @@ import {
   type FeaturedCardSize,
   RailCard,
 } from '../components';
+import { alert } from '~/platform/alert';
 
 // ─── Cover palette ────────────────────────────────────────────────────────────
 
@@ -1075,7 +1075,7 @@ export function DiscoverScreen({
       return next;
     });
     if (!result.ok) {
-      Alert.alert("Couldn't add book", importErrorMessage(result.error));
+      alert("Couldn't add book", importErrorMessage(result.error));
     }
   };
 
@@ -1104,7 +1104,7 @@ export function DiscoverScreen({
       setAlreadyRemovedOpen(true);
       return;
     }
-    Alert.alert('Already removed', 'This book is no longer in your library.');
+    alert('Already removed', 'This book is no longer in your library.');
   }, [sizeClass]);
 
   const handleOpenInReader = useCallback(
@@ -1191,12 +1191,12 @@ export function DiscoverScreen({
           .eq('id', removeMatchId);
         if (error) {
           console.warn('[Discover] removeBook delete failed:', error);
-          Alert.alert("Couldn't remove", formatNetworkError(error, 'removing this book'));
+          alert("Couldn't remove", formatNetworkError(error, 'removing this book'));
         }
         // realtime in useBooks() updates libraryIds for us
       } catch (err) {
         console.warn('[Discover] removeBook threw:', err);
-        Alert.alert("Couldn't remove", formatNetworkError(err, 'removing this book'));
+        alert("Couldn't remove", formatNetworkError(err, 'removing this book'));
       } finally {
         setRemoving(false);
         removeSheetRef.current?.dismiss();

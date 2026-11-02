@@ -25,6 +25,7 @@ import { BottomSheetModalProvider } from "@gorhom/bottom-sheet";
 import { SplashScreen, setupRevenueCatAuthSync } from "~/features/auth";
 import { RootErrorBoundary } from "~/components/RootErrorBoundary";
 import { AudioSessionProvider } from "~/features/listen";
+import { AlertHost } from "~/components/AlertHost";
 import { ToastHost } from "~/components/ToastHost";
 import { QueryProvider } from "~/core/query";
 import { StatusBar } from "expo-status-bar";
@@ -339,6 +340,11 @@ export default function RootLayout() {
               as App.tsx had it: toasts must paint above bottom sheets,
               and the modal provider's portal would otherwise cover them. */}
             <ToastHost />
+            {/* Web only in practice: on native the OS draws the alert
+                and this subscribes to a stub that never fires. Out
+                here with the toast for the same reason — an alert
+                raised from a catch block has no tree of its own. */}
+            <AlertHost />
           </SafeAreaProvider>
         </GestureHandlerRootView>
       </QueryProvider>

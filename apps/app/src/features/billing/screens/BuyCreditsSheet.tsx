@@ -7,12 +7,13 @@ import {
   useRef,
   useState,
 } from 'react';
-import { ActivityIndicator, Alert, Pressable, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
 import { Icon, Presenter, type PresenterRef, Text } from '~/components';
 import { tokens } from '~/design/tokens';
 import { toast } from '~/lib/toast';
 import type { BillingPackage } from '~/platform/billing';
 import { getTopupPackages, purchaseTopup, topupMetaFor, type TopupKind, type TopupMeta } from '../api/revenuecat';
+import { alert } from '~/platform/alert';
 
 /**
  * "Buy credits" bottom sheet — lists the consumable top-up packs from the
@@ -203,7 +204,7 @@ export const BuyCreditsSheet = forwardRef<BuyCreditsSheetRef, BuyCreditsSheetPro
       onPurchased?.();
       toast.show('Purchase complete. Your credits are on the way');
     } else if (!res.cancelled) {
-      Alert.alert('Purchase failed', res.error ?? 'Please try again.');
+      alert('Purchase failed', res.error ?? 'Please try again.');
     }
   }, [onPurchased]);
 

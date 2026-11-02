@@ -9,7 +9,6 @@ import {
   useState,
 } from 'react';
 import {
-  Alert,
   Animated,
   ActivityIndicator,
   FlatList,
@@ -79,6 +78,7 @@ import {
   BottomSheetView,
 } from '@gorhom/bottom-sheet';
 import { translateSnippet, translateSnippetErrorMessage } from '../api/translateSnippet';
+import { alert } from '~/platform/alert';
 
 // ─── Theme palette ────────────────────────────────────────────────────────────
 
@@ -1406,7 +1406,7 @@ export function ReaderScreen({
       onBack();
     } catch (err) {
       console.warn('[Reader] reprocessBook threw:', err);
-      Alert.alert(
+      alert(
         "Couldn't restart processing",
         formatNetworkError(err, 'restarting processing'),
       );

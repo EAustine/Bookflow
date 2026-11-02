@@ -398,15 +398,27 @@ offline shipped complete in R-M2a; it did not.
 
 **Carried from M8:**
 
-- **The 30 `Alert.alert` sites stay native.** The brief's row is "iOS
-  alert on tablets, web dialog on desktop", so on native they are
-  already correct at every size M8 covers, and the Desktop 400 dialog
-  is web-only and waits for R-M9 with the Monetisation pair. Worth
-  writing down because this doc had assigned "the five native `Alert`s"
-  to R-M8 and the real count is **30 across 8 files**, 12 of them in
-  `AccountScreen`. `Presenter` has no `'alert'` kind, so the one
-  existing non-native case — Discover's "Already removed", from M5a —
-  hand-rolls a bare `Modal`.
+- **The 30 `Alert.alert` sites stay native.** ✅ **Done, and it was
+  worse than a layout gap.** The brief's row is "iOS alert on tablets,
+  web dialog on desktop", so on native they were already correct at
+  every size M8 covers. On web they were not merely unstyled: they drew
+  **nothing**. `react-native-web` ships
+  `class Alert { static alert() {} }`, so every one of those 30
+  confirmations and error messages had been silently swallowed since
+  M4a made the web bundle load. Nothing threw and nothing logged.
+
+  `platform/alert` now keeps the OS alert on native and enqueues on
+  web, `components/AlertHost` draws the 400 dialog from
+  `System / Error / Generic alert / Desktop`, and the named import
+  `Alert` from `react-native` is a lint error outside `platform/`.
+  The split is platform, not width: the frames put a native alert on
+  Compact, Medium and Expanded and a `dialog` only on Desktop, which
+  are the tablet frames and the web frame.
+
+  The real count is **30 across 7 files**, 12 of them in
+  `AccountScreen`. Discover's "Already removed", from M5a, keeps its
+  hand-rolled `Modal`: it is a screen state with its own frame rather
+  than an alert.
 - **`Skeleton`'s shimmer is two hex literals**, `#EAE6DC` → `#F0EDE5`,
   where §4 says skeletons use `color/bg/surface`. Neither is on the
   cream ramp (`surface` is `#F5F1E8`, `cream.200` is `#ECE5D5`), so
