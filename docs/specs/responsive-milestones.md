@@ -30,7 +30,7 @@ spelled out below.
 | §7 Copy and product | R-M2b (Library), R-M10 (rest) | Partly done. See the table below |
 | §8 Left out on purpose | — | Nothing to build |
 | §9 Build order | — | This table is it |
-| §10 Done when | R-M10 | **In progress.** 10.3 and 10.5 signed off, 10.4 partly. See `docs/evidence/r-m10/README.md` |
+| §10 Done when | R-M10 | **In progress.** 10.1, 10.3 and 10.5 signed off, 10.4 partly. See `docs/evidence/r-m10/README.md` |
 
 ## §7, row by row
 
