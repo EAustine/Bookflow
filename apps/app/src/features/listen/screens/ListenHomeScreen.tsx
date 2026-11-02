@@ -17,13 +17,23 @@
  * playback state from `useAudioSession`.
  */
 
+import { useRef } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Icon, TabBar, type TabKey, Text } from '~/components';
+import {
+  Icon,
+  Presenter,
+  TabBar,
+  type BottomSheetRef,
+  type TabKey,
+  Text,
+} from '~/components';
 import { EmptyListenIllustration } from '~/components/illustrations/EmptyListenIllustration';
 import { tokens } from '~/design/tokens';
 import { useSizeClass } from '~/hooks/useSizeClass';
 import type { Book } from '~/types/book';
+import { useAudioSession } from '../api/audioSession';
+import { VoiceSheet } from './ListenScreen';
 import { ListenNowPlayingScreen, type ListenNowPlayingScreenProps } from './ListenNowPlayingScreen';
 
 // ─── Props ────────────────────────────────────────────────────────────────────
@@ -58,6 +68,9 @@ export function ListenHomeScreen({
   onResumeListening,
 }: ListenHomeScreenProps) {
   const { sizeClass, isWide } = useSizeClass();
+  const audio = useAudioSession();
+  const voiceSheetRef = useRef<BottomSheetRef>(null);
+  const voiceAnchorRef = useRef<View>(null);
   const gutter = tokens.layout.gutter[sizeClass];
 
   /**
@@ -82,10 +95,40 @@ export function ListenHomeScreen({
         <View style={styles.flexFill}>
           <ListenNowPlayingScreen
             {...nowPlaying}
+            voiceAnchorRef={voiceAnchorRef}
+            onOpenVoicePopover={() => voiceSheetRef.current?.present()}
             onOpenProfile={() => onTabChange('you')}
           />
         </View>
         <TabBar activeTab="listen" onChange={onTabChange} />
+
+        {/*
+          The voice picker for the tab's own pill. `Listen / Voice /
+          Popover / Expanded` puts it BESIDE the pill rather than under
+          it, which is the one side-anchored popover in the app, so it
+          asks `placePopover` for the `side` axis.
+
+          Hosted here rather than inside the tab because the picker is
+          `ListenScreen`'s and the tab is not its child: this is the
+          nearest surface that can see both. On Compact the Presenter
+          falls back to a sheet, and the pill does not reach for it
+          anyway, because the phone still expands to the foreground.
+        */}
+        <Presenter
+          kind="menu"
+          axis="side"
+          anchorRef={voiceAnchorRef}
+          ref={voiceSheetRef}
+        >
+          <VoiceSheet
+            selectedVoiceId={audio.voiceId}
+            onSelect={(id) => {
+              audio.setVoiceId(id);
+              voiceSheetRef.current?.dismiss();
+            }}
+            onClose={() => voiceSheetRef.current?.dismiss()}
+          />
+        </Presenter>
       </View>
     );
   }

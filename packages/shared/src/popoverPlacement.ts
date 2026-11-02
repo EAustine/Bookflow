@@ -38,6 +38,20 @@ export type PlacementOptions = {
   arrowInset?: number;
   /** Below this much room, open upward instead of downward. */
   minDrop?: number;
+  /**
+   * Which axis the card is placed on.
+   *
+   * `vertical` is the default and what every popover in the app used
+   * until now: the card drops below its trigger, or flips above when
+   * below is cramped.
+   *
+   * `side` puts the card beside the trigger instead, which the Listen
+   * tab's voice pill asks for (`Listen / Voice / Popover / *`): the
+   * card sits to the pill's right with the arrow on its own left edge,
+   * pointing back at it. A pill is small enough to point an arrow at,
+   * and the picker is taller than the room under it.
+   */
+  axis?: 'vertical' | 'side';
 };
 
 export type Placement = {
@@ -48,9 +62,20 @@ export type Placement = {
   maxHeight: number;
   /**
    * The arrow's left, in card-local coordinates — or null when the card
-   * is edge-aligned and shows no arrow at all (§3).
+   * is edge-aligned and shows no arrow at all (§3), and on every `side`
+   * placement, where `arrowTop` carries it instead.
    */
   arrowLeft: number | null;
+  /**
+   * `side` only: the arrow's top in card-local coordinates, and which
+   * of the card's own edges it sits on. `null` on a vertical placement,
+   * and on a side placement that had to give up its arrow.
+   *
+   * `arrowSide: 'left'` means the arrow is on the card's left edge
+   * pointing left, so the trigger is to the left of the card.
+   */
+  arrowTop: number | null;
+  arrowSide: 'left' | 'right' | null;
 };
 
 export function placePopover(
@@ -66,6 +91,7 @@ export function placePopover(
     arrow = 10,
     arrowInset = 12,
     minDrop = 160,
+    axis = 'vertical',
   } = options;
 
   // No anchor: centre it. A menu with nothing to point at is rare — a
@@ -78,8 +104,19 @@ export function placePopover(
       offset: Math.max(gutter, windowHeight * 0.2),
       maxHeight: windowHeight * 0.6,
       arrowLeft: null,
+      arrowTop: null,
+      arrowSide: null,
     };
   }
+
+  if (axis === 'side') return placeBeside(anchor, windowWidth, windowHeight, {
+    width,
+    gutter,
+    gap,
+    arrow,
+    arrowInset,
+    minDrop,
+  });
 
   // Where the card would sit if the arrow pointed at the trigger: the
   // card centred on the anchor's centre.
@@ -125,6 +162,93 @@ export function placePopover(
           arrowInset,
           width - arrowInset - arrow,
         ),
+    arrowTop: null,
+    arrowSide: null,
+  };
+}
+
+/**
+ * The `side` axis: the card beside its trigger rather than under it.
+ *
+ * Prefers the trigger's right, which is where
+ * `Listen / Voice / Popover / *` draws it. Flips to the left when the
+ * right would cross the gutter, and gives up the arrow entirely when
+ * neither side fits, falling back to the gutter the card is nearest.
+ * That is the same concession the vertical axis makes: an arrow aimed
+ * at a card the clamp has already moved points at nothing.
+ *
+ * Vertically the card's **top aligns with the trigger's**, which is
+ * what `Listen / Voice / Popover / Expanded` draws: the card's 293 is
+ * the pill's. It is then clamped into the gutters so a pill near the
+ * bottom of the window still gets a whole card, and the arrow follows
+ * the trigger's centre through that clamp, which is what keeps it
+ * pointing at the pill rather than at where the pill would have been.
+ *
+ * Top-aligned rather than centred because the card's height is not
+ * known here. Centring it would mean guessing, and a guess that is
+ * wrong moves the card away from the thing it belongs to.
+ */
+function placeBeside(
+  anchor: AnchorRect,
+  windowWidth: number,
+  windowHeight: number,
+  o: {
+    width: number;
+    gutter: number;
+    gap: number;
+    arrow: number;
+    arrowInset: number;
+    minDrop: number;
+  },
+): Placement {
+  const { width, gutter, gap, arrow, arrowInset, minDrop } = o;
+
+  const rightLeft = anchor.x + anchor.width + gap;
+  const leftLeft = anchor.x - gap - width;
+  const fitsRight = rightLeft + width <= windowWidth - gutter;
+  const fitsLeft = leftLeft >= gutter;
+
+  const side: 'left' | 'right' | null = fitsRight
+    ? 'left'
+    : fitsLeft
+      ? 'right'
+      : null;
+
+  // `side` names the card's own edge, which is the opposite of the
+  // direction the card moved: a card to the trigger's RIGHT carries its
+  // arrow on its LEFT.
+  const left =
+    side === 'left'
+      ? rightLeft
+      : side === 'right'
+        ? leftLeft
+        : clamp(rightLeft, gutter, windowWidth - gutter - width);
+
+  const top = clamp(
+    anchor.y,
+    gutter,
+    // Leave at least a usable card's worth of room below the top, so a
+    // trigger near the bottom edge pulls the card up rather than
+    // squeezing it into nothing.
+    Math.max(gutter, windowHeight - gutter - minDrop),
+  );
+  const maxHeight = Math.max(minDrop, windowHeight - gutter - top);
+
+  return {
+    left,
+    from: 'top',
+    offset: top,
+    maxHeight,
+    arrowLeft: null,
+    arrowTop:
+      side === null
+        ? null
+        : clamp(
+            anchor.y + anchor.height / 2 - top - arrow / 2,
+            arrowInset,
+            maxHeight - arrowInset - arrow,
+          ),
+    arrowSide: side,
   };
 }
 

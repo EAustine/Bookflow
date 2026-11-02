@@ -769,7 +769,14 @@ function BimodalText({
 
 // ─── Voice picker sheet ───────────────────────────────────────────────────────
 
-function VoiceSheet({
+/**
+ * The voice picker body. Exported because two surfaces present it: the
+ * foreground player's own pill, and the Now playing tab's, which from
+ * Medium up opens it beside the pill rather than expanding to the
+ * foreground (`Listen / Voice / Popover / *`). One picker, two
+ * presenters.
+ */
+export function VoiceSheet({
   selectedVoiceId,
   onSelect,
   onClose,

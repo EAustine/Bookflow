@@ -78,6 +78,8 @@ import {
   BottomSheetView,
 } from '@gorhom/bottom-sheet';
 import { translateSnippet, translateSnippetErrorMessage } from '../api/translateSnippet';
+import { COMMON_LANGUAGES, STORE_LANG_TO_TRANSLATE } from '../api/aiTranslate';
+import { TranslateWordPopover } from './TranslateWordPopover';
 import { alert } from '~/platform/alert';
 
 // ─── Theme palette ────────────────────────────────────────────────────────────
@@ -3395,8 +3397,8 @@ const SentenceTranslateSheet = forwardRef<BottomSheetModal, {
 
 // ─── Translate popover ────────────────────────────────────────────────────────
 
-/** Card width, and what `placePopover` places. */
-const POPOVER_WIDTH = tokens.layout.popover.width;
+/** Card width, and what `placePopover` places. The frame's 260. */
+const POPOVER_WIDTH = tokens.layout.popover.word;
 
 function TranslatePopover({
   word,
@@ -3419,26 +3421,44 @@ function TranslatePopover({
     gutter: tokens.layout.gutter[sizeClass],
   });
 
-  // Dictionary lookup for the tapped word. We start optimistic — show the
-  // word + a "Looking up…" line — and replace with the real definition or
-  // a not-found state once the fetch resolves. Cached in-memory by
-  // `lookupWord`, so the same tap doesn't re-fetch.
+  // The user's target language, from the You tab's picker. The store
+  // speaks ISO-ish codes and the translate function speaks full names,
+  // so `STORE_LANG_TO_TRANSLATE` bridges them — the same bridge the
+  // Translate tool uses, for the same reason it exists.
+  const storeLang = useReaderStore((st) => st.translationLanguage);
+  const targetLanguage = STORE_LANG_TO_TRANSLATE[storeLang] ?? 'twi';
+  const langLabel = (
+    COMMON_LANGUAGES.find((l) => l.code === targetLanguage)?.label ??
+    targetLanguage
+  ).toUpperCase();
+
+  // Two requests, shown as they land rather than together: the
+  // dictionary is in-memory cached and usually instant, the
+  // translation is a round trip. Waiting for both would hold an empty
+  // card open for the slower of the two.
   const [lookup, setLookup] = useState<WordLookup | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [translation, setTranslation] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
-    setLoading(true);
     setLookup(null);
+    setTranslation(null);
+
     void lookupWord(word).then((res) => {
-      if (cancelled) return;
-      setLookup(res);
-      setLoading(false);
+      if (!cancelled) setLookup(res);
     });
+    void translateSnippet({ text: word, targetLanguage }).then((res) => {
+      if (cancelled) return;
+      // A failed translation says so in the slot it would have filled.
+      // The definition above it is still worth reading, so the card
+      // stays rather than closing.
+      setTranslation(res.ok ? res.translation : 'Translation unavailable');
+    });
+
     return () => {
       cancelled = true;
     };
-  }, [word]);
+  }, [word, targetLanguage]);
 
   return (
     <View
@@ -3451,70 +3471,27 @@ function TranslatePopover({
       ]}
       pointerEvents="box-none"
     >
-      <View style={styles.popover}>
-        <Text style={styles.popoverWord}>{lookup?.word ?? word}</Text>
-        {lookup?.phonetic ? (
-          <Text style={styles.popoverPhonetic}>{lookup.phonetic}</Text>
-        ) : null}
-        <View style={styles.popoverDivider} />
-        {loading ? (
-          <View style={styles.popoverRow}>
-            <Text style={styles.popoverLang}>EN</Text>
-            <Text style={styles.popoverDef}>Looking up…</Text>
-          </View>
-        ) : lookup && lookup.definitions.length > 0 ? (
-          lookup.definitions.map((d, i) => (
-            <View key={i} style={styles.popoverRow}>
-              <Text style={styles.popoverLang} numberOfLines={1}>
-                {abbreviatePos(d.partOfSpeech)}
-              </Text>
-              <Text style={styles.popoverDef}>{d.definition}</Text>
-            </View>
-          ))
-        ) : (
-          <View style={styles.popoverRow}>
-            <Text style={styles.popoverLang}>EN</Text>
-            <Text style={styles.popoverDef}>No definition found.</Text>
-          </View>
-        )}
-        <View style={styles.popoverActions}>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Play pronunciation"
-            // Native TTS the word — instant, no API roundtrip. Slower
-            // rate than the sentence sheet because a single word
-            // benefits more from clarity than from a "natural"
-            // reading cadence.
-            onPress={() => {
-              void stopSpeaking();
-              speak(word, { rate: 0.85 });
-            }}
-            style={styles.popoverBtnAudio}
-          >
-            <Icon name="Headphones" size={12} color={tokens.colors.cream[50]} />
-          </Pressable>
-          <Pressable
-            accessibilityRole="button"
-            disabled={saved}
-            onPress={onSave}
-            style={[styles.popoverBtnSave, saved && { opacity: 0.7 }]}
-          >
-            <Icon
-              name={saved ? 'Check' : 'Notebook'}
-              size={11}
-              color={tokens.colors.cream[50]}
-            />
-            <Text style={styles.popoverBtnText}>{saved ? 'Saved' : 'Save word'}</Text>
-          </Pressable>
-          <Pressable
-            accessibilityRole="button"
-            onPress={onDismiss}
-            style={styles.popoverBtnDismiss}
-          >
-            <Text style={styles.popoverDismissText}>Done</Text>
-          </Pressable>
-        </View>
-      </View>
+      <TranslateWordPopover
+        word={lookup?.word ?? word}
+        phonetic={lookup?.phonetic ?? undefined}
+        definition={
+          lookup === null
+            ? null
+            : (lookup.definitions[0]?.definition ?? 'No definition found.')
+        }
+        translation={translation}
+        toLang={langLabel}
+        saved={saved}
+        // Native TTS the word: instant, no API round trip. Slower rate
+        // than the sentence sheet because a single word benefits more
+        // from clarity than from a natural reading cadence.
+        onPlayAudio={() => {
+          void stopSpeaking();
+          speak(word, { rate: 0.85 });
+        }}
+        onSave={onSave}
+        onDismiss={onDismiss}
+      />
     </View>
   );
 }
@@ -3524,23 +3501,6 @@ function countWordsLocal(text: string): number {
   return text.trim().split(/\s+/).filter(Boolean).length;
 }
 
-/**
- * Three-letter part-of-speech abbreviation for the popover gutter.
- * Falls back to a generic label so we always have something to render.
- */
-function abbreviatePos(pos: string): string {
-  const map: Record<string, string> = {
-    noun: 'NOUN',
-    verb: 'VERB',
-    adjective: 'ADJ',
-    adverb: 'ADV',
-    pronoun: 'PRON',
-    preposition: 'PREP',
-    conjunction: 'CONJ',
-    interjection: 'INTJ',
-  };
-  return map[pos.toLowerCase()] ?? pos.slice(0, 4).toUpperCase();
-}
 
 // ─── Typography sheet ─────────────────────────────────────────────────────────
 
@@ -4019,103 +3979,6 @@ const styles = StyleSheet.create({
   popoverOverlay: {
     position: 'absolute',
     zIndex: 20,
-  },
-  popover: {
-    backgroundColor: tokens.colors.ink[900],
-    borderRadius: tokens.radii['2xl'],
-    padding: tokens.space.lg,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.3,
-    shadowRadius: 24,
-    elevation: 12,
-  },
-  popoverWord: {
-    fontFamily: tokens.fonts.display,
-    fontSize: 16,
-    color: tokens.colors.cream[50],
-    marginBottom: 2,
-  },
-  popoverPhonetic: {
-    fontFamily: tokens.fonts.ui,
-    fontSize: 11,
-    fontStyle: 'italic',
-    color: tokens.colors.ink[300],
-    marginBottom: tokens.space.sm,
-  },
-  popoverDivider: {
-    height: 0.5,
-    backgroundColor: 'rgba(255,255,255,0.12)',
-    marginBottom: tokens.space.sm,
-  },
-  popoverRow: {
-    flexDirection: 'row',
-    gap: tokens.space.md,
-    marginBottom: 6,
-  },
-  popoverLang: {
-    fontFamily: tokens.fonts.uiMedium,
-    fontSize: 9,
-    fontWeight: '500',
-    letterSpacing: 0.6,
-    textTransform: 'uppercase',
-    color: tokens.colors.ink[400],
-    // 28 was enough while this card was the window's width; anchored
-    // at 340 it broke "NOUN" across two lines. Widened, and pinned to
-    // one line so it cannot wrap again at any width.
-    width: 34,
-    paddingTop: 1,
-    flexShrink: 0,
-  },
-  popoverDef: {
-    flex: 1,
-    fontFamily: tokens.fonts.ui,
-    fontSize: 12,
-    color: tokens.colors.ink[200],
-    lineHeight: 18,
-  },
-  popoverActions: {
-    flexDirection: 'row',
-    gap: tokens.space.sm,
-    marginTop: 10,
-  },
-  popoverBtnAudio: {
-    width: 30,
-    height: 30,
-    borderRadius: tokens.radii.sm,
-    backgroundColor: 'rgba(255,255,255,0.1)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexShrink: 0,
-  },
-  popoverBtnSave: {
-    flex: 1,
-    height: 30,
-    borderRadius: tokens.radii.sm,
-    backgroundColor: tokens.colors.forest[800],
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 5,
-  },
-  popoverBtnText: {
-    fontFamily: tokens.fonts.uiMedium,
-    fontSize: 11,
-    fontWeight: '500',
-    color: tokens.colors.cream[50],
-  },
-  popoverBtnDismiss: {
-    height: 30,
-    borderRadius: tokens.radii.sm,
-    backgroundColor: 'rgba(255,255,255,0.08)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 12,
-  },
-  popoverDismissText: {
-    fontFamily: tokens.fonts.ui,
-    fontSize: 11,
-    color: tokens.colors.ink[300],
   },
 
   // Typography sheet

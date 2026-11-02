@@ -59,6 +59,12 @@ export type PresenterProps = BottomSheetProps & {
    */
   anchorRef?: React.RefObject<View | null>;
   /**
+   * `menu` only: put the popover beside its anchor rather than under
+   * it. The Listen tab's voice pill is the one surface that asks for
+   * it; see `placePopover`'s `side` axis.
+   */
+  axis?: 'vertical' | 'side';
+  /**
    * Card width for a `menu`. Defaults to the popover's 340; a context
    * menu passes `layout/menu/width` (280). It reaches the placement
    * maths, so the edge rule answers for the card being drawn rather
@@ -79,6 +85,7 @@ export const Presenter = forwardRef<PresenterRef, PresenterProps>(
     {
       kind,
       anchorRef,
+      axis,
       width,
       arrow,
       offset,
@@ -166,6 +173,7 @@ export const Presenter = forwardRef<PresenterRef, PresenterProps>(
           width={width}
           arrow={arrow}
           offset={offset}
+          axis={axis}
           onDismiss={close}
           title={title}
           footer={footer}
