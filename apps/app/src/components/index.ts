@@ -8,6 +8,9 @@
 export { Button } from './Button';
 export type { ButtonProps, ButtonSize, ButtonVariant } from './Button';
 
+export { FocusRing } from './FocusRing';
+export type { FocusRingProps, FocusRingShape } from './FocusRing';
+
 export { Icon, APPROVED_ICONS } from './Icon';
 export type { IconProps, IconName } from './Icon';
 
