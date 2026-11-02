@@ -113,6 +113,21 @@ const barrelPaths = [
       'The package root eagerly requires every weight it ships, which put ' +
       '52 font files and 6.7 MB in the export for the seven the app uses (M4c).',
   })),
+  /**
+   * Not a weight-per-module case — this family is not wanted at all.
+   * `metro.config.js` resolves it and every subpath to
+   * `src/platform/stubs/material-symbols.js`, so an import here would
+   * typecheck, lint and bundle, then throw at the first call. The rule
+   * says so up front instead.
+   */
+  {
+    name: '@expo-google-fonts/material-symbols',
+    message:
+      'Material Symbols is stubbed out of the bundle, not imported by ' +
+      'weight: expo-router pulls the barrel in through expo-symbols and it ' +
+      'cost 6.7 MB of the android export. Bookflow draws Tabler icons, via ' +
+      '~/components Icon. See src/platform/stubs/material-symbols.js.',
+  },
 ];
 
 module.exports = [
