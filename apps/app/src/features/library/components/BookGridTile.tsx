@@ -14,6 +14,8 @@
 
 import { memo, useRef } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
+import { FocusRing } from '~/components';
+import { useInteractive } from '~/hooks/useInteractive';
 import { Icon } from '~/components/Icon';
 import { Text } from '~/components/Text';
 import { useDownloadsStore } from '~/stores/downloadsStore';
@@ -65,9 +67,12 @@ export const BookGridTile = memo(function BookGridTile({
     onPress(book);
   };
 
+  const { interactiveProps, hovered, ringVisible } = useInteractive();
+
   return (
     <Pressable
       ref={tileRef}
+      {...interactiveProps}
       accessibilityRole="button"
       accessibilityLabel={book.title}
       onPress={handlePress}
@@ -80,7 +85,14 @@ export const BookGridTile = memo(function BookGridTile({
         isProcessing && styles.tileProcessing,
       ]}
     >
-      <View style={styles.coverWrap}>
+      {/* §6 lifts the cover, not the tile: a shadow under the whole
+          tile would fall under the title, author and progress bar. */}
+      <View
+        style={[
+          styles.coverWrap,
+          hovered && !isProcessing && tokens.elevation[2],
+        ]}
+      >
         <BookCover book={book} width={width} />
         {isFailed && (
           // A scrim rather than a replaced cover, so the book is still
@@ -131,6 +143,8 @@ export const BookGridTile = memo(function BookGridTile({
           {bookStatusLine(book, now)}
         </Text>
       )}
+
+      <FocusRing visible={ringVisible} shape="card" />
     </Pressable>
   );
 });

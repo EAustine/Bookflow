@@ -12,6 +12,8 @@
  */
 
 import { Pressable, StyleSheet, View } from 'react-native';
+import { FocusRing } from '~/components';
+import { useInteractive } from '~/hooks/useInteractive';
 import { Badge, Text } from '~/components';
 import { tokens } from '~/design/tokens';
 import type { DiscoverBook } from '../types';
@@ -42,10 +44,17 @@ export function DiscoverBookRow({
   onRemove,
   width,
 }: DiscoverBookRowProps) {
+  const { interactiveProps, hovered, ringVisible } = useInteractive();
+
   return (
     <Pressable
       onPress={onPress}
-      style={[styles.card, width === undefined ? styles.cardFull : { width }]}
+      {...interactiveProps}
+      style={[
+        styles.card,
+        width === undefined ? styles.cardFull : { width },
+        hovered && styles.hover,
+      ]}
     >
       <CoverBox
         style={styles.cover}
@@ -83,11 +92,16 @@ export function DiscoverBookRow({
           />
         </View>
       </View>
+
+      <FocusRing visible={ringVisible} shape="row" />
     </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
+  hover: {
+    backgroundColor: tokens.hover.rowBackground,
+  },
   card: {
     flexDirection: 'row',
     gap: 14,

@@ -7,6 +7,8 @@ import {
   ViewStyle,
 } from 'react-native';
 import { tokens } from '~/design/tokens';
+import { useInteractive } from '~/hooks/useInteractive';
+import { FocusRing } from './FocusRing';
 import { Icon, IconName } from './Icon';
 import { Toggle } from './Toggle';
 
@@ -81,6 +83,8 @@ export function ListRow({
   onPress,
   ...rest
 }: ListRowProps) {
+  const { interactiveProps, hovered, ringVisible } = useInteractive();
+
   const handlePress: PressableProps['onPress'] = (e) => {
     if (toggle) toggle.onChange(!toggle.value);
     onPress?.(e);
@@ -102,6 +106,7 @@ export function ListRow({
       }}
       onPress={handlePress}
       disabled={disabled}
+      {...interactiveProps}
       style={({ pressed }) => [
         styles.row,
         {
@@ -109,6 +114,12 @@ export function ListRow({
           paddingHorizontal: tokens.listRow.paddingX,
         },
         active && styles.active,
+        // Hover before pressed so a press on a hovered row still wins.
+        // Both resolve to cream-100 — §6 gives rows `color/bg/surface`
+        // and the pressed fill was already that value — so the two look
+        // identical. That is what the brief and the frames say, not a
+        // merge of two states.
+        hovered && !disabled && styles.hover,
         pressed && !disabled && styles.pressed,
         disabled && styles.disabled,
         containerStyle,
@@ -175,6 +186,8 @@ export function ListRow({
           )}
         </View>
       )}
+
+      <FocusRing visible={ringVisible} shape="row" />
     </Pressable>
   );
 }
@@ -187,6 +200,9 @@ const styles = StyleSheet.create({
   },
   active: {
     backgroundColor: tokens.bgColors.accentMuted,
+  },
+  hover: {
+    backgroundColor: tokens.hover.rowBackground,
   },
   pressed: {
     backgroundColor: tokens.colors.cream[100],
