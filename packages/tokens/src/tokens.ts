@@ -484,6 +484,14 @@ export const focusRing = {
  */
 export const hover = {
   rowBackground: bgColors.surface,
+  /**
+   * Filled controls, which have no surface to tint and no border to
+   * darken: the build log's Phase 7 gives the reader's primary action
+   * "88% opacity on hover" and that is the only rule §6 states for this
+   * shape. Reused by `AddPill`, whose fill is forest on a row and amber
+   * on the Featured card — two ramps, one of which has no darker step.
+   */
+  filledOpacity: 0.88,
 } as const;
 
 /**
@@ -747,6 +755,14 @@ export const layout = {
    * 1440.
    */
   practice: {
+    /**
+     * The session's own page padding, outside the two columns, at every
+     * size except Medium. Written down because the columns have to be
+     * measured against the window *including* it — 1000 of columns in a
+     * 1024 window is 1036 of content, which is where `layoutFits`
+     * caught the Expanded floor.
+     */
+    paddingX: 18,
     /** Stacked, both columns full width. */
     medium: { gap: 24, paddingX: 32 },
     expanded: { question: 520, source: 440, gap: 40 },

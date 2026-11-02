@@ -38,6 +38,7 @@ import {
   useStreakWarningSync,
 } from "~/lib/notifications";
 import { useReaderStore } from "~/stores/readerStore";
+import { UiGallery, uiGalleryRequested } from "~/gallery/uiGallery";
 import {
   initialBootHandoffPhase,
   nextBootHandoff,
@@ -207,6 +208,11 @@ export default function RootLayout() {
    */
   const handoffPhase = useRef<BootHandoffPhase>(initialBootHandoffPhase);
   useEffect(() => {
+    // The §6 gallery renders in place of `<Slot />`, so there is no
+    // route under it to hand off to. `uiGalleryRequested` is a constant
+    // read from the URL at module load, so this is a fixed branch
+    // rather than a condition that can change mid-session.
+    if (uiGalleryRequested) return;
     const next = nextBootHandoff(handoffPhase.current, {
       splashDone,
       destination,
@@ -317,7 +323,14 @@ export default function RootLayout() {
                   Rendering it over `<Slot />` rather than instead of it
                   lets the destination route mount and settle behind the
                   animation, so the transition has nothing to wait for. */}
-                <Slot />
+                {/* The §6 gallery replaces the router rather than
+                  covering it: an app rendered underneath an opaque
+                  overlay still contributes its own focusable elements
+                  to the tab order, which is the one thing the gallery
+                  exists to measure. Inert unless the bundle was
+                  exported with EXPO_PUBLIC_UI_GALLERY=1 — on native
+                  `~/gallery` resolves to a stub. */}
+                {uiGalleryRequested ? <UiGallery /> : <Slot />}
                 {!splashDone && <SplashScreen onComplete={onSplashComplete} />}
                 <StatusBar style="dark" />
               </BottomSheetModalProvider>

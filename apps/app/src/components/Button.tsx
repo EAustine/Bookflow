@@ -141,13 +141,27 @@ export function Button({
           </View>
         )}
 
-        {/* The button's own radius less the inset, so the ring follows
-            the corner rather than cutting across it. §10 asks for a
-            focus ring on every interactive row, card and button. */}
+        {/*
+          Outside the button, not inside it. R-M9 put the ring on the
+          row geometry — inset 2, radius less the inset — and on a
+          filled variant that paints a forest stroke 2px inside a
+          forest fill, which is invisible. The whole primary CTA of the
+          app had no visible focus state and the DOM said it did.
+
+          `Button / Variant=Primary, Size=Large, State=Focus-visible`
+          (`298:696`) settles it: its `focus ring` layer is 128 × 60
+          around a 120 × 52 button, at -4, -4 — a 2px `border/accent`
+          stroke outset 4 with radius 14, which is the button's own 10
+          plus the outset. Every variant in the set draws it the same
+          way, so there is no filled-or-not branch here.
+
+          §10 asks for a focus ring on every interactive row, card and
+          button; this is the "button" half of that sentence.
+        */}
         <FocusRing
           visible={ringVisible}
-          shape="row"
-          radius={tokens.button.radius[size] - tokens.focusRing.row.inset}
+          shape="card"
+          radius={tokens.button.radius[size] + tokens.focusRing.card.outset}
         />
       </Pressable>
     </Animated.View>

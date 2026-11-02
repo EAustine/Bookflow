@@ -124,6 +124,12 @@ module.exports = [
       '**/node_modules/**',
       'spikes/**',
       'apps/site/**',
+      // Worktrees the desktop app creates for background tasks. They
+      // hold a second checkout of this repo, including `apps/site`,
+      // which is ignored above by path and so stops being ignored one
+      // level down — a local `npm run lint` reported 46 errors from a
+      // copy of a file the real tree does not lint. CI never sees these.
+      '.claude/**',
       // Deno, not Node. `npm:` and `jsr:` specifiers are valid there and
       // unresolvable here, so linting them with Node resolution produces
       // 400 errors that say nothing about the code. Deno has its own

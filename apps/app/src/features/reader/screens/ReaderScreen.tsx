@@ -3100,7 +3100,8 @@ function ActionBar({
  *
  * The primary action keeps its filled chip on hover. Replacing a
  * forest fill with the theme's hairline border colour would read as
- * the button switching off.
+ * the button switching off. It takes the build log's 88% instead,
+ * which is the rule for a filled control that has no surface to tint.
  */
 function ActionBarItem({
   palette,
@@ -3137,6 +3138,12 @@ function ActionBarItem({
                 ? palette.border
                 : palette.surface,
           },
+          // The build log's Phase 7 gives the primary chip "88% opacity
+          // on hover", which R-M9 wrote into this component's doc
+          // comment and then did not implement: the branch above keeps
+          // `palette.primary` whether hovered or not, so Listen was the
+          // one action in the bar with no hover state at all.
+          primary && hovered && { opacity: tokens.hover.filledOpacity },
         ]}
       >
         <Icon
@@ -3155,7 +3162,11 @@ function ActionBarItem({
         {label}
       </Text>
 
-      <FocusRing visible={ringVisible} shape="row" />
+      {/* The theme's own accent, not the app's. `border/accent` is
+          #1B4332, which on the dark reader page (#1A1F1B) is about
+          1.4:1 — a ring nobody can see. Light resolves to forest-800,
+          so nothing changes there. */}
+      <FocusRing visible={ringVisible} shape="row" color={palette.primary} />
     </Pressable>
   );
 }

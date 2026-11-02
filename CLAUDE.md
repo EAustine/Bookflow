@@ -87,6 +87,10 @@ apps/app/src/
 │                        # cycle resolves to undefined at module load.
 ├── shell/               # SignedInShell + useShellSession. What wraps
 │                        # the tabs: share intent, paywall, billing sync.
+├── gallery/             # The §6 component gallery, web only. Above
+│                        # features/ because it imports their barrels.
+│                        # `?gallery=1` on a bundle built with
+│                        # EXPO_PUBLIC_UI_GALLERY=1; a stub on native.
 ├── platform/            # Native-only packages (§8). One module per
 │   │                    # adapter with a .web.ts sibling Metro picks
 │   │                    # for the web bundle.
