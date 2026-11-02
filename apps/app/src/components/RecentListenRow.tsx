@@ -24,6 +24,8 @@
  */
 import { useEffect, useState } from 'react';
 import { Image, Pressable, StyleSheet, View } from 'react-native';
+import { useInteractive } from '~/hooks/useInteractive';
+import { FocusRing } from './FocusRing';
 import { EqBars } from './EqBars';
 import { Icon } from './Icon';
 import { Text } from './Text';
@@ -89,6 +91,7 @@ export function RecentListenRow({
   dimCover = false,
   onPress,
 }: RecentListenRowProps) {
+  const { interactiveProps, hovered, ringVisible } = useInteractive();
   const m = METRICS[size];
 
   // Resolve through the shared bookCovers cache, so a cover already
@@ -127,6 +130,7 @@ export function RecentListenRow({
     <Pressable
       onPress={onPress}
       accessibilityRole="button"
+      {...interactiveProps}
       style={({ pressed }) => [
         styles.row,
         {
@@ -135,6 +139,8 @@ export function RecentListenRow({
         },
         isActive && styles.rowActive,
         showDivider && styles.rowDivider,
+        // Hover first: a press on a hovered row still reads as pressed.
+        hovered && { backgroundColor: tokens.hover.rowBackground },
         pressed && { backgroundColor: tokens.bgColors.raised },
       ]}
     >
@@ -199,6 +205,8 @@ export function RecentListenRow({
           />
         )}
       </View>
+
+      <FocusRing visible={ringVisible} shape="row" />
     </Pressable>
   );
 }

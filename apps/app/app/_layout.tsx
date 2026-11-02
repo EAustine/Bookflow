@@ -84,7 +84,22 @@ export default function RootLayout() {
   const onAuthCallback = pathname.startsWith('/auth/callback');
 
   const [destination, setDestination] = useState<Destination | null>(null);
-  const [splashDone, setSplashDone] = useState(false);
+
+  /**
+   * §4 Auth: "Desktop has no Splash or Session restore (the web loads
+   * straight in)." That is a web trait rather than a width one — a
+   * tablet at 1440 still boots like an app — so it keys off the
+   * platform, the same split `useSizeClass` documents.
+   *
+   * Starting the latch at `true` on web is the whole implementation:
+   * the splash is an overlay above `<Slot />`, so the destination
+   * route is already mounting behind it, and not drawing it means the
+   * page the hand-off is about to land on is simply what the user
+   * sees. The hand-off then waits on the restore alone, which still
+   * runs — "no Session restore" means no screen for it, not no
+   * restore; the app still has to know who you are.
+   */
+  const [splashDone, setSplashDone] = useState(Platform.OS === 'web');
   const onSplashComplete = useCallback(() => setSplashDone(true), []);
 
   // Orientation policy: phones portrait, tablets and web free (§1 of

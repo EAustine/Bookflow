@@ -453,6 +453,40 @@ export const borderColors = {
 } as const;
 
 /**
+ * Focus-visible ring — §6 of the responsive brief.
+ *
+ * Two geometries, because the brief gives two: rows take the ring
+ * *inside* their bounds, cards take it outside. That is not arbitrary.
+ * A row sits flush against its neighbours in a list, so an outset ring
+ * would paint over them; a card has gutter around it, and an inset
+ * ring would cut across the cover art it is meant to frame.
+ *
+ * `width` is the ring itself. The ring is drawn as an absolutely
+ * positioned overlay rather than a border on the element, so turning it
+ * on never changes layout — the same problem `input.focusRingWidth`
+ * solves with reserved padding, in the one way that also works for a
+ * row whose height is already fixed.
+ *
+ * Keyboard only. `platform/focusVisible` decides when it paints, and on
+ * native the answer is never (§6: "touch builds show neither").
+ */
+export const focusRing = {
+  width: 2,
+  /** Inside the element's bounds. Rows in a list. */
+  row: { inset: 2, radius: 8 },
+  /** Outside the element's bounds. Cards and tiles. */
+  card: { outset: 4, radius: 12 },
+} as const;
+
+/**
+ * Hover — §6. Rows take a surface fill; cards lift to `elevation[2]`.
+ * Pointer only, so native never sees it.
+ */
+export const hover = {
+  rowBackground: bgColors.surface,
+} as const;
+
+/**
  * Border widths.
  *
  * `hairline` is `StyleSheet.hairlineWidth` at call sites — 1 physical
@@ -857,6 +891,8 @@ export const tokens = {
   borderColors,
   borderWidth,
   elevation,
+  focusRing,
+  hover,
   overlay,
   epubWeb,
   space,

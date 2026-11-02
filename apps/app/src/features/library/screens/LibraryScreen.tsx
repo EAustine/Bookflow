@@ -22,6 +22,7 @@ import Svg, {
 import type { PickedFile } from '~/platform/files';
 import { CURATED_LIBRARY } from '~/data/curatedLibrary';
 import {
+  FocusRing,
   type BottomSheetRef,
   Modal,
   Presenter,
@@ -34,9 +35,11 @@ import {
   Text,
 } from '~/components';
 import { tokens } from '~/design/tokens';
+import { useInteractive } from '~/hooks/useInteractive';
 import { useSizeClass } from '~/hooks/useSizeClass';
 import { EmptyLibraryIllustration } from '~/components/illustrations/EmptyLibraryIllustration';
 import { BookCover, ProgressBar } from '../components/BookCover';
+import { UploadDropZone } from '../components/UploadDropZone';
 import { bookStatusLine } from '../components/bookStatus';
 import { WEEKDAYS, formatDuration } from '../components/readingWeek';
 import { BookGrid } from '../components/BookGrid';
@@ -730,7 +733,7 @@ export function LibraryScreen({
     toast.show('Offline downloads are coming soon');
   }, []);
 
-  const { sizeClass, isWide, width } = useSizeClass();
+  const { sizeClass, isWide, isWeb, width } = useSizeClass();
   const gutter = tokens.layout.gutter[sizeClass];
 
   /**
@@ -1180,6 +1183,16 @@ export function LibraryScreen({
           <LibraryEmptyContent
             userName={userName}
             wide={isWide}
+            // §4: "Upload drag and drop is desktop only", and §8 leaves
+            // the drag-over state out on tablets because there is no
+            // drag source on touch. So both halves are required: a
+            // 1440 tablet has the width and not the pointer, and a
+            // 1100 browser window has the pointer and not the width.
+            onDropFiles={
+              isWeb && sizeClass === 'desktop'
+                ? (files) => void upload.startUploadFromAssets(files)
+                : undefined
+            }
             onUpload={() => addSheetRef.current?.present()}
             onSeeAll={() => onTabChange('discover')}
             onBookPress={() => {}}
@@ -1725,19 +1738,30 @@ function CircleIconButton({
   /** Set when a wide-screen popover anchors to this button. */
   anchorRef?: React.RefObject<View | null>;
 }) {
+  const { interactiveProps, hovered, ringVisible } = useInteractive();
+
   return (
     <Pressable
       ref={anchorRef}
       accessibilityRole="button"
       onPress={onPress}
       disabled={dimmed}
+      {...interactiveProps}
       style={({ pressed }) => [
         styles.circleButton,
-        pressed && !dimmed && { backgroundColor: tokens.bgColors.raised },
+        // Its resting fill is already `bgColors.surface`, which is what
+        // §6 gives a hovered row, so the literal rule would paint
+        // nothing here. One step up the same ramp instead, matching the
+        // treatment it already uses for pressed.
+        (hovered || pressed) && !dimmed && { backgroundColor: tokens.bgColors.raised },
         dimmed && styles.circleButtonDimmed,
       ]}
     >
       <Icon name={icon} size={18} color={tokens.textColors.secondary} />
+
+      {/* A circle, so the ring is one too rather than a rounded square
+          floating inside it. 36 wide less the 2 inset on each side. */}
+      <FocusRing visible={ringVisible} shape="row" radius={16} />
     </Pressable>
   );
 }
@@ -1996,6 +2020,7 @@ function BookListItem({
    */
   selected?: boolean;
 }) {
+  const { interactiveProps, hovered, ringVisible } = useInteractive();
   const rowRef = useRef<View | null>(null);
   const status = book.processingStatus;
   const isProcessing = status === 'pending' || status === 'processing';
@@ -2029,9 +2054,12 @@ function BookListItem({
       onPress={handlePress}
       onLongPress={onLongPress ? () => onLongPress(book, rowRef.current) : undefined}
       delayLongPress={350}
+      {...interactiveProps}
       style={({ pressed }) => [
         styles.bookRow,
         selected && styles.bookRowSelected,
+        // Hover first: a press on a hovered row still reads as pressed.
+        hovered && !isProcessing && { backgroundColor: tokens.hover.rowBackground },
         pressed && !isProcessing && { backgroundColor: tokens.bgColors.raised },
         isProcessing && { opacity: 0.7 },
       ]}
@@ -2083,6 +2111,8 @@ function BookListItem({
       ) : (
         <Icon name="ChevronRight" size={16} color={tokens.textColors.disabled} />
       )}
+
+      <FocusRing visible={ringVisible} shape="row" />
     </Pressable>
   );
 }
@@ -2329,15 +2359,19 @@ function ActionRow({
       ? tokens.colors.error
       : tokens.textColors.primary;
 
+  const { interactiveProps, hovered, ringVisible } = useInteractive();
+
   return (
     <Pressable
       accessibilityRole="button"
       accessibilityState={{ disabled }}
       disabled={disabled}
       onPress={onPress}
+      {...interactiveProps}
       // Hard rule 6: the whole row is the target, not the label.
       style={({ pressed }) => [
         styles.actionRow,
+        hovered && !disabled && { backgroundColor: tokens.hover.rowBackground },
         pressed && !disabled && { backgroundColor: tokens.bgColors.raised },
       ]}
     >
@@ -2352,6 +2386,8 @@ function ActionRow({
       {trailing ? (
         <Text style={styles.actionRowTrailing}>{trailing}</Text>
       ) : null}
+
+      <FocusRing visible={ringVisible} shape="row" />
     </Pressable>
   );
 }
@@ -2427,11 +2463,21 @@ function LibraryEmptyContent({
   onSeeAll,
   onBookPress,
   wide,
+  onDropFiles,
 }: {
   userName?: string;
   onUpload: () => void;
   onSeeAll: () => void;
   onBookPress: (id: string) => void;
+  /**
+   * Set only where dragging exists (§4: "Upload drag and drop is
+   * desktop only"). When present the zone replaces the upload button
+   * and the formats line, which are the two things it already
+   * contains; the greeting, illustration and heading stay, because §4
+   * still asks the wide Empty state for the Empty library
+   * illustration.
+   */
+  onDropFiles?: (files: PickedFile[]) => void;
   /**
    * Expanded and Desktop show the Figma "Empty library" illustration
    * (`350:142`). The phone keeps its own line-drawing, so this change
@@ -2455,15 +2501,23 @@ function LibraryEmptyContent({
         <Text style={styles.uploadSub}>
           Upload a PDF or EPUB, or choose something from our free library below.
         </Text>
-        <Button
-          label="Upload a book"
-          variant="primary"
-          size="large"
-          leadingIcon="Upload"
-          fullWidth
-          onPress={onUpload}
-        />
-        <Text style={styles.uploadFormats}>EPUB or PDF · max 50 MB</Text>
+        {onDropFiles ? (
+          <View style={styles.dropZoneWrap}>
+            <UploadDropZone onFiles={onDropFiles} onChooseFile={onUpload} />
+          </View>
+        ) : (
+          <>
+            <Button
+              label="Upload a book"
+              variant="primary"
+              size="large"
+              leadingIcon="Upload"
+              fullWidth
+              onPress={onUpload}
+            />
+            <Text style={styles.uploadFormats}>EPUB or PDF · max 50 MB</Text>
+          </>
+        )}
       </View>
 
       <View style={styles.freeSection}>
@@ -3245,6 +3299,10 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 20,
     marginTop: -tokens.space.sm,
+  },
+  dropZoneWrap: {
+    width: '100%',
+    marginTop: tokens.space.sm,
   },
   uploadFormats: {
     fontFamily: tokens.fonts.ui,

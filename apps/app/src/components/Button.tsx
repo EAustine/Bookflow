@@ -17,6 +17,8 @@ import {
   View,
 } from 'react-native';
 import { tokens } from '~/design/tokens';
+import { useInteractive } from '~/hooks/useInteractive';
+import { FocusRing } from './FocusRing';
 import { Icon, IconName } from './Icon';
 import { Spinner } from './Spinner';
 
@@ -57,6 +59,8 @@ export function Button({
 }: ButtonProps) {
   const scale = useRef(new Animated.Value(1)).current;
 
+  const { interactiveProps, hovered, ringVisible } = useInteractive();
+
   const handlePressIn: PressableProps['onPressIn'] = (e) => {
     Animated.timing(scale, {
       toValue: tokens.button.pressScale,
@@ -94,11 +98,17 @@ export function Button({
         disabled={isDisabled}
         onPressIn={handlePressIn}
         onPressOut={handlePressOut}
+        {...interactiveProps}
         style={({ pressed }) => [
           styles.base,
           sizeStyle,
           variantStyle,
-          pressed && !isDisabled && getPressedStyle(variant),
+          // Hover reuses the pressed treatment rather than inventing a
+          // third shade. §6 names fills for rows and cards and says
+          // nothing about buttons, which already have a pressed style
+          // per variant; darkening on hover and again on press would
+          // need two values the design system does not define.
+          (hovered || pressed) && !isDisabled && getPressedStyle(variant),
           fullWidth && styles.fullWidth,
         ]}
         {...rest}
@@ -130,6 +140,15 @@ export function Button({
             )}
           </View>
         )}
+
+        {/* The button's own radius less the inset, so the ring follows
+            the corner rather than cutting across it. §10 asks for a
+            focus ring on every interactive row, card and button. */}
+        <FocusRing
+          visible={ringVisible}
+          shape="row"
+          radius={tokens.button.radius[size] - tokens.focusRing.row.inset}
+        />
       </Pressable>
     </Animated.View>
   );

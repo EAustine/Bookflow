@@ -29,6 +29,7 @@ import { Icon } from '~/components/Icon';
 import { Text } from '~/components/Text';
 import { CURATED_LIBRARY, type CuratedBook, type CuratedBookId } from '~/data/curatedLibrary';
 import { tokens } from '~/design/tokens';
+import { useSizeClass } from '~/hooks/useSizeClass';
 
 type Tab = 'library' | 'upload';
 
@@ -199,17 +200,25 @@ function LibraryTab({
   selectedIds: Set<CuratedBookId>;
   onToggle: (id: CuratedBookId) => void;
 }) {
+  // §4 Auth: "on wide screens First book shows four covers in one row
+  // (grid gap 10)". Three everywhere else — the lane is 480 wide, so a
+  // fourth column on a phone would make each cover about 100pt and the
+  // titles under them unreadable.
+  const { sizeClass } = useSizeClass();
+  const wide = sizeClass === 'expanded' || sizeClass === 'desktop';
+
   return (
     <ScrollView
       style={styles.tabContent}
       contentContainerStyle={styles.gridContent}
       showsVerticalScrollIndicator={false}
     >
-      <View style={styles.grid}>
+      <View style={[styles.grid, wide && styles.gridWide]}>
         {CURATED_LIBRARY.map((book) => (
           <BookCard
             key={book.id}
             book={book}
+            wide={wide}
             selected={selectedIds.has(book.id)}
             onPress={() => onToggle(book.id)}
           />
@@ -222,10 +231,13 @@ function LibraryTab({
 function BookCard({
   book,
   selected,
+  wide,
   onPress,
 }: {
   book: CuratedBook;
   selected: boolean;
+  /** Four to a row rather than three. See `LibraryTab`. */
+  wide?: boolean;
   onPress: () => void;
 }) {
   return (
@@ -236,7 +248,7 @@ function BookCard({
       // we used to have).
       accessibilityRole="checkbox"
       accessibilityState={{ selected, checked: selected }}
-      style={[styles.card, selected && styles.cardSelected]}
+      style={[styles.card, wide && styles.cardWide, selected && styles.cardSelected]}
     >
       <View style={[styles.cover, selected && styles.coverSelected]}>
         <BookCoverArt
@@ -399,6 +411,12 @@ const styles = StyleSheet.create({
   },
   content: {
     flex: 1,
+    // §4 Auth: a centred 480 lane at every size. On a phone the lane
+    // is wider than the window, so this is inert there and only takes
+    // effect from Medium up, where the column would otherwise stretch.
+    width: '100%',
+    maxWidth: tokens.layout.lane.width,
+    alignSelf: 'center',
     paddingTop: tokens.space.lg,
     paddingHorizontal: tokens.space.xl,
     paddingBottom: tokens.space.xl,
@@ -502,12 +520,21 @@ const styles = StyleSheet.create({
     // Negative margin trick to give a uniform 12px column gap and 14px row gap.
     marginHorizontal: -6,
   },
+  // Wide: four to a row at the brief's grid gap of 10, so the negative
+  // margin and the card padding are both half of it rather than of 12.
+  gridWide: {
+    marginHorizontal: -5,
+  },
 
   // Book card
   card: {
     width: '33.3333%',
     paddingHorizontal: 6,
     marginBottom: 14,
+  },
+  cardWide: {
+    width: '25%',
+    paddingHorizontal: 5,
   },
   cardSelected: {
     // Wrap-bg per spec — applied via inner padding to keep grid sizing stable.

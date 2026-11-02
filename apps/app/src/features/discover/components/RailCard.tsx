@@ -10,7 +10,8 @@
  */
 
 import { Pressable, StyleSheet, View } from 'react-native';
-import { Icon, Text } from '~/components';
+import { FocusRing, Icon, Text } from '~/components';
+import { useInteractive } from '~/hooks/useInteractive';
 import { tokens } from '~/design/tokens';
 import type { DiscoverBook } from '../types';
 import { CoverBox } from './CoverBox';
@@ -22,9 +23,14 @@ export type RailCardProps = {
 };
 
 export function RailCard({ book, inLibrary, onPress }: RailCardProps) {
+  const { interactiveProps, hovered, ringVisible } = useInteractive();
+
   return (
-    <Pressable onPress={onPress} style={styles.card}>
-      <View style={styles.coverWrap}>
+    <Pressable onPress={onPress} {...interactiveProps} style={styles.card}>
+      {/* The lift goes on the cover, not the card: §6 says "the cover
+          lifts with Elevation/2", and a shadow under the whole card
+          would sit under the title and author too. */}
+      <View style={[styles.coverWrap, hovered && tokens.elevation[2]]}>
         <CoverBox
           book={book}
           style={styles.cover}
@@ -38,6 +44,8 @@ export function RailCard({ book, inLibrary, onPress }: RailCardProps) {
       </View>
       <Text style={styles.title} numberOfLines={2}>{book.title}</Text>
       <Text style={styles.meta} numberOfLines={1}>{book.author}</Text>
+
+      <FocusRing visible={ringVisible} shape="card" />
     </Pressable>
   );
 }

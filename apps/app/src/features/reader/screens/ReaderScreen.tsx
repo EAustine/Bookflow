@@ -32,7 +32,9 @@ import {
   ModeTogglePill,
   type BottomSheetRef,
   type ReaderMode,
+  FocusRing,
   Icon,
+  type IconName,
   Input,
   ListRow,
   Text,
@@ -50,6 +52,7 @@ import {
   type AnchorRect,
 } from '@bookflow/shared';
 import { tokens } from '~/design/tokens';
+import { useInteractive } from '~/hooks/useInteractive';
 import { useSizeClass } from '~/hooks/useSizeClass';
 import { useBackHandler } from '~/lib/useBackHandler';
 import { useSlowOp } from '~/hooks/useSlowOp';
@@ -3068,35 +3071,92 @@ function ActionBar({
       */}
       <View style={styles.actionBarRow}>
       {ACTIONS.map(({ icon, label, primary, onPress, anchor }) => (
-        <Pressable
+        <ActionBarItem
           key={label}
-          ref={anchor ? displayAnchorRef : undefined}
-          accessibilityRole="button"
-          onPress={onPress ?? (() => {})}
-          style={styles.actionItem}
-        >
-          <View
-            style={[
-              styles.actionIcon,
-              { backgroundColor: primary ? palette.primary : palette.surface },
-            ]}
-          >
-            <Icon
-              name={icon}
-              size={18}
-              color={primary ? palette.primaryIcon : palette.text}
-            />
-          </View>
-          <Text
-            style={[styles.actionLabel, { color: palette.muted }]}
-            numberOfLines={1}
-          >
-            {label}
-          </Text>
-        </Pressable>
+          anchorRef={anchor ? displayAnchorRef : undefined}
+          palette={palette}
+          icon={icon}
+          label={label}
+          primary={primary}
+          onPress={onPress}
+        />
       ))}
       </View>
     </View>
+  );
+}
+
+/**
+ * One action in the bar, extracted so it can hold its own hover and
+ * focus state (§6). The five actions are built with `.map`, and a hook
+ * cannot live in a map callback, so the alternative to a component
+ * here is five copies of the state.
+ *
+ * §6 gives this one its own hover rule rather than the generic row or
+ * card fill: "the chip goes to `reader/border` and the label to
+ * `reader/text`". Those are reader-theme values, not app tokens,
+ * because the bar sits on a page the user has themed to sepia or dark
+ * and an app-level surface colour would be the wrong paper.
+ *
+ * The primary action keeps its filled chip on hover. Replacing a
+ * forest fill with the theme's hairline border colour would read as
+ * the button switching off.
+ */
+function ActionBarItem({
+  palette,
+  icon,
+  label,
+  primary,
+  onPress,
+  anchorRef,
+}: {
+  palette: (typeof THEME)[ReaderTheme];
+  icon: IconName;
+  label: string;
+  primary: boolean;
+  onPress?: () => void;
+  anchorRef?: React.RefObject<View | null>;
+}) {
+  const { interactiveProps, hovered, ringVisible } = useInteractive();
+
+  return (
+    <Pressable
+      ref={anchorRef}
+      accessibilityRole="button"
+      onPress={onPress ?? (() => {})}
+      {...interactiveProps}
+      style={styles.actionItem}
+    >
+      <View
+        style={[
+          styles.actionIcon,
+          {
+            backgroundColor: primary
+              ? palette.primary
+              : hovered
+                ? palette.border
+                : palette.surface,
+          },
+        ]}
+      >
+        <Icon
+          name={icon}
+          size={18}
+          color={primary ? palette.primaryIcon : palette.text}
+        />
+      </View>
+      <Text
+        style={[
+          styles.actionLabel,
+          { color: hovered ? palette.text : palette.muted },
+        ]}
+        numberOfLines={1}
+      >
+        {label}
+      </Text>
+
+      <FocusRing visible={ringVisible} shape="row" />
+    </Pressable>
   );
 }
 

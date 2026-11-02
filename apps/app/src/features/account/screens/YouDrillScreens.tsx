@@ -19,6 +19,7 @@ import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { copyText } from '~/platform/clipboard';
 import {
+  FocusRing,
   BottomSheet,
   type BottomSheetRef,
   Icon,
@@ -28,6 +29,7 @@ import {
   Toggle,
 } from '~/components';
 import { tokens } from '~/design/tokens';
+import { useInteractive } from '~/hooks/useInteractive';
 import {
   PLAYBACK_SPEEDS,
   TRANSLATION_LANGUAGE_LABELS,
@@ -661,13 +663,17 @@ function RadioRow({
   leading?: React.ReactNode;
   onPress: () => void;
 }) {
+  const { interactiveProps, hovered, ringVisible } = useInteractive();
+
   return (
     <Pressable
       onPress={locked ? undefined : onPress}
       disabled={locked}
+      {...interactiveProps}
       style={({ pressed }) => [
         styles.radioRow,
         locked && { opacity: 0.55 },
+        hovered && !locked && { backgroundColor: tokens.hover.rowBackground },
         pressed && !locked && { opacity: 0.85 },
       ]}
       accessibilityRole="radio"
@@ -685,6 +691,8 @@ function RadioRow({
           {selected && <View style={styles.radioDotInner} />}
         </View>
       )}
+
+      <FocusRing visible={ringVisible} shape="row" />
     </Pressable>
   );
 }
