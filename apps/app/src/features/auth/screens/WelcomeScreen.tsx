@@ -24,10 +24,10 @@
 
 import { Linking, StyleSheet, Text as RNText, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import Svg, { G, Line, Path } from 'react-native-svg';
 import { Button } from '~/components/Button';
 import { Lockup } from '~/components/Lockup';
 import { Text } from '~/components/Text';
+import { WelcomeHeroIllustration } from '~/components/illustrations/WelcomeHeroIllustration';
 import { tokens } from '~/design/tokens';
 import { useSizeClass } from '~/hooks/useSizeClass';
 import { PRIVACY_POLICY_URL, TERMS_OF_SERVICE_URL } from '~/lib/legalUrls';
@@ -51,7 +51,7 @@ export function WelcomeScreen({ onGetStarted, onSignIn }: WelcomeScreenProps) {
                 place — the panel grew around it. */}
             <Lockup size="small" />
             <View style={styles.brandHero}>
-              <HeroIllustration />
+              <WelcomeHeroIllustration width={336} />
             </View>
           </View>
 
@@ -81,7 +81,7 @@ export function WelcomeScreen({ onGetStarted, onSignIn }: WelcomeScreenProps) {
         </View>
 
         <View style={styles.hero}>
-          <HeroIllustration />
+          <WelcomeHeroIllustration width={280} />
         </View>
 
         <WelcomeCopy />
@@ -156,39 +156,6 @@ function LegalLine() {
   );
 }
 
-function HeroIllustration() {
-  const ink = tokens.colors.forest[800];
-  const accent = tokens.colors.amber[500];
-  return (
-    <Svg style={styles.heroSvg} viewBox="0 0 280 240" preserveAspectRatio="xMidYMid meet">
-      <G stroke={ink} strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round" fill="none">
-        <Path d="M 140 90 L 140 200" />
-        <Path d="M 140 90 Q 100 92 60 100 L 60 200 Q 100 202 140 200" />
-        <Path d="M 140 90 Q 180 92 220 100 L 220 200 Q 180 202 140 200" />
-        <Path d="M 60 100 Q 100 105 140 102" strokeWidth={1} opacity={0.5} />
-        <Path d="M 60 200 Q 100 198 140 200" strokeWidth={1} opacity={0.5} />
-        <Line x1={75} y1={120} x2={125} y2={118} strokeWidth={1.2} />
-        <Line x1={75} y1={135} x2={130} y2={133} strokeWidth={1.2} />
-        <Line x1={75} y1={150} x2={120} y2={148} strokeWidth={1.2} />
-        <Line x1={75} y1={165} x2={125} y2={163} strokeWidth={1.2} />
-        <Line x1={75} y1={180} x2={115} y2={178} strokeWidth={1.2} />
-        <Line x1={155} y1={120} x2={205} y2={120} strokeWidth={1.2} />
-        <Line x1={155} y1={135} x2={210} y2={135} strokeWidth={1.2} />
-        <Line x1={155} y1={150} x2={200} y2={150} strokeWidth={1.2} />
-        <Line x1={155} y1={165} x2={205} y2={165} strokeWidth={1.2} />
-        <Line x1={155} y1={180} x2={195} y2={180} strokeWidth={1.2} />
-      </G>
-      <G stroke={accent} strokeWidth={2} strokeLinecap="round" fill="none">
-        <Path d="M 30 60 Q 45 50 30 40" opacity={0.4} />
-        <Path d="M 50 65 Q 75 50 50 35" opacity={0.6} />
-        <Path d="M 90 70 Q 130 45 90 20" opacity={0.85} />
-        <Path d="M 250 60 Q 235 50 250 40" opacity={0.4} />
-        <Path d="M 230 65 Q 205 50 230 35" opacity={0.6} />
-        <Path d="M 190 70 Q 150 45 190 20" opacity={0.85} />
-      </G>
-    </Svg>
-  );
-}
 
 const styles = StyleSheet.create({
   root: {
@@ -248,11 +215,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: tokens.space.xl,
-  },
-  heroSvg: {
-    width: '100%',
-    maxWidth: 280,
-    aspectRatio: 280 / 240,
   },
 
   // Headline + subhead

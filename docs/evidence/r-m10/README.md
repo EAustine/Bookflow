@@ -291,21 +291,21 @@ Eight of the seventeen drawings have no slot on any screen: No
 highlights, Processing, Upload failed, Offline, Ask the book, Practice,
 Out of credits, Notifications.
 
-### 2 of the 11 slots match in the app
+### 2 of the 11 slots matched, before this pass
 
-| Figma slot | Slot | What the app draws |
-|---|---|---|
-| `Auth / Welcome` | 280 / 336 | its own line drawing, **not** the illustration |
-| `Auth / Sign in / Check your email` | 96 | an inline 44px envelope |
-| `Auth / Callback / Link expired` | 80 | Tabler `AlertTriangle` at 36 |
-| `Library / Empty` | 140 | `EmptyLibraryIllustration` ✅ |
-| `Library / Search / No results` | 120 | nothing, text only |
-| `Library / Upload / Scanned PDF error` | 120 | Tabler `FileText` at 34 |
-| `Listen / Tab / Empty` | 140 | Tabler `Headphones` at 36 in a bubble |
-| `Discover / Home / Error` | 120 | nothing, text only |
-| `Discover / Search / No matches` | 120 | nothing, the request form |
-| `Discover / Category / Empty` | 120 | nothing, text only |
-| `System / Error / Crash boundary` | 120 | nothing, text only |
+| Figma slot | Slot | Was | Now |
+|---|---|---|---|
+| `Auth / Welcome` | 280 / 336 | its own line drawing | `WelcomeHeroIllustration` |
+| `Auth / Sign in / Check your email` | 96 | an inline 44px envelope | `CheckEmailIllustration` |
+| `Auth / Callback / Link expired` | 80 | Tabler `AlertTriangle` at 36 | `LinkExpiredIllustration` |
+| `Library / Empty` | 140 | `EmptyLibraryIllustration` | unchanged |
+| `Library / Search / No results` | 120 | nothing, text only | `NoResultsIllustration` |
+| `Library / Upload / Scanned PDF error` | 120 | Tabler `FileText` at 34 | `ScannedPdfIllustration` |
+| `Listen / Tab / Empty` | 140 | Tabler `Headphones` at 36 in a bubble | `EmptyListenIllustration` |
+| `Discover / Home / Error` | 120 | nothing, text only | `SomethingWentWrongIllustration` |
+| `Discover / Search / No matches` | 120 | nothing, the request form | `NoResultsIllustration` |
+| `Discover / Category / Empty` | 120 | nothing, text only | still nothing, see below |
+| `System / Error / Crash boundary` | 120 | nothing, text only | still nothing, see below |
 
 The second match is `Library / Upload / Failed`, which renders
 `UploadFailedIllustration` **where Figma has no slot at all** — the
@@ -325,22 +325,36 @@ describes. `WelcomeScreen`'s `HeroIllustration` is 280 x 240 line art:
 drawings in two different styles, and the one on screen is not the one
 in the file.
 
-### What it would take
+### Wired, after the audit
 
-Eight of the nine mismatches have an unambiguous answer in the set:
-Check email, Link expired, Empty listen, No results (twice), Scanned
-PDF, Something went wrong (twice), and the Welcome hero. Each is the
-same job as the three that are done: hand-convert the SVG into a `Svg`
-component under `src/components/illustrations/`, with the colours bound
-to tokens, and render it at the slot's size.
+Nine of the ten mismatched slots had an unambiguous answer in the set,
+using seven drawings. Eight of them are now wired; `UploadFailed` and
+`EmptyLibrary` were already.
 
-`Discover / Category / Empty` is the ninth and has no obvious answer;
-the set has no "empty category" drawing and the placeholder is unnamed.
+`svg2tsx` in the session scratchpad did the conversion rather than a
+hand transcription, so the only judgement in each component is the
+hex-to-token lookup. Verified by diffing every `d` attribute against
+its source: **113 paths and 4 circles, all identical**, across the
+seven new components. Each renders in the gallery at the size its
+frame draws it at.
 
-Not done here. It is nine screens of visual change, it is not what §10
-asks for, and the eight-of-seventeen drawings with no slot suggest the
-illustration programme wants a decision about scope before it gets more
-code.
+Two slots are still empty on purpose:
+
+- **`Discover / Category / Empty`** has no answer in the set. There is
+  no "empty category" drawing and the placeholder frame is unnamed.
+- **`System / Error / Crash boundary`** will not get one.
+  `RootErrorBoundary`'s own contract is that it survives "a bad import,
+  missing env var, **native module failure**", and `react-native-svg`
+  is a native module. Rendering an `Svg` inside the fallback would put
+  the suspect back on the stand. It stays text only, and the
+  illustration component says so.
+
+Still unresolved, and not a code question: **eight of the seventeen
+drawings have no slot on any screen** (No highlights, Processing,
+Upload failed, Offline, Ask the book, Practice, Out of credits,
+Notifications), and `Library / Upload / Failed` renders one where the
+file asks for none. That is a Figma decision, not an implementation
+one.
 
 ## 10.2 and 10.6 — not closable here
 

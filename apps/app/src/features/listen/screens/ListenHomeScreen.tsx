@@ -20,6 +20,7 @@
 import { Pressable, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Icon, TabBar, type TabKey, Text } from '~/components';
+import { EmptyListenIllustration } from '~/components/illustrations/EmptyListenIllustration';
 import { tokens } from '~/design/tokens';
 import { useSizeClass } from '~/hooks/useSizeClass';
 import type { Book } from '~/types/book';
@@ -173,12 +174,11 @@ export function ListenHomeScreen({
       {pageTitle}
       <View style={[styles.stage, isWide && { paddingHorizontal: gutter }]}>
         <View style={[styles.emptyWrap, isWide && styles.emptyWrapWide]}>
-          <View style={styles.iconBubble}>
-            <Icon
-              name="Headphones"
-              size={36}
-              color={tokens.colors.forest[800]}
-            />
+          {/* §4 draws `Illustration / Empty listen` at 140 on the page
+              (`352:24524`). The 36pt Headphones glyph in a bubble was a
+              stand-in for it. */}
+          <View style={styles.emptyIllustration}>
+            <EmptyListenIllustration size={140} />
           </View>
           <Text style={styles.title}>Nothing playing</Text>
           <Text style={styles.sub}>
@@ -248,13 +248,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: 32,
   },
-  iconBubble: {
-    width: 88,
-    height: 88,
-    borderRadius: 22,
-    backgroundColor: tokens.colors.forest[50],
-    alignItems: 'center',
-    justifyContent: 'center',
+  emptyIllustration: {
     marginBottom: 22,
   },
   title: {

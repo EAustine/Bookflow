@@ -22,7 +22,8 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import Svg, { G, Path, Rect } from 'react-native-svg';
+import Svg, { Path } from 'react-native-svg';
+import { CheckEmailIllustration } from '~/components/illustrations/CheckEmailIllustration';
 import { Button } from '~/components/Button';
 import { Icon } from '~/components/Icon';
 import { Input } from '~/components/Input';
@@ -321,9 +322,10 @@ function SignInSuccess({ variant, email, fullName, onBack, onComplete, onResend 
       <Header onBack={onBack} />
 
       <View style={styles.successIllustration}>
-        <View style={styles.successIcon}>
-          <MailSparkleIcon />
-        </View>
+        {/* §4 draws `Illustration / Check email` at 96, sitting on the
+            page rather than inside a bubble (`316:14691`). The 96 circle
+            that used to hold a 44pt envelope is gone with it. */}
+        <CheckEmailIllustration size={96} />
         <View style={styles.successTextBlock}>
           <RNText style={styles.successTitle}>Check your email.</RNText>
           <Text variant="body-md" color="muted" align="center" style={styles.successSub}>
@@ -425,34 +427,6 @@ function ConsentRow({
   );
 }
 
-function MailSparkleIcon() {
-  return (
-    <Svg width={44} height={44} viewBox="0 0 44 44" fill="none">
-      <Rect
-        x={6}
-        y={11}
-        width={32}
-        height={22}
-        rx={3}
-        stroke={tokens.colors.forest[800]}
-        strokeWidth={2}
-        fill={tokens.colors.cream[50]}
-      />
-      <Path
-        d="M7 13l15 11 15-11"
-        stroke={tokens.colors.forest[800]}
-        strokeWidth={2}
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        fill="none"
-      />
-      <G stroke={tokens.colors.amber[500]} strokeWidth={1.4} strokeLinecap="round">
-        <Path d="M34 7l1.5 3" />
-        <Path d="M37 8.5l-3 1.5" />
-      </G>
-    </Svg>
-  );
-}
 
 // ============================================================================
 // Helpers
@@ -597,14 +571,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: tokens.space['2xl'],
     paddingBottom: 40,
-  },
-  successIcon: {
-    width: 96,
-    height: 96,
-    borderRadius: 48,
-    backgroundColor: tokens.colors.forest[50],
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   successTextBlock: {
     alignItems: 'center',
