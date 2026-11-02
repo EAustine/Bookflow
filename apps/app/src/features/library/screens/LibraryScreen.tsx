@@ -39,6 +39,7 @@ import { useInteractive } from '~/hooks/useInteractive';
 import { useSizeClass } from '~/hooks/useSizeClass';
 import { EmptyLibraryIllustration } from '~/components/illustrations/EmptyLibraryIllustration';
 import { BookCover, ProgressBar } from '../components/BookCover';
+import { UploadDropZone } from '../components/UploadDropZone';
 import { bookStatusLine } from '../components/bookStatus';
 import { WEEKDAYS, formatDuration } from '../components/readingWeek';
 import { BookGrid } from '../components/BookGrid';
@@ -732,7 +733,7 @@ export function LibraryScreen({
     toast.show('Offline downloads are coming soon');
   }, []);
 
-  const { sizeClass, isWide, width } = useSizeClass();
+  const { sizeClass, isWide, isWeb, width } = useSizeClass();
   const gutter = tokens.layout.gutter[sizeClass];
 
   /**
@@ -1182,6 +1183,16 @@ export function LibraryScreen({
           <LibraryEmptyContent
             userName={userName}
             wide={isWide}
+            // §4: "Upload drag and drop is desktop only", and §8 leaves
+            // the drag-over state out on tablets because there is no
+            // drag source on touch. So both halves are required: a
+            // 1440 tablet has the width and not the pointer, and a
+            // 1100 browser window has the pointer and not the width.
+            onDropFiles={
+              isWeb && sizeClass === 'desktop'
+                ? (files) => void upload.startUploadFromAssets(files)
+                : undefined
+            }
             onUpload={() => addSheetRef.current?.present()}
             onSeeAll={() => onTabChange('discover')}
             onBookPress={() => {}}
@@ -2452,11 +2463,21 @@ function LibraryEmptyContent({
   onSeeAll,
   onBookPress,
   wide,
+  onDropFiles,
 }: {
   userName?: string;
   onUpload: () => void;
   onSeeAll: () => void;
   onBookPress: (id: string) => void;
+  /**
+   * Set only where dragging exists (§4: "Upload drag and drop is
+   * desktop only"). When present the zone replaces the upload button
+   * and the formats line, which are the two things it already
+   * contains; the greeting, illustration and heading stay, because §4
+   * still asks the wide Empty state for the Empty library
+   * illustration.
+   */
+  onDropFiles?: (files: PickedFile[]) => void;
   /**
    * Expanded and Desktop show the Figma "Empty library" illustration
    * (`350:142`). The phone keeps its own line-drawing, so this change
@@ -2480,15 +2501,23 @@ function LibraryEmptyContent({
         <Text style={styles.uploadSub}>
           Upload a PDF or EPUB, or choose something from our free library below.
         </Text>
-        <Button
-          label="Upload a book"
-          variant="primary"
-          size="large"
-          leadingIcon="Upload"
-          fullWidth
-          onPress={onUpload}
-        />
-        <Text style={styles.uploadFormats}>EPUB or PDF · max 50 MB</Text>
+        {onDropFiles ? (
+          <View style={styles.dropZoneWrap}>
+            <UploadDropZone onFiles={onDropFiles} onChooseFile={onUpload} />
+          </View>
+        ) : (
+          <>
+            <Button
+              label="Upload a book"
+              variant="primary"
+              size="large"
+              leadingIcon="Upload"
+              fullWidth
+              onPress={onUpload}
+            />
+            <Text style={styles.uploadFormats}>EPUB or PDF · max 50 MB</Text>
+          </>
+        )}
       </View>
 
       <View style={styles.freeSection}>
@@ -3270,6 +3299,10 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 20,
     marginTop: -tokens.space.sm,
+  },
+  dropZoneWrap: {
+    width: '100%',
+    marginTop: tokens.space.sm,
   },
   uploadFormats: {
     fontFamily: tokens.fonts.ui,
